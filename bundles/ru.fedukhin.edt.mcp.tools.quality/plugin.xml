@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.quality.di.ToolsQualityExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.quality.CheckCatalogTool"
+            name="check_catalog"
+            description="List checks installed in EDT; optional filters: filter / severity / source"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.quality.di.ToolsQualityExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.quality.CheckDescribeTool"
+            name="check_describe"
+            description="Describe one check by id; includes description and optional standardRef for v8codestyle checks"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.quality.di.ToolsQualityExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.quality.CheckRunTool"
+            name="check_run"
+            description="Run validation on a project (or a file path within); blocks until completion or waitSeconds expires"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.quality.di.ToolsQualityExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.quality.CheckListMarkersTool"
+            name="check_list_markers"
+            description="List existing check markers without re-running validation"/>
+   </extension>
+</plugin>

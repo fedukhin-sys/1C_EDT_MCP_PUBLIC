@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.testrun.di.ToolsTestrunExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.testrun.InstallTestRunnerTool"
+            name="install_test_runner"
+            description="Scaffold xUnit test runner modules + ПриНачалеРаботыСистемы handler into a project"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.testrun.di.ToolsTestrunExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.testrun.UninstallTestRunnerTool"
+            name="uninstall_test_runner"
+            description="Remove xUnit test runner scaffolding from a project"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.testrun.di.ToolsTestrunExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.testrun.RunTestsTool"
+            name="run_tests"
+            description="Run xUnit test methods in a module (or all test modules) on a deployed infobase"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.testrun.di.ToolsTestrunExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.testrun.RunTestMethodTool"
+            name="run_test_method"
+            description="Run a single xUnit test method on a deployed infobase"/>
+   </extension>
+</plugin>

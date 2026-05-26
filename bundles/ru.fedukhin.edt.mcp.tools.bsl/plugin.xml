@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.bsl.di.ToolsBslExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.bsl.GetMethodTool"
+            name="get_method"
+            description="Get text and metadata of a specific procedure or function in a BSL module"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.bsl.di.ToolsBslExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.bsl.GetModuleInfoTool"
+            name="get_module_info"
+            description="Get module type, charset, and method count of a BSL module"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.bsl.di.ToolsBslExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.bsl.ListModuleMethodsTool"
+            name="list_module_methods"
+            description="List procedures and functions in a BSL module with positions"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.bsl.di.ToolsBslExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.bsl.ReadModuleTool"
+            name="read_module"
+            description="Read full text of a BSL module"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.bsl.di.ToolsBslExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.bsl.WriteModuleTool"
+            name="write_module"
+            description="Write BSL module content (optionally validated by Xtext before write)"/>
+   </extension>
+</plugin>

@@ -1,0 +1,18 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: EDT MCP Tools — BSL
+Bundle-SymbolicName: ru.fedukhin.edt.mcp.tools.bsl;singleton:=true
+Bundle-Version: 1.0.0.qualifier
+Bundle-Vendor: Fedukhin
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Require-Bundle: ru.fedukhin.edt.mcp.core,
+ org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ org.eclipse.emf.common,
+ com._1c.g5.wiring,
+ com.google.inject;bundle-version="[5.0,8)"
+Import-Package: jakarta.inject;version="[1.0,3)",
+ org.osgi.framework;version="[1.10,2)"
+Export-Package: ru.fedukhin.edt.mcp.tools.bsl,
+ ru.fedukhin.edt.mcp.tools.bsl.internal
+Automatic-Module-Name: ru.fedukhin.edt.mcp.tools.bsl

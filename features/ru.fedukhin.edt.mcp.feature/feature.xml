@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+      id="ru.fedukhin.edt.mcp.feature"
+      label="EDT MCP"
+      version="1.12.0.qualifier"
+      provider-name="Fedukhin">
+
+   <description>MCP server plugin for 1C:EDT.</description>
+   <license url="https://www.apache.org/licenses/LICENSE-2.0">
+      Apache License, Version 2.0
+   </license>
+
+   <!-- Only our 3 bundles. Third-party deps (MCP SDK, Jetty 12, Jackson 2.20,
+        Reactor, json-schema-validator, snakeyaml 2.3, jakarta.servlet 6.1) are
+        bundled INSIDE ru.fedukhin.edt.mcp.core via Bundle-ClassPath; they are
+        not exported as OSGi bundles, so they don't collide with whatever the
+        host 1C:EDT runtime has registered. -->
+   <plugin id="ru.fedukhin.edt.mcp.core"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.edt"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.bsl"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.infobase"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.client"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.debug"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.quality"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.md"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.form"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.tests"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.testrun"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.ui"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+</feature>

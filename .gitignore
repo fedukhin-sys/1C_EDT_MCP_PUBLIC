@@ -1,0 +1,41 @@
+# Eclipse workspace state — runtime only, не часть проекта
+.metadata/
+.recommenders/
+RemoteSystemsTempFiles/
+
+# Maven / Tycho build output
+target/
+*.jar
+*.class
+
+# Third-party libs vendored into ru.example.edt.mcp.core via Bundle-ClassPath
+# (not OSGi-registered → no conflicts with host 1C:EDT runtime).
+!bundles/ru.example.edt.mcp.core/lib/*.jar
+
+# Eclipse build outputs внутри bundles (PDE-проектов)
+bin/
+
+# Claude Code session state — локальные настройки игнорируем, скиллы коммитим
+.claude/settings.local.json
+.claude/cache/
+
+# Локальные docs с креденшалами
+docs/Логин-пароль ЕСС.txt
+docs/финальные тесты план.txt
+
+# OS / IDE temp
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*~
+
+# JVM crash dumps
+hs_err_pid*
+replay_pid*
+
+# Локальные secrets / env (на всякий случай — токены MCP и т.п. сюда не должны попадать)
+.env
+.env.local
+*.secret
+docs/errors1.txt

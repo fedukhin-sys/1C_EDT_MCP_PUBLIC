@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.workspace.GetProjectTool"
+            name="get_project"
+            description="Get details of a project by name (type, location, version, open flag)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.ListProjectsTool"
+            name="list_projects"
+            description="List opened 1C projects in the workspace"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.workspace.GetWorkspaceInfoTool"
+            name="get_workspace_info"
+            description="Get workspace root path, project counts, and registered 1C runtime versions"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.workspace.ListProjectFilesTool"
+            name="list_project_files"
+            description="List files and folders in a project (paths only, no content)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.workspace.ListRuntimeVersionsTool"
+            name="list_runtime_versions"
+            description="List 1C runtime versions registered in the IDE"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.workspace.OpenProjectTool"
+            name="open_project"
+            description="Open a project in the workspace (idempotent)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.workspace.CloseProjectTool"
+            name="close_project"
+            description="Close a project in the workspace (idempotent)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.workspace.CreateProjectTool"
+            name="create_project"
+            description="Create a new 1C project (configuration, extension, or external-object)"/>
+   </extension>
+</plugin>

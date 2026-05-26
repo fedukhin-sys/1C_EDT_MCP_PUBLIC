@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.AssociateInfobaseTool"
+            name="associate_infobase"
+            description="Associate a project with an infobase (optionally as default)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseTool"
+            name="create_infobase"
+            description="Create a FILE infobase via 1cv8.exe and register it in 1C:EDT"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.DeployProjectTool"
+            name="deploy_project"
+            description="Update infobase configuration from a project (sync project → infobase)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.GetInfobaseTool"
+            name="get_infobase"
+            description="Get infobase details by name or uuid"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.ListInfobasesTool"
+            name="list_infobases"
+            description="List infobases registered in 1C:EDT (with optional folder/type filter)"/>
+   </extension>
+</plugin>

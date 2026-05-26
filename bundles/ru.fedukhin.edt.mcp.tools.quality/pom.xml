@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>ru.fedukhin.edt.mcp</groupId>
+        <artifactId>ru.fedukhin.edt.mcp.parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <artifactId>ru.fedukhin.edt.mcp.tools.quality</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>eclipse-plugin</packaging>
+
+    <!--
+        ICheckRepository inherits getDescription(CheckUid) from the internal
+        ICheckMetadataManager (com.e1c.g5.v8.dt.internal.check). Plan 2 §Task-3
+        requires this call. Demote the forbidden-reference access restriction
+        from error → warning so the production category resolver compiles.
+    -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-compiler-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <compilerArgs>
+                        <arg>-err:-forbidden</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

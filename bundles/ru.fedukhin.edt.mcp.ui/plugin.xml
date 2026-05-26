@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="org.eclipse.ui.preferencePages">
+      <page id="ru.fedukhin.edt.mcp.ui.preferences.McpPreferencePage"
+            class="ru.fedukhin.edt.mcp.ui.preferences.McpPreferencePage"
+            name="EDT MCP"/>
+   </extension>
+
+   <extension point="org.eclipse.ui.commands">
+      <command id="ru.fedukhin.edt.mcp.ui.commands.start"   name="Start MCP Server"/>
+      <command id="ru.fedukhin.edt.mcp.ui.commands.stop"    name="Stop MCP Server"/>
+      <command id="ru.fedukhin.edt.mcp.ui.commands.restart" name="Restart MCP Server"/>
+   </extension>
+
+   <extension point="org.eclipse.ui.handlers">
+      <handler commandId="ru.fedukhin.edt.mcp.ui.commands.start"
+               class="ru.fedukhin.edt.mcp.ui.commands.StartServerHandler"/>
+      <handler commandId="ru.fedukhin.edt.mcp.ui.commands.stop"
+               class="ru.fedukhin.edt.mcp.ui.commands.StopServerHandler"/>
+      <handler commandId="ru.fedukhin.edt.mcp.ui.commands.restart"
+               class="ru.fedukhin.edt.mcp.ui.commands.RestartServerHandler"/>
+   </extension>
+
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution locationURI="menu:window?after=additions">
+         <menu id="ru.fedukhin.edt.mcp.menu" label="EDT MCP">
+            <command commandId="ru.fedukhin.edt.mcp.ui.commands.start"   label="Start MCP Server"   style="push"/>
+            <command commandId="ru.fedukhin.edt.mcp.ui.commands.stop"    label="Stop MCP Server"    style="push"/>
+            <command commandId="ru.fedukhin.edt.mcp.ui.commands.restart" label="Restart MCP Server" style="push"/>
+         </menu>
+      </menuContribution>
+      <menuContribution locationURI="toolbar:org.eclipse.ui.trim.status">
+         <control id="ru.fedukhin.edt.mcp.ui.statusbar.item"
+                  class="ru.fedukhin.edt.mcp.ui.statusbar.McpStatusBarItem"/>
+      </menuContribution>
+   </extension>
+</plugin>

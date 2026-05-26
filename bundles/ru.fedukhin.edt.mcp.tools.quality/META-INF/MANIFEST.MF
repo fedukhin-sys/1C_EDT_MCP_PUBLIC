@@ -1,0 +1,26 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: EDT MCP Tools — Quality
+Bundle-SymbolicName: ru.fedukhin.edt.mcp.tools.quality;singleton:=true
+Bundle-Version: 1.0.0.qualifier
+Bundle-Vendor: Fedukhin
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Require-Bundle: ru.fedukhin.edt.mcp.core,
+ org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ com.e1c.g5.v8.dt.check,
+ com.e1c.g5.v8.dt.check.suppress,
+ com._1c.g5.v8.dt.validation,
+ com._1c.g5.v8.derived,
+ com._1c.g5.v8.bm.core,
+ com._1c.g5.v8.bm.integration,
+ com._1c.g5.v8.dt.core,
+ com._1c.g5.v8.dt.bsl.model,
+ org.eclipse.emf.common,
+ com._1c.g5.wiring,
+ com.google.inject;bundle-version="[5.0,8)"
+Import-Package: jakarta.inject;version="[1.0,3)",
+ org.osgi.framework;version="[1.10,2)"
+Export-Package: ru.fedukhin.edt.mcp.tools.quality,
+ ru.fedukhin.edt.mcp.tools.quality.internal
+Automatic-Module-Name: ru.fedukhin.edt.mcp.tools.quality

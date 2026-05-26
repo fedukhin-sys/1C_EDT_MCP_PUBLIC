@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.ListFormsTool"
+            name="list_forms"
+            description="List forms in a project (optionally filtered by parent MdObject fqn)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.GetFormTool"
+            name="get_form"
+            description="Get details of a form (items, attributes, commands) by FQN"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.GetFormItemTool"
+            name="get_form_item"
+            description="Get details of a specific form item by its path within the form"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.CreateFormTool"
+            name="create_form"
+            description="Create an empty managed form under a parent MdObject (layout autogenerates on first open in editor)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.AddFormAttributeTool"
+            name="add_form_attribute"
+            description="Add a FormAttribute (data attribute) to a form. Type: String(N), Number(P,S), Date, Boolean, CatalogRef.X, etc."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.AddFormCommandTool"
+            name="add_form_command"
+            description="Add a FormCommand to a form. handlerName defaults to name; BSL handler must be written via write_module."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.AddFormFieldTool"
+            name="add_form_field"
+            description="Add a FormField (InputField) bound to a dataPath. parentPath is optional — if set, item is nested into that group (separated by '/')."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.AddFormGroupTool"
+            name="add_form_group"
+            description="Add a FormGroup of type Pages/Page/UsualGroup. parentPath is optional — if set, group is nested into that group."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.AddFormButtonTool"
+            name="add_form_button"
+            description="Add a Button bound to a Form.Command. commandName is the short name (no 'Form.Command.' prefix). FormCommand must exist (add_form_command first)."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.AddFormTableTool"
+            name="add_form_table"
+            description="Add a Table bound to a TabularSection or DynamicList. Columns are added via add_form_field with parentPath=&lt;table name&gt;."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.form.di.ToolsFormExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.form.SetFormHandlerTool"
+            name="set_form_handler"
+            description="Bind an event handler on a form or item. itemPath=null targets form root, else item by '/'-separated path. BSL method must be written via write_module."/>
+   </extension>
+</plugin>

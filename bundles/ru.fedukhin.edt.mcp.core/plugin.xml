@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension-point id="tool"
+                    name="MCP Tool"
+                    schema="schema/tool.exsd"/>
+
+   <extension point="com._1c.g5.wiring.serviceProvider">
+      <bundle symbolicName="ru.fedukhin.edt.mcp.core"/>
+   </extension>
+</plugin>

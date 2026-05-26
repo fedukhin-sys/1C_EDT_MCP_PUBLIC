@@ -1,0 +1,19 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: EDT MCP UI
+Bundle-SymbolicName: ru.fedukhin.edt.mcp.ui;singleton:=true
+Bundle-Version: 0.1.0.qualifier
+Bundle-Vendor: Fedukhin
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Bundle-ActivationPolicy: lazy
+Bundle-Activator: ru.fedukhin.edt.mcp.ui.McpUiPlugin
+Require-Bundle: org.eclipse.core.runtime,
+ org.eclipse.core.commands,
+ org.eclipse.ui,
+ org.eclipse.jface,
+ org.eclipse.swt,
+ ru.fedukhin.edt.mcp.core,
+ com._1c.g5.wiring,
+ com.google.inject;bundle-version="[5.0,8)"
+Import-Package: org.osgi.framework;version="[1.10,2)"
+Automatic-Module-Name: ru.fedukhin.edt.mcp.ui

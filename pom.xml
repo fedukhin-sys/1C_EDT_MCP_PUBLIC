@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>ru.fedukhin.edt.mcp</groupId>
+    <artifactId>ru.fedukhin.edt.mcp.parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <tycho-version>4.0.13</tycho-version>
+        <target-platform.id>ru.fedukhin.edt.mcp.target</target-platform.id>
+    </properties>
+
+    <modules>
+        <module>bom</module>
+        <module>targets/default</module>
+        <module>bundles/ru.fedukhin.edt.mcp.core</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.edt</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.bsl</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.infobase</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.client</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.debug</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.quality</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.md</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.form</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.tests</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.testrun</module>
+        <module>bundles/ru.fedukhin.edt.mcp.ui</module>
+        <module>features/ru.fedukhin.edt.mcp.feature</module>
+        <module>repositories/ru.fedukhin.edt.mcp.repository</module>
+        <module>tests/ru.fedukhin.edt.mcp.tests</module>
+    </modules>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-maven-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <extensions>true</extensions>
+            </plugin>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>target-platform-configuration</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <target>
+                        <artifact>
+                            <groupId>ru.fedukhin.edt.mcp</groupId>
+                            <artifactId>ru.fedukhin.edt.mcp.target</artifactId>
+                            <version>0.1.0-SNAPSHOT</version>
+                        </artifact>
+                    </target>
+                    <environments>
+                        <environment>
+                            <os>win32</os>
+                            <ws>win32</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>linux</os>
+                            <ws>gtk</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>macosx</os>
+                            <ws>cocoa</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                    </environments>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-surefire-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <useUIHarness>false</useUIHarness>
+                    <failIfNoTests>false</failIfNoTests>
+                    <systemProperties>
+                        <!-- No password provider in the headless tycho-surefire runtime;
+                             use an in-memory ISecureStringStore for the bearer token. -->
+                        <mcp.security.useInMemory>true</mcp.security.useInMemory>
+                        <!-- Don't auto-start the MCP server on bundle activation; the
+                             integration test drives start/stop explicitly. -->
+                        <mcp.test.skipAutoStart>true</mcp.test.skipAutoStart>
+                    </systemProperties>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

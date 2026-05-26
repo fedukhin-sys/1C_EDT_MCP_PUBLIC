@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.ListMdObjectsTool"
+            name="list_md_objects"
+            description="List MdObjects in a project, optionally filtered by kind"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.GetMdObjectTool"
+            name="get_md_object"
+            description="Get details of a single MdObject by FQN"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.CreateMdObjectTool"
+            name="create_md_object"
+            description="Create a new top-level MdObject in a project"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.RenameMdObjectTool"
+            name="rename_md_object"
+            description="Rename a top-level MdObject (BM-only, α)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.SetMdPropertyTool"
+            name="set_md_property"
+            description="Set a property on an MdObject or its attribute"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.ListAttributesTool"
+            name="list_attributes"
+            description="List attributes/dimensions/resources of an MdObject"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddAttributeTool"
+            name="add_attribute"
+            description="Add an attribute/dimension/resource to an MdObject"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.RenameAttributeTool"
+            name="rename_attribute"
+            description="Rename an attribute/dimension/resource of an MdObject"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.BorrowMdObjectTool"
+            name="borrow_md_object"
+            description="Adopt (borrow) an MdObject from base configuration into an extension. project = extension name; fqn = '&lt;Kind&gt;.&lt;Name&gt;' of base object."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.BorrowFormTool"
+            name="borrow_form"
+            description="Sub-borrow a Form from base parent MdObject into extension. parentFqn = already-borrowed parent in extension."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddTabularSectionTool"
+            name="add_tabular_section"
+            description="Add a TabularSection to a parent MdObject (Catalog/Document/BusinessProcess/Task/ChartOfX). Columns are added via add_tabular_section_attribute."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddTabularSectionAttributeTool"
+            name="add_tabular_section_attribute"
+            description="Add a column (attribute) to an existing TabularSection. tsFqn = 'Kind.Owner.TabularSection.Name'."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddExtensionMethodOverrideTool"
+            name="add_extension_method_override"
+            description="Append a BSL procedure (with &amp;ИзменениеИКонтроль/&amp;Перед/&amp;После/&amp;Вместо annotation) to an extension module. Creates file + parent folders if missing."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddRegisterRecorderTool"
+            name="add_register_recorder"
+            description="Link a Document as a recorder of an AccumulationRegister/AccountingRegister/CalculationRegister/InformationRegister. Writes both &lt;recorders&gt; on register and &lt;registerRecords&gt; on document; idempotent."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddSubsystemContentTool"
+            name="add_subsystem_content"
+            description="Add an MdObject reference to a Subsystem's content list (command-interface binding); idempotent."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.SetConstantTypeTool"
+            name="set_constant_type"
+            description="Set the value type of a Constant. type=string or array (composite). Supported: String(N), Number(P,S), Date, Boolean, CatalogRef.X, DocumentRef.Y, EnumRef.Z, AnyRef, UUID."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.SetMdTypeTool"
+            name="set_md_type"
+            description="Set the type of an Attribute/Dimension/Resource on an MdObject via DOM (replace-or-add). fqn forms: 'Catalog.X.Attribute.Y', 'Document.X.TabularSection.TS.Y', 'InformationRegister.X.Dimension.Y', 'Constant.X' (fallback). Same type-expressions as set_constant_type."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.CreateDataCompositionSchemaTool"
+            name="create_data_composition_schema"
+            description="Stage 8f MVP: create a minimal .dcs skeleton in an existing Report (Templates/&lt;Name&gt;/Template.dcs) and register it in Report .mdo (mainDataCompositionSchema + templates). Skeleton has one empty DataSetObject and a Основной settingsVariant with auto-selection; further editing is file-level or via EDT GUI. Idempotent."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.BorrowFormPicturesTool"
+            name="borrow_form_pictures"
+            description="Stage 10: auto-discover CommonPicture refs in an adopted Form's Form.form and borrow each missing CommonPicture (skeleton .mdo + &lt;commonPictures&gt; entry in extension Configuration.mdo). parentFqn = 'CommonForm.X' or 'Kind.Owner.Form.Y'. Idempotent."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddDcsDataSetQueryTool"
+            name="add_dcs_data_set_query"
+            description="Stage 8f: append a &lt;dataSet xsi:type=&quot;DataSetQuery&quot;&gt; to an existing Template.dcs. Args: reportFqn='Report.X', templateName (default 'ОсновнаяСхема'), dataSetName, query (text of 1C query, may be empty), dataSource (default: first &lt;dataSource&gt; in .dcs). Idempotent."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddDcsFieldTool"
+            name="add_dcs_field"
+            description="Stage 8f: append a &lt;field xsi:type=&quot;DataSetFieldField&quot;&gt; into an existing dataSet inside Template.dcs. Args: reportFqn, templateName?, dataSetName, fieldName, title?. Idempotent on (dataSetName, fieldName)."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddDcsParameterTool"
+            name="add_dcs_parameter"
+            description="Stage 8f: append a &lt;parameter&gt; to Template.dcs. Args: reportFqn, templateName?, parameterName, valueType (XSD/v8 type, optional), title (optional). Idempotent on parameterName."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddDcsCalculatedFieldTool"
+            name="add_dcs_calculated_field"
+            description="Stage 8f: append a &lt;calculatedField&gt; to Template.dcs root. Args: reportFqn, templateName?, dataPath, expression (1C calc formula), title (optional). Idempotent on dataPath."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddDcsTotalFieldTool"
+            name="add_dcs_total_field"
+            description="Stage 8f: append a &lt;totalField&gt; (aggregation) to Template.dcs root. Args: reportFqn, templateName?, dataPath, expression (e.g. 'Сумма(X)'), groupKeys (array). Idempotent on dataPath."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddDcsDataSetLinkTool"
+            name="add_dcs_dataset_link"
+            description="Stage 8f: append a &lt;dataSetLink&gt; (master-detail) between two DataSets in Template.dcs. Args: reportFqn, templateName?, source, destination, sourceExpression, destinationExpression, parameter (optional). Both DataSets must already exist. Idempotent on (source,dest,srcExpr,destExpr)."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.SetDcsQueryTextTool"
+            name="set_dcs_query_text"
+            description="Stage 8f: replace the &lt;query&gt; text on an existing &lt;dataSet xsi:type=&quot;DataSetQuery&quot;&gt; in Template.dcs. Args: reportFqn, templateName?, dataSetName, query. Throws if dataSet not found or not DataSetQuery."/>
+   </extension>
+</plugin>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.SetBreakpointTool"
+            name="set_breakpoint"
+            description="Set a BSL line breakpoint in a module (optionally with a condition expression)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.ListBreakpointsTool"
+            name="list_breakpoints"
+            description="List all BSL line breakpoints currently set in the workspace"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.RemoveBreakpointTool"
+            name="remove_breakpoint"
+            description="Remove a BSL line breakpoint by breakpointId (no-op if it no longer exists)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.GetStackTool"
+            name="get_stack"
+            description="Get the call stack of a thread in a suspended debug session"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.ListDebugSessionsTool"
+            name="list_debug_sessions"
+            description="List active debug sessions (debugSessionId, state, infobase, clientType, startedAt)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.GetDebugStateTool"
+            name="get_debug_state"
+            description="Get the current state (running / suspended / terminated) of a debug session"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.DebugResumeTool"
+            name="debug_resume"
+            description="Resume a debug session; blocks until the next stop (breakpoint / termination) or timeoutSeconds elapses"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.DebugPauseTool"
+            name="debug_pause"
+            description="Suspend a running debug session; returns the resulting state (suspended, running if it timed out, or terminated)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.DebugStepTool"
+            name="debug_step"
+            description="Step a thread in a suspended debug session (over / into / out); blocks until the step completes or timeoutSeconds elapses"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.DebugClientTool"
+            name="debug_client"
+            description="Launch a 1С thin or thick client under the debugger and attach a debug session"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.StopDebugTool"
+            name="stop_debug"
+            description="Terminate a debug session by debugSessionId (no-op if it is already gone)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.GetVariablesTool"
+            name="get_variables"
+            description="Get the variables of a frame in a suspended debug session (name, type, value)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.EvaluateTool"
+            name="evaluate"
+            description="Evaluate a BSL expression in a frame of a suspended debug session"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.debug.di.ToolsDebugExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.debug.SetVariableTool"
+            name="set_variable"
+            description="Set the value of a BSL variable in a frame of a suspended debug session (via assignment statement)"/>
+   </extension>
+</plugin>

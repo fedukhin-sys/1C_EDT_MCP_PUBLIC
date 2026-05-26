@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.tests.di.ToolsTestsExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.tests.ListTestModulesTool"
+            name="list_test_modules"
+            description="List xUnitFor1C test CommonModules in a project"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.tests.di.ToolsTestsExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.tests.GetTestMethodsTool"
+            name="get_test_methods"
+            description="Get list of xUnitFor1C test methods in a CommonModule"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.tests.di.ToolsTestsExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.tests.CreateTestModuleTool"
+            name="create_test_module"
+            description="Create a new xUnitFor1C test CommonModule (Server=true, with ExecutableScenarios skeleton)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.tests.di.ToolsTestsExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.tests.AddTestMethodTool"
+            name="add_test_method"
+            description="Add a xUnitFor1C test method to an existing test CommonModule"/>
+   </extension>
+</plugin>

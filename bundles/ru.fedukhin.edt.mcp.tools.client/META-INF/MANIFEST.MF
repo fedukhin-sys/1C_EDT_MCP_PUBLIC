@@ -1,0 +1,20 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: EDT MCP Tools — Client
+Bundle-SymbolicName: ru.fedukhin.edt.mcp.tools.client;singleton:=true
+Bundle-Version: 1.0.0.qualifier
+Bundle-Vendor: Fedukhin
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Require-Bundle: ru.fedukhin.edt.mcp.core,
+ org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ com._1c.g5.wiring,
+ com._1c.g5.v8.dt.platform.services.core,
+ com._1c.g5.v8.dt.platform.services.model,
+ com._1c.g5.v8.dt.platform,
+ com.google.inject;bundle-version="[5.0,8)"
+Import-Package: jakarta.inject;version="[1.0,3)",
+ org.osgi.framework;version="[1.10,2)"
+Export-Package: ru.fedukhin.edt.mcp.tools.client,
+ ru.fedukhin.edt.mcp.tools.client.internal
+Automatic-Module-Name: ru.fedukhin.edt.mcp.tools.client

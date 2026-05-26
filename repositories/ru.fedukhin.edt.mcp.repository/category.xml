@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <feature url="features/ru.fedukhin.edt.mcp.feature_0.1.0.qualifier.jar"
+            id="ru.fedukhin.edt.mcp.feature"
+            version="0.0.0">
+      <category name="ru.fedukhin.edt.mcp"/>
+   </feature>
+   <category-def name="ru.fedukhin.edt.mcp" label="EDT MCP"/>
+</site>
