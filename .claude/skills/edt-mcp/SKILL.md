@@ -1,0 +1,554 @@
+---
+name: edt-mcp
+description: Manage 1C:EDT extension/configuration projects via the EDT_MCP MCP server — create metadata objects, borrow from parent config, build forms, write BSL, run checks, deploy infobases. Use whenever the user wants to author or modify a 1C:EDT project from outside the IDE.
+---
+
+# EDT_MCP — пользование MCP-сервером для 1C:EDT
+
+EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 84 инструмента работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, **известные баги и workaround**'ы.
+
+## TL;DR — как подключиться
+
+1. **Сервер должен крутиться в EDT IDE.** Проверь: `Get-NetTCPConnection -State Listen -LocalPort 3001`. Если нет — пользователь запускает EDT, на стартапе плагин EDT_MCP сам поднимает сервер (порт настраивается в `Window → Preferences → EDT MCP`).
+2. **Токен** — в `Window → Preferences → EDT MCP` (одна строка). Сохрани в файл, скажем `MCP_token.txt`.
+3. **Endpoints**: SSE = `http://127.0.0.1:3001/mcp/sse`, messages = `http://127.0.0.1:3001/mcp/messages?sessionId=…` (sessionId возвращает SSE-handshake в первом `event: endpoint`).
+4. **Тестировать через готовый harness**: см. секцию [Smoke harness](#smoke-harness).
+
+## Архитектурные допущения
+
+- **Проект** — это название Eclipse-проекта в workspace, на котором открыт EDT. Например `ЕСС.РасширениеТЕСТ`. Все tools принимают `project` как строку.
+- **FQN** (fully qualified name) метаданных — формат `Kind.Name`, где `Kind` ∈ `{Catalog, Document, InformationRegister, AccumulationRegister, Constant, Enum, CommonModule, Role, Subsystem, DataProcessor, Report, ChartOfCharacteristicTypes, CommonForm, …}`. Примеры: `Catalog.Партнеры`, `Document.ЗаказКлиента`. Для вложенных — `Catalog.Контрагенты.TabularSection.КонтактнаяИнформация`, `Catalog.X.Form.Y`, `Catalog.X.Attribute.Y`/`Dimension.Y`/`Resource.Y`.
+- **modulePath** — относительный путь от корня проекта: `src/Catalogs/X/ObjectModule.bsl`, `src/Catalogs/X/Forms/Y/Module.bsl`, `src/CommonModules/X/Module.bsl`, `src/Documents/X/RecordSetModule.bsl` и т.п.
+- **Только русский identifier set** в этом проекте (если язык конфы Russian). Имена не транслитерируются.
+
+## Полный список инструментов (84)
+
+Точные имена аргументов получены из `tools/list`. Если параметра нет в списке `props` — он будет отвергнут (`additionalProperties: false`). Required помечены *.
+
+### Workspace + projects (8)
+| Tool | Args |
+|---|---|
+| `get_workspace_info` | — |
+| `list_projects` | — |
+| `list_runtime_versions` | — |
+| `get_project` | `name*` |
+| `list_project_files` | `name*`, `glob` |
+| `open_project` | `name*` |
+| `close_project` | `name*` |
+| `create_project` | `name*`, `type*` (`configuration`/`extension`/`external-object`), `version*`, `parentConfigurationName` (для extension/external-object) — **СМ. BUG-01** |
+
+### Infobase + deploy (5)
+| Tool | Args |
+|---|---|
+| `list_infobases` | `folder`, `type` |
+| `get_infobase` | `name`, `uuid` |
+| `create_infobase` | `name*`, `type*`, `location*`, `version`, `folder`, `timeoutSeconds` |
+| `associate_infobase` | `project*`, `infobase*`, `setDefault` |
+| `deploy_project` | `project*`, `infobase*`, `force`, `timeoutSeconds` |
+
+### Metadata (26)
+| Tool | Args |
+|---|---|
+| `list_md_objects` | `project*`, `kind` |
+| `get_md_object` | `project*`, `fqn*` |
+| `create_md_object` | `project*`, `kind*`, `name*`, `synonym`, `comment` |
+| `rename_md_object` | `project*`, `fqn*`, `newName*` |
+| `set_md_property` | `project*`, `fqn*`, `property*`, `value*`, `path` |
+| `list_attributes` | `project*`, `fqn*` |
+| `add_attribute` | `project*`, `fqn*` (owner FQN), `name*`, `type*`, `role` (`Attribute`/`Dimension`/`Resource`), `synonym`, `comment` |
+| `rename_attribute` | `project*`, `fqn*`, `oldName*`, `newName*`, `role` |
+| `borrow_md_object` | `project*`, `fqn*` |
+| `borrow_form` | `project*`, `parentFqn*` (parent MdObject FQN), `formName*` |
+| `borrow_form_pictures` | `project*`, `parentFqn*` (**обязательно Form-FQN**: `Document.X.Form.Y` или `CommonForm.Y` — **не родитель**) |
+| `add_tabular_section` | `project*`, `ownerFqn*`, `name*` |
+| `add_tabular_section_attribute` | `project*`, `tsFqn*` (`Catalog.X.TabularSection.Y`), `name*`, `type*` |
+| `add_extension_method_override` | `project*`, `modulePath*`, `source*` (полный текст процедуры с аннотацией `&Перед/&После/&ИзменениеИКонтроль`) |
+| `add_register_recorder` | `project*`, `register*` (`AccumulationRegister.X`), `document*` (`Document.Y`) |
+| `add_subsystem_content` | `project*`, `subsystemFqn*`, `contentFqn*` |
+| `set_constant_type` | `project*`, `fqn*`, `type*` |
+| `set_md_type` | `project*`, `fqn*` (`Kind.Owner.Attribute/Dimension/Resource.Name`), `type*` (string или массив) |
+| `create_data_composition_schema` | `project*`, `reportFqn*`, `templateName` |
+| `add_dcs_data_set_query` | `project*`, `reportFqn*`, `dataSetName*`, `query*`, `templateName`, `dataSource` |
+| `add_dcs_field` | `project*`, `reportFqn*`, `dataSetName*`, `fieldName*`, `templateName`, `title` |
+| `add_dcs_parameter` | `project*`, `reportFqn*`, `parameterName*`, `templateName`, `valueType`, `title` |
+| `add_dcs_calculated_field` | `project*`, `reportFqn*`, `dataPath*`, `expression*`, `templateName`, `title` |
+| `add_dcs_total_field` | `project*`, `reportFqn*`, `dataPath*`, `expression*`, `templateName`, `groupKeys` |
+| `add_dcs_dataset_link` | `project*`, `reportFqn*`, `source*`, `destination*`, `sourceExpression*`, `destinationExpression*`, `templateName`, `parameter` |
+| `set_dcs_query_text` | `project*`, `reportFqn*`, `dataSetName*`, `query*`, `templateName` |
+
+### BSL модули (5)
+| Tool | Args |
+|---|---|
+| `read_module` | `project*`, `path*` |
+| `write_module` | `project*`, `path*`, `content*`, `validate` (default true) — **СМ. BUG-09** |
+| `get_method` | `project*`, `path*`, `name*` |
+| `list_module_methods` | `project*`, `path*` |
+| `get_module_info` | `project*`, `path*` |
+
+### Forms (11)
+| Tool | Args |
+|---|---|
+| `list_forms` | `project*`, `parentFqn` |
+| `get_form` | `project*`, `fqn*` |
+| `get_form_item` | `project*`, `fqn*`, `itemPath*` |
+| `create_form` | `project*`, `parentFqn*`, `name*`, `formType` (`ItemForm`/`Form`/…) — **СМ. BUG-05** |
+| `add_form_attribute` | `project*`, `formFqn*`, `name*`, `type*`, `title`, `main` |
+| `add_form_command` | `project*`, `formFqn*`, `name*`, `title`, `handlerName` |
+| `add_form_field` | `project*`, `formFqn*`, `name*`, `dataPath*`, `parentPath`, `title` |
+| `add_form_group` | `project*`, `formFqn*`, `name*`, `groupType*` (`Pages`/`Page`/`Group`/…), `parentPath`, `title` |
+| `add_form_button` | `project*`, `formFqn*`, `name*`, `commandName*`, `parentPath`, `title` |
+| `add_form_table` | `project*`, `formFqn*`, `name*`, `dataPath*`, `parentPath`, `title` |
+| `set_form_handler` | `project*`, `formFqn*`, `event*`, `handlerName*`, `itemPath` — **СМ. BUG-06** |
+
+### Quality (4)
+| Tool | Args |
+|---|---|
+| `check_catalog` | `filter`, `severity`, `source` |
+| `check_describe` | `checkId*` |
+| `check_run` | `project*`, `path`, `checkIds`, `waitSeconds`, `clearFirst` |
+| `check_list_markers` | `project*`, `path`, `severity`, `checkId`, `source` |
+
+### xUnit (8)
+| Tool | Args |
+|---|---|
+| `create_test_module` | `project*`, `name*`, `language` |
+| `add_test_method` | `project*`, `moduleFqn*`, `methodName*`, `body` |
+| `list_test_modules` | `project*`, `language` |
+| `get_test_methods` | `project*`, `moduleFqn*` |
+| `install_test_runner` | `project*` — **СМ. BUG-08** |
+| `uninstall_test_runner` | `project*` |
+| `run_tests` | `project*`, `infobase*`, `moduleFqn`, `timeoutSeconds` |
+| `run_test_method` | `project*`, `infobase*`, `moduleFqn*`, `methodName*`, `timeoutSeconds` |
+
+### Client + debug (17)
+| Tool | Args |
+|---|---|
+| `run_client` | `infobase*`, `clientType` (`thin`/`thick`), `user`, `password` |
+| `list_running_clients` | `infobase`, `clientType` |
+| `stop_client` | `sessionId*`, `force`, `gracefulTimeoutSeconds` |
+| `debug_client` | `infobase*`, `clientType`, `user`, `password`, `stopOnError` |
+| `stop_debug` | `debugSessionId*` |
+| `list_debug_sessions` | — |
+| `get_debug_state` | `debugSessionId*` |
+| `set_breakpoint` | `project*`, `path*`, `line*`, `condition` |
+| `list_breakpoints` | — |
+| `remove_breakpoint` | `breakpointId*` |
+| `get_stack` | `debugSessionId*`, `threadId*` |
+| `get_variables` | `debugSessionId*`, `frameId*` |
+| `evaluate` | `debugSessionId*`, `frameId*`, `expression*` |
+| `set_variable` | `debugSessionId*`, `frameId*`, `variableName*`, `valueExpression*` |
+| `debug_resume` | `debugSessionId*`, `timeoutSeconds` |
+| `debug_pause` | `debugSessionId*` |
+| `debug_step` | `debugSessionId*`, `threadId*`, `kind*` (`over`/`into`/`out`), `timeoutSeconds` |
+
+## Типы (тип-выражения)
+
+Используются в `add_attribute`, `set_md_type`, `set_constant_type`, `add_tabular_section_attribute`, `add_form_attribute`:
+
+| Тип | Запись |
+|---|---|
+| Строка | `String(50)` (с длиной) или `String` (unlimited) |
+| Число | `Number(10,2)` (precision, scale), `Number(10)` |
+| Дата | `Date` |
+| Булево | `Boolean` |
+| УникальныйИдентификатор | `UUID` |
+| ХранилищеЗначения | `ValueStorage` |
+| Ссылка | `CatalogRef.Name`, `DocumentRef.Name`, `EnumRef.Name`, `ChartOfCharacteristicTypesRef.Name`, `ChartOfAccountsRef.Name`, `ExchangePlanRef.Name`, `BusinessProcessRef.Name`, `TaskRef.Name` |
+| Любая ссылка | `AnyRef` |
+| Составной тип | массив: `["CatalogRef.Партнеры", "CatalogRef.Контрагенты", "String(50)"]` через `set_md_type` |
+
+`add_attribute` принимает строку или **массив строк** (составной тип). Если простой `add_attribute` для составного не сработал — добавь атрибут с одним типом, потом `set_md_type` массивом.
+
+## Рецепты — типовые задачи
+
+### Создание справочника с атрибутами и табличной частью
+```jsonc
+[
+  { "tool": "create_md_object", "args": { "project": "X", "kind": "Catalog", "name": "ТестСправочник" } },
+  { "tool": "add_attribute", "args": { "project": "X", "fqn": "Catalog.ТестСправочник", "name": "Сумма", "type": "Number(15,2)" } },
+  { "tool": "add_attribute", "args": { "project": "X", "fqn": "Catalog.ТестСправочник", "name": "Партнер", "type": "CatalogRef.Партнеры" } },
+  { "tool": "add_tabular_section", "args": { "project": "X", "ownerFqn": "Catalog.ТестСправочник", "name": "Состав" } },
+  { "tool": "add_tabular_section_attribute", "args": { "project": "X", "tsFqn": "Catalog.ТестСправочник.TabularSection.Состав", "name": "Номенклатура", "type": "CatalogRef.Номенклатура" } }
+]
+```
+
+### Заимствование объектов основной конфы в расширение
+```jsonc
+[
+  { "tool": "borrow_md_object", "args": { "project": "X", "fqn": "Catalog.Партнеры" } },
+  { "tool": "borrow_md_object", "args": { "project": "X", "fqn": "Document.ЗаказКлиента" } },
+  { "tool": "borrow_form", "args": { "project": "X", "parentFqn": "Document.ЗаказКлиента", "formName": "ФормаДокумента" } },
+  { "tool": "borrow_form_pictures", "args": { "project": "X", "parentFqn": "Document.ЗаказКлиента.Form.ФормаДокумента" } }
+]
+```
+**Внимание:** `borrow_form_pictures` принимает **FQN формы** (`Document.X.Form.Y`), не родителя. Без `borrow_form_pictures` валидатор EDT ругается «Picture mismatch» на заимствованной форме.
+
+### Override метода в адаптированном объекте
+```jsonc
+{ "tool": "add_extension_method_override", "args": {
+   "project": "X",
+   "modulePath": "src/Documents/ЗаказКлиента/ObjectModule.bsl",
+   "source": "&После(\"ОбработкаПроведения\")\nПроцедура РасшТ_ОбработкаПроведения(Отказ, Режим)\n\tДвижения.МойРегистр.Записывать = Истина;\n\t...\nКонецПроцедуры\n"
+} }
+```
+Аннотации: `&Перед("Имя")`, `&После("Имя")`, `&ИзменениеИКонтроль("Имя")`. Сигнатура процедуры **должна 1:1 совпадать с базовой** (включая параметры и их имена).
+
+**`#Вставка` — препроцессорная директива, НЕ комментарий.** Внутри `&ИзменениеИКонтроль` правки помечаются `#Вставка` / `#КонецВставки` (вставка) и `#Удаление` / `#КонецУдаления` (удаление) — директивами с `#` в начале строки (column 0), **без** `//`. Тело `&ИзменениеИКонтроль` должно содержать **полную копию базового метода** + эти блоки (EDT сверяет с оригиналом).
+
+**Обёртка `#Если` для методов модулей объектов (см. BUG-17):** методы `&После`/`&Перед`/`&ИзменениеИКонтроль` в `ObjectModule.bsl` адаптированного объекта обязательно обернуть в ТУ ЖЕ препроцессорную обёртку, что и базовый модуль (обычно `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда … #КонецЕсли`; бывает вложенной — напр. `Catalog.Номенклатура`: `#Если НЕ МобильныйАвтономныйСервер Тогда` + вложенный `#Если Сервер…`). Иначе — error «Метод расширения имеет большую видимость».
+
+Tool сам создаёт файл если его нет, дописывает в конец. Дубль по имени процедуры — auto-merge body (v1.10.5+).
+
+### Форма элемента с группами и таблицей
+```jsonc
+[
+  { "tool": "create_form", "args": { "project": "X", "parentFqn": "Catalog.ТестСправочник", "name": "ФормаЭлемента", "formType": "ItemForm" } },
+  { "tool": "add_form_group", "args": { "project": "X", "formFqn": "Catalog.ТестСправочник.Form.ФормаЭлемента", "name": "Страницы", "groupType": "Pages" } },
+  { "tool": "add_form_group", "args": { "project": "X", "formFqn": "...", "name": "Реквизиты", "groupType": "Page", "parentPath": "Страницы" } },
+  { "tool": "add_form_field", "args": { "project": "X", "formFqn": "...", "name": "ПолеНаименование", "dataPath": "Объект.Наименование", "parentPath": "Страницы/Реквизиты" } },
+  { "tool": "add_form_table", "args": { "project": "X", "formFqn": "...", "name": "ТЧ", "dataPath": "Объект.Состав", "parentPath": "Страницы/Таблица" } },
+  { "tool": "add_form_field", "args": { "project": "X", "formFqn": "...", "name": "КолНоменклатура", "dataPath": "Объект.Состав.Номенклатура", "parentPath": "Страницы/Таблица/ТЧ" } }
+]
+```
+
+### Обработчик формы + код в Module.bsl
+```jsonc
+[
+  // 1. Tool привязывает имя метода в Form.form, но НЕ создаёт Module.bsl и НЕ пишет stub.
+  { "tool": "set_form_handler", "args": {
+    "project": "X",
+    "formFqn": "Catalog.X.Form.ФормаЭлемента",
+    "event": "OnCreateAtServer",
+    "handlerName": "ПриСозданииНаСервере" } },
+  // 2. Создай пустой Module.bsl вручную (через FS — write_module не создаёт новых файлов!)
+  // 3. Запиши тело:
+  { "tool": "write_module", "args": {
+    "project": "X",
+    "path": "src/Catalogs/X/Forms/ФормаЭлемента/Module.bsl",
+    "content": "&НаСервере\nПроцедура ПриСозданииНаСервере(Отказ, СтандартнаяОбработка)\n\tСообщить(\"Привет\");\nКонецПроцедуры\n" } }
+]
+```
+Список событий и аннотаций директивы:
+- `OnCreateAtServer` — `&НаСервере`
+- `OnOpen`, `OnClose` — `&НаКлиенте`
+- `BeforeWrite`, `OnWrite`, `AfterWrite` — `&НаСервере`/`&НаКлиенте` в зависимости
+- `Команда_X_Click` — `&НаКлиенте`
+
+### Регистр сведений с независимой записью
+```jsonc
+[
+  { "tool": "create_md_object", "args": { "project": "X", "kind": "InformationRegister", "name": "МойРС" } },
+  { "tool": "add_attribute", "args": { "project": "X", "fqn": "InformationRegister.МойРС", "name": "Объект", "type": "AnyRef", "role": "Dimension" } },
+  { "tool": "add_attribute", "args": { "project": "X", "fqn": "InformationRegister.МойРС", "name": "ДатаЗаписи", "type": "Date", "role": "Resource" } }
+]
+```
+`writeMode=Independent` и `dataLockControlMode=Managed` ставятся **по умолчанию** при `create_md_object`. Менять их через `set_md_property` нельзя — `property is not whitelisted` (см. **BUG-07**).
+
+### Регистр накопления с регистраторами
+```jsonc
+[
+  { "tool": "create_md_object", "args": { "project": "X", "kind": "AccumulationRegister", "name": "МойРН" } },
+  { "tool": "add_attribute", "args": { "project": "X", "fqn": "AccumulationRegister.МойРН", "name": "Документ", "type": "DocumentRef.ТестДокумент", "role": "Dimension" } },
+  // составной тип: добавили один, потом расширили
+  { "tool": "set_md_type", "args": { "project": "X", "fqn": "AccumulationRegister.МойРН.Dimension.Документ", "type": ["DocumentRef.ТестДокумент", "DocumentRef.ЗаказКлиента"] } },
+  { "tool": "add_attribute", "args": { "project": "X", "fqn": "AccumulationRegister.МойРН", "name": "Количество", "type": "Number(15,3)", "role": "Resource" } },
+  { "tool": "add_register_recorder", "args": { "project": "X", "register": "AccumulationRegister.МойРН", "document": "Document.ТестДокумент" } },
+  { "tool": "add_register_recorder", "args": { "project": "X", "register": "AccumulationRegister.МойРН", "document": "Document.ЗаказКлиента" } }
+]
+```
+
+### СКД-отчёт
+
+> **Для отчётов на Системе компоновки данных — отдельный скилл [edt-skd](../edt-skd/SKILL.md).**
+> Он содержит доменные паттерны СКД: реальный формат файла схемы `.dcs`, наборы данных
+> (запрос/объект/объединение), роли полей и корректные остатки, ресурсы, вычисляемые поля,
+> параметры периода, связи наборов, структуру настроек `settingsVariant`, условное оформление
+> и программную компоновку из BSL. Ниже — только базовый MCP-рецепт; за паттернами и доводкой
+> схемы иди в `edt-skd`.
+
+```jsonc
+[
+  { "tool": "create_md_object", "args": { "project": "X", "kind": "Report", "name": "МойОтчет" } },
+  { "tool": "create_data_composition_schema", "args": { "project": "X", "reportFqn": "Report.МойОтчет" } },
+  // templateName по умолчанию = ОсновнаяСхема
+  { "tool": "add_dcs_data_set_query", "args": {
+    "project": "X", "reportFqn": "Report.МойОтчет", "dataSetName": "DataSet1",
+    "query": "ВЫБРАТЬ ... ИЗ РегистрНакопления.X ГДЕ Период МЕЖДУ &НачалоПериода И &КонецПериода" } },
+  { "tool": "add_dcs_parameter", "args": { "project": "X", "reportFqn": "Report.МойОтчет", "parameterName": "НачалоПериода", "valueType": "Date" } },
+  { "tool": "add_dcs_parameter", "args": { "project": "X", "reportFqn": "Report.МойОтчет", "parameterName": "КонецПериода", "valueType": "Date" } },
+  { "tool": "add_dcs_total_field", "args": { "project": "X", "reportFqn": "Report.МойОтчет", "dataPath": "Сумма", "expression": "Сумма(Сумма)" } }
+]
+```
+**Текст запроса — только по реально существующим данным.** Перед тем как писать `query` в наборе данных СКД, проверь по `.mdo` (через `list_project_files` + Read), что КАЖДАЯ таблица, реквизит, поле ТЧ и стандартный атрибут реально существуют. Не выдумывай реквизиты по аналогии и не предполагай «стандартные» имена. Частые ловушки: `ЭтоГруппа`/`Родитель` есть только у иерархических справочников — у иерархии «только элементы» поля `ЭтоГруппа` НЕТ; имя реквизита-контрагента бывает `Контрагент`/`Партнер`/`Клиент`. **`check_run` ошибки в тексте запроса СКД НЕ ловит** — «Поле не найдено» вылезет только в рантайме 1С при открытии отчёта.
+
+`set_md_property` для `defaultForm` отвергнут (whitelist) — для основной формы отчёта пиши `<defaultForm>` напрямую в `.mdo` (см. **BUG-07**).
+
+### Subsystem (командный интерфейс)
+```jsonc
+[
+  { "tool": "create_md_object", "args": { "project": "X", "kind": "Subsystem", "name": "МояПодсистема" } },
+  { "tool": "add_subsystem_content", "args": { "project": "X", "subsystemFqn": "Subsystem.МояПодсистема", "contentFqn": "Catalog.ТестСправочник" } },
+  { "tool": "add_subsystem_content", "args": { "project": "X", "subsystemFqn": "Subsystem.МояПодсистема", "contentFqn": "Document.ТестДокумент" } }
+]
+```
+Для вложенной подсистемы `subsystemFqn`: `Subsystem.Родитель.Subsystem.Дочерняя` (полный nested FQN).
+
+### Проверка качества + деплой
+```jsonc
+[
+  { "tool": "check_run", "args": { "project": "X", "waitSeconds": 300 } },
+  { "tool": "check_list_markers", "args": { "project": "X" } }
+]
+```
+В `summary`: `{ blocker, critical, major, minor, trivial }`. **Деплоим только при blocker=0 и critical=0**. `major` SSL-стиля (см. ниже) — игнор.
+
+**Категоризация маркеров** (см. CLAUDE.md проекта `EDT_MCP`):
+- **BLOCKER** (фикс обязательно): `BslEditor` + сообщения про синтаксис/компиляцию («Ожидается имя переменной», «Ожидается выражение», «Встроенная функция…», «Данный модуль может содержать только процедуры и функции»), любые `summary.blocker`/`critical`.
+- **WARN** (пропускаем): SSL-стиль («Описание Экспорт-функции должно содержать блок Возвращаемое значение», «Метод доступен НаКлиенте», «Метод необходимо разместить в одной из верхнеуровневых областей: ОписаниеПеременных…»), security guidelines, deprecation, Web-mismatch, `MdValidationChecker` про флаги модуля.
+
+После фикса BLOCKER'ов — `check_list_markers` повторно, далее `associate_infobase` + `deploy_project`.
+
+### Запуск клиента и тестов
+```jsonc
+[
+  { "tool": "associate_infobase", "args": { "project": "X", "infobase": "МояИБ", "setDefault": true } },
+  { "tool": "deploy_project", "args": { "project": "X", "infobase": "МояИБ", "force": true, "timeoutSeconds": 600 } },
+  { "tool": "run_client", "args": { "infobase": "МояИБ", "clientType": "thin" } },
+  // тесты xUnitFor1C:
+  { "tool": "install_test_runner", "args": { "project": "X" } },
+  { "tool": "create_test_module", "args": { "project": "X", "name": "МоиТесты", "language": "ru" } },
+  { "tool": "add_test_method", "args": { "project": "X", "moduleFqn": "CommonModule.МоиТесты", "methodName": "Сценарий1", "body": "..." } },
+  { "tool": "run_test_method", "args": { "project": "X", "infobase": "МояИБ", "moduleFqn": "CommonModule.МоиТесты", "methodName": "Тест_Сценарий1" } }
+]
+```
+
+## Known bugs и workarounds
+
+| # | Tool | Симптом | Workaround |
+|---|---|---|---|
+| **BUG-01** | `create_project` (extension) | Создаёт каркас на диске (`.project`, `DT-INF`), но не пишет `src/Configuration/Configuration.mdo` → BM сообщает `internal error: The namespace 'X' is inactive` на любые операции | После `create_project`: `close_project`, **руками** записать `src/Configuration/Configuration.mdo` (см. шаблон ниже), `open_project`, дождаться ~10-80s пока BM активизируется (опрос `list_md_objects` до OK) |
+| **BUG-02** | Любой Tool с ToolException | Текст `internal error: null` (реальная причина проглочена) | Если tool падает с `null`-сообщением, прогони ту же операцию через `node mcp-poll.js` (захватывает `content[0].text`) — увидишь реальную причину |
+| **BUG-03** | `get_md_object` | type для не-String атрибутов (Date/Boolean/Refs) возвращается пустой строкой; на диске .mdo правильный | Не доверяй `get_md_object` для type — читай `.mdo` напрямую через `list_project_files` + Read |
+| **BUG-04** | `get_form` | attribute types и command titles форматируются как Java toString (`com._1c.g5.v8.dt.mcore.impl.TypeDescriptionImpl@…`) | См. `Form.form` на диске |
+| **BUG-05** | `create_form` | Создаёт только `Form.form`, не создаёт `Module.bsl` рядом | Создавай stub файлом перед `write_module`: `[System.IO.File]::WriteAllText(path, "", [System.Text.UTF8Encoding]::new($false))` |
+| **BUG-06** | `set_form_handler` | Записывает связку в `Form.form`, но не создаёт `Module.bsl` и не объявляет stub-процедуру с правильной аннотацией | После `set_form_handler` — `write_module` со всем телом, включая `&НаСервере`/`&НаКлиенте` и нужной сигнатурой |
+| **BUG-07** | `set_md_property` | Whitelist слишком узкий — `writeMode` (InformationRegister), `defaultForm` (Report), `serverCall` (CommonModule) не пускает | Дефолты обычно правильные (`writeMode=Independent`). Если нужно `defaultForm` — впиши `<defaultForm>CommonForm.X</defaultForm>` в `.mdo` напрямую |
+| **BUG-08** | `install_test_runner` | Падает с `property 'serverCall' is not whitelisted for kind CommonModule` (внутри использует `set_md_property`) | Создай два модуля руками: `EDT_MCP_TestRunner_Клиент` (Client=true) и `EDT_MCP_TestRunner_Сервер` (Server=true), и добавь в `Configuration/ManagedApplicationModule.bsl` обработчик `ПриНачалеРаботыСистемы` который ищет `EDT_MCP_TESTS=` в `ПараметрЗапуска`. Без runner'а `run_tests`/`run_test_method` тоже не работают. |
+| **BUG-09** | `write_module` | Не создаёт новый файл (`module 'X' not found in project`) | До `write_module` создай пустой файл через PowerShell: `[System.IO.File]::WriteAllText(path, "", [System.Text.UTF8Encoding]::new($false))` |
+| **BUG-10** | `borrow_form_pictures` | Документация говорит «parentFqn», но **обязательно** Form-FQN (`Document.X.Form.Y` или `CommonForm.Y`), а не родительский MdObject FQN | Передавай Form-FQN, не родителя |
+| **BUG-11** | `create_project` (extension) | Deploy чисто пересозданного через MCP extension падает: «Файл `/Configuration.xml`, узел Configuration: Отсутствует внутренняя информация (узел InternalInfo)» — в `Configuration.mdo` нет `<containedObjects>`, который генерируется UI-wizard'ом | Не пересоздавай extension через MCP — пользователь создаёт пустое расширение через UI EDT, а ты работаешь поверх. Если всё же надо — впиши **руками** в `Configuration.mdo` блок `<containedObjects classId="..." objectId="..."/>` × 7 (взять classId из любого рабочего extension, generate новые objectId) + `<keepMappingToExtendedConfigurationObjectsByIDs>true</keepMappingToExtendedConfigurationObjectsByIDs>` |
+| **BUG-12** | `create_form` | Не генерирует элемент `<commandInterface>` → графический редактор форм EDT падает с `NullPointerException: FormCommandInterface.getNavigationPanel() … "ci" is null`, форма **не отрисовывается в редакторе** (рантайм при этом работает). Видно в `.metadata/.log` | Дописать в `Form.form` перед `<extInfo>`: `<commandInterface><navigationPanel/><commandBar/></commandInterface>` |
+| **BUG-13** | `create_form` | Не назначает форму основной формой объекта. Для Catalog/Document не пишет `<defaultObjectForm>`, для DataProcessor — `<defaultForm>`. Итог: 1С открывает авто-форму, **обработчики кастомной формы не срабатывают** | Вписать в `.mdo` объекта: Catalog/Document — `<defaultObjectForm>Kind.X.Form.Y</defaultObjectForm>`; DataProcessor — `<defaultForm>DataProcessor.X.Form.Y</defaultForm>` |
+| **BUG-14** | `add_attribute`, `set_md_type` | Парсер типов поддерживает только `String/Number/Date/Boolean/CatalogRef/DocumentRef/EnumRef/AnyRef`. `ValueStorage`, `UUID`, `ChartOfCharacteristicTypesRef` и т.п. → `cannot parse type string` | Создать атрибут с типом-заглушкой (`Boolean`), затем вписать нужный `<types>…</types>` в `.mdo` напрямую (Edit-тулом, не PowerShell) |
+| **BUG-15** | `create_md_object` | Аргумент `synonym` игнорируется — `<synonym>` в `.mdo` не пишется (проверено на Catalog, Subsystem) | Вписать `<synonym><key>ru</key><value>…</value></synonym>` в `.mdo` сразу после `<name>` |
+| **BUG-16** | `list_attributes`, `get_form` | Сразу после мутации возвращают пусто/устаревшее (BM async): `list_attributes` → `{"attributes":[]}`, хотя атрибуты на диске уже есть | Проверяй по `.mdo`/`.form` на диске; либо повторный вызов после паузы |
+| **BUG-17** | `add_extension_method_override` | Метод `&После`/`&Перед`/`&ИзменениеИКонтроль` в модуле объекта без препроцессорной обёртки → error «Метод расширения имеет большую видимость» | Обернуть метод в ТУ ЖЕ `#Если…Тогда … #КонецЕсли`, что и базовый `ObjectModule.bsl` (Catalog/Document — обычно `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда`; `Номенклатура` — вложенная `#Если НЕ МобильныйАвтономныйСервер` + `#Если Сервер…`) |
+| **BUG-18** | `deploy_project` | Иногда возвращает `deployed:true` за ~200 мс без реального запуска 1cv8 (no-op), вместо честных ~30-80 с | Подозрительно малый `durationMs` = деплоя не было. Останови все клиенты и debug-сессии перед деплоем, повтори |
+
+
+## Паттерны: печатные формы и рантайм-ошибки 1С (вне `check_run`)
+
+  ### Что проверяет валидация
+  - **`write_module` (`validate`) — только СИНТАКСИС.** Несуществующий член перечисления, «поле не найдено» не ловит. После записи кода с API/перечислениями обязателен `check_run`.
+  - **`check_run` проверяет**: глобальные системные перечисления (`ОриентацияСтраницы.X` и т.п.), члены типизированных переменных. **НЕ проверяет**: текст запросов, методы/свойства на нетипизированных параметрах процедур.
+
+  ### Запросы
+  - **Анти-паттерн: документ И его табличная часть как два источника одного запроса** → рантайм-ошибка `Неоднозначное поле "ТЧ.Ссылка"`. Правильно: не соединять документ отдельно — таблица ТЧ даёт владельца через `.Ссылка`, реквизиты —
+  `ТЧ.Ссылка.<Реквизит>`. Цепочку строить только на ТЧ-таблицах.
+
+  ### Табличный документ
+  - `ОриентацияСтраницы` — члены `Портрет` / `Ландшафт` (не `Книжная`/`Альбомная`). Ориентация — свойство всего документа → разная ориентация = отдельные печатные формы.
+  - `Новый Шрифт(Ячейка.Шрифт, , Истина)` на свежей ячейке → шрифт без размера → невидимый текст. Правильно: `Новый Шрифт("Arial", Размер, Жирность)`.
+  - Перенос: `Область.РазмещениеТекста = ТипРазмещенияТекстаТабличногоДокумента.Переносить` + `ТабДок.Область(Стр, , Стр).АвтоВысотаСтроки = Истина`.
+  - Граница: `Область.Обвести(Линия, Линия, Линия, Линия)`, `Линия = Новый Линия(ТипЛинииЯчейкиТабличногоДокумента.Сплошная)`.
+  - `ШиринаКолонки` задавать на документе с уже выведенным содержимым.
+
+  ### Своя печатная форма из `&После("Печать")` модуля менеджера
+  - Новая строка `КоллекцияПечатныхФорм`: задать `ИмяМакета`, `Экземпляров`, **`ИмяВРЕГ = ВРег(ИмяМакета)`** — без `ИмяВРЕГ` `ВывестиТабличныйДокументВКоллекцию` не находит строку.
+  - Обязательна разметка: `УправлениеПечатью.ЗадатьОбластьПечатиДокумента(ТабДок, НомерСтрокиНачало, ОбъектыПечати, СсылкаОбъекта)` на каждый объект — иначе БСП бросает «Отсутствует разметка по объектам печати».
+  - `&После("Печать")` даёт `ОбъектыПечати` — прокинуть до формирования. Эталон — базовый `СформироватьКомплектПечатныхФорм`.
+
+  ### Диагностика
+  - `debug_client` не ловит серверный код (общие модули, `rphost`) на серверной инфобазе. Для серверных багов — оборачивать в `Попытка/Исключение` + `ЗаписьЖурналаРегистрации(...,
+  ОбработкаОшибок.ПодробноеПредставлениеОшибки(ИнформацияОбОшибке()))`, читать журнал регистрации.
+  - `ibases.v8i` `Version=8.3` → EDT парсит `8.3.0`, `debug_client` падает. Фикс — `Version=8.3.27`, требует перезапуска EDT.
+  - `close_project`+`open_project` может оставить контекст «stopped» (`get_project` → `type:"unknown"`) — повторный цикл чинит. После прямой записи файлов с диска close/open без нужды не делать.
+
+
+## Шаблон минимального `Configuration.mdo` для extension (workaround BUG-01)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:Configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" xmlns:mdclassExtension="http://g5.1c.ru/v8/dt/metadata/mdclass/extension" uuid="{{NEW-GUID}}">
+  <name>{{EXTENSION-NAME}}</name>
+  <synonym><key>ru</key><value>{{EXTENSION-NAME}}</value></synonym>
+  <objectBelonging>Adopted</objectBelonging>
+  <extension xsi:type="mdclassExtension:ConfigurationExtension">
+    <defaultRunMode>Checked</defaultRunMode>
+    <usePurposes>Checked</usePurposes>
+    <defaultLanguage>Checked</defaultLanguage>
+  </extension>
+  <containedObjects classId="9cd510cd-abfc-11d4-9434-004095e12fc7" objectId="{{NEW-GUID}}"/>
+  <containedObjects classId="9fcd25a0-4822-11d4-9414-008048da11f9" objectId="{{NEW-GUID}}"/>
+  <containedObjects classId="e3687481-0a87-462c-a166-9f34594f9bba" objectId="{{NEW-GUID}}"/>
+  <containedObjects classId="9de14907-ec23-4a07-96f0-85521cb6b53b" objectId="{{NEW-GUID}}"/>
+  <containedObjects classId="51f2d5d8-ea4d-4064-8892-82951750031e" objectId="{{NEW-GUID}}"/>
+  <containedObjects classId="e68182ea-4237-4383-967f-90c1e3370bc7" objectId="{{NEW-GUID}}"/>
+  <containedObjects classId="fb282519-d103-4dd3-bc12-cb271d631dfc" objectId="{{NEW-GUID}}"/>
+  <keepMappingToExtendedConfigurationObjectsByIDs>true</keepMappingToExtendedConfigurationObjectsByIDs>
+  <namePrefix>{{PREFIX_}}</namePrefix>
+  <configurationExtensionCompatibilityMode>{{RUNTIME-VER}}</configurationExtensionCompatibilityMode>
+  <configurationExtensionPurpose>Customization</configurationExtensionPurpose>
+  <defaultRunMode>ManagedApplication</defaultRunMode>
+  <usePurposes>PersonalComputer</usePurposes>
+  <scriptVariant>Russian</scriptVariant>
+  <defaultLanguage>Language.Русский</defaultLanguage>
+  <languages uuid="{{NEW-GUID}}" extendedConfigurationObject="{{NEW-GUID}}">
+    <name>Русский</name>
+    <objectBelonging>Adopted</objectBelonging>
+    <extension xsi:type="mdclassExtension:LanguageExtension">
+      <extendedConfigurationObject>Checked</extendedConfigurationObject>
+      <languageCode>Checked</languageCode>
+    </extension>
+    <languageCode>ru</languageCode>
+  </languages>
+</mdclass:Configuration>
+```
+
+После записи файла → `open_project` → опрос `list_md_objects` пока вернёт OK (10-80 секунд). Файл писать **UTF-8 без BOM**, иначе EDT может ругаться на кодировку.
+
+## Smoke harness
+
+Минимальный JS-клиент для smoke-тестов (есть готовый в `E:\Claude\mcp-smoke.js` на target-машине; ниже — общий вариант).
+
+```js
+'use strict';
+// usage: node mcp-smoke.js <token> <steps.json>
+const http = require('http');
+const TOKEN = process.argv[2];
+const STEPS = require(process.argv[3]);
+const BASE = 'http://127.0.0.1:3001';
+let endpoint = null, nextId = 1, buffer = '';
+const pending = new Map();
+const vars = {};
+
+const sse = http.get(BASE + '/mcp/sse', {
+  headers: { 'Authorization': 'Bearer ' + TOKEN, 'Accept': 'text/event-stream' }
+}, (res) => {
+  if (res.statusCode !== 200) { console.error('HTTP ' + res.statusCode); process.exit(1); }
+  res.setEncoding('utf8');
+  res.on('data', (chunk) => {
+    buffer += chunk.replace(/\r\n/g, '\n');
+    let idx;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const raw = buffer.slice(0, idx); buffer = buffer.slice(idx + 2);
+      let event = 'message', data = '';
+      for (const ln of raw.split('\n')) {
+        if (ln.startsWith('event:')) event = ln.slice(6).trim();
+        else if (ln.startsWith('data:')) data += ln.slice(5).trim();
+      }
+      if (event === 'endpoint') { endpoint = data.startsWith('http') ? data : BASE + data; run(); }
+      else if (event === 'message' && data) {
+        try { const m = JSON.parse(data); if (pending.has(m.id)) { pending.get(m.id).resolve(m); pending.delete(m.id); } } catch(e){}
+      }
+    }
+  });
+});
+
+function post(p) {
+  const body = JSON.stringify(p), u = new URL(endpoint);
+  return new Promise((res, rej) => {
+    const r = http.request({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, method: 'POST',
+      headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, (rs) => { rs.resume(); rs.on('end', res); });
+    r.on('error', rej); r.write(body); r.end();
+  });
+}
+
+async function send(method, params) {
+  const id = nextId++;
+  const p = new Promise((res, rej) => {
+    pending.set(id, { resolve: res, reject: rej });
+    setTimeout(() => { if (pending.has(id)) { pending.delete(id); rej(new Error('timeout: ' + method)); } }, 600000);
+  });
+  await post({ jsonrpc: '2.0', id, method, params });
+  return p;
+}
+
+async function run() {
+  await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'smoke', version: '1.0' } });
+  await post({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  for (const step of STEPS) {
+    console.log('## ' + (step.label || step.tool));
+    const res = await send('tools/call', { name: step.tool, arguments: step.args || {} });
+    const ts = (res.result && res.result.content || []).map(c => c.text || JSON.stringify(c)).join('\n');
+    console.log('isError=' + !!(res.result && res.result.isError) + '\n' + ts);
+  }
+  process.exit(0);
+}
+```
+
+Использование:
+```powershell
+$tok = (Get-Content "C:\path\to\MCP_token.txt" -Raw).Trim()
+node "C:\path\to\mcp-smoke.js" $tok "C:\path\to\steps.json"
+```
+
+`steps.json` — массив `{ label, tool, args, expectError?, expectContains? }`. PowerShell ест внутренние кавычки в JSON-литералах — **всегда** используй внешний `.json` файл, не передавай JSON через CLI.
+
+## Доводка объектов до стандартов 1С (наработки прогона)
+
+MCP-инструменты создают **минимальные** объекты — для чистого прохода `check_run` их `.mdo`/`.bsl` приходится дополнять вручную. Что именно дописывалось:
+
+### Модули объектов и форм (`.bsl`)
+- **Обёртка `#Если`**: код модуля объекта (`ObjectModule.bsl`) — целиком в `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда … #КонецЕсли`. Условие копировать из БАЗОВОГО модуля (бывает вложенным, см. BUG-17). Без обёртки — warning «Метод доступен НаКлиенте», для адаптированных объектов — error «большая видимость».
+- **Области `#Область`**: процедуры — в верхнеуровневых областях. Модуль объекта — `#Область ОбработчикиСобытий`. Модуль формы — `#Область ОбработчикиСобытийФормы` / `ОбработчикиКомандФормы` / `СлужебныеПроцедурыИФункции`. Без областей — warning «Метод необходимо разместить в одной из верхнеуровневых областей».
+- **Устаревшие методы** (warning «Используется не рекомендуемый метод»):
+  - `Сообщить(Текст)` → на сервере `ОбщегоНазначения.СообщитьПользователю(Текст)`, на клиенте `ОбщегоНазначенияКлиент.СообщитьПользователю(Текст)`;
+  - `ТекущаяДата()` → `ТекущаяДатаСеанса()`.
+
+### Метаданные (`.mdo`)
+- **Документ с проведением**: добавить `<postInPrivilegedMode>true</postInPrivilegedMode>` + `<unpostInPrivilegedMode>true</unpostInPrivilegedMode>` (после `<registerRecords>`, перед `<attributes>`). Иначе error «не стоит флаг Прив. режим при проведении/отмене проведения».
+- **Документ** должен иметь реквизит `Комментарий` — `String`, с `<multiLine>true</multiLine>`. Иначе warning «Объект метаданных не имеет реквизит Комментарий».
+- **Представления**: Catalog/Document — `<objectPresentation>` + `<listPresentation>`; InformationRegister — `<recordPresentation>` + `<listPresentation>`. Синонима НЕ достаточно (отдельный warning «Не заполнено ни представление объекта, ни представление списка»). Формат как у `<synonym>`.
+- **Префикс имён**: если у расширения задан `<namePrefix>`, объекты без префикса дают warning «Имя объекта должно содержать префикс "X"». Либо именовать с префиксом, либо принять как minor.
+
+### Роли — `setForNewObjects`
+`<setForNewObjects>true</setForNewObjects>` в `Rights.rights` авто-выдаёт новым объектам ВСЕ права, включая `Delete`/`InteractiveDelete` → errors `MdValidationChecker` «Право Удаление/ИнтерактивноеУдаление роли установлено для …». Фикс: `<setForNewObjects>false</setForNewObjects>` + явные блоки `<object><name>Kind.X</name><right><name>Read</name><value>true</value></right>…</object>` без delete-семейства прав. Порядок в `.rights`: сначала три флага (`setForNewObjects`, `setForAttributesByDefault`, `independentRightsOfChildObjects`), затем блоки `<object>`.
+
+### Формы
+- После `create_form` всегда дописывать `<commandInterface>` (BUG-12) и `<defaultObjectForm>`/`<defaultForm>` в `.mdo` (BUG-13).
+- Extension-реквизит адаптированного документа, выведенный на ЗАИМСТВОВАННУЮ форму, EDT может пометить «Путь к данным … N сегмент … ссылается на неизвестный объект». Помогает добавить в заимствованный `Form.form` явный атрибут `Объект` (`<attributes><name>Объект</name><id>1</id><valueType><types>DocumentObject.X</types></valueType><view><common>true</common></view><edit><common>true</common></edit><main>true</main><savedData>true</savedData></attributes>`) + пересборка модели (`close_project`/`open_project`).
+
+### EDT / окружение
+- **Рассинхрон модели EDT** после удаления/пересоздания объектов (редактор показывает чужое содержимое формы либо не отрисовывает её) — лечится `close_project` + `open_project`. Файлы на диске при этом обычно корректны — проверяй их прежде, чем «чинить».
+- **`.metadata/.log`** EDT-воркспейса — первый источник РЕАЛЬНОЙ причины, когда форма/редактор «не работает». Грепай по имени объекта / `Exception` (так нашёлся BUG-12).
+- **MCP-сервер может отвалиться**: порт 3001 перестаёт слушаться при работающем EDT. Лечится перезапуском EDT / MCP-сервера. После рестарта порт слушается, но первые секунды соединение таймаутит (`ETIMEDOUT`) — опрашивай с паузой.
+- **Отладка**: `debug_client` ловит клиентские точки останова (`&НаКлиенте`); серверные (`&НаСервере`, код модулей объектов в rphost) этой сессией не перехватываются. `get_debug_state` → `state: suspended` + `location` = точка сработала, `state: running` = не сработала. Снятый из проекта breakpoint остаётся в активной debug-сессии — для полной очистки `stop_debug`.
+
+## Главные правила работы
+
+1. **Перед `deploy_project`** — обязательно `check_list_markers`, фиксь только BLOCKER (см. категоризацию выше).
+2. **После любой мутации** через MCP — на критичных шагах проверяй `.mdo` на диске напрямую (BUG-03/04 — get_md_object/get_form неполно форматируют).
+3. **EDT BM async**: после `create_project`/`open_project` сразу `list_md_objects` может вернуть `namespace inactive`. Опрашивай с интервалом 5-10s до 90 секунд.
+4. **1cv8 процессы**: deploy запускает 1cv8 DESIGNER который захватывает infobase. Между двумя deploys убедись что предыдущий 1cv8 завершён (`Get-Process 1cv8 | Stop-Process -Force`). Авторизуй убийство процессов у пользователя заранее.
+5. **Кодировка**: EDT-файлы (`.mdo`, `.bsl`, `.form`) **только UTF-8 без BOM**. В PowerShell `Set-Content -Encoding utf8` пишет **с BOM** и double-encoding'ом, кириллица превращается в `Р`-иероглифы. Используй `[System.IO.File]::WriteAllText(path, content, [System.Text.UTF8Encoding]::new($false))` или MCP-`write_module`.
+6. **CRLF vs LF**: `.env`, `.bsl` пиши с LF. На Windows `Set-Content` без `-NoNewline` ставит CRLF, что иногда ломает парсеры.
+7. **Расширение метода (override)** — сигнатура процедуры **1:1** с базовой (имена параметров тоже). Иначе валидатор EDT отвергнет.
+8. **Объекты регистра**: для AccumulationRegister/InformationRegister `add_attribute` обязательно указать `role: "Dimension"` или `role: "Resource"`. Без role — создастся `Attribute`, что для регистра бессмысленно.
+9. **Inactive после кражи 1cv8**: если 1cv8 DESIGNER крашится посредине, EDT BM остаётся в неконсистентном состоянии. Помогает `close_project` + `open_project` + опрос BM.
+10. **Расположение конфы** — для extension `parentConfigurationName` обязателен (например `ЕСС`). Если родителя не указать — extension не привяжется и deploy будет жаловаться на UUID-маппинг.
+11. **Текст запроса — только по фактическим метаданным.** Перед написанием любого запроса (наборы данных СКД, `add_dcs_data_set_query`, `set_dcs_query_text`, запросы в BSL) сверь по `.mdo`, что все таблицы, реквизиты и поля ТЧ существуют — НЕ выдумывай реквизиты «по аналогии» и не угадывай «стандартные» имена. `check_run` ошибки запроса СКД не ловит — «Поле не найдено» всплывёт только в рантайме 1С.
+
+## Что НЕ работает / не покрыто
+
+- **Деплой может зависнуть** при чистом расширении без `containedObjects` (см. BUG-11) или при «грязной» BM-сериализации. Если deploy висит больше 5-10 минут — отмени, кильни 1cv8, перепроверь `containedObjects` в `Configuration.mdo`, повтори.
+- **xUnit run_tests/run_test_method** — требуют установленного test_runner, который тоже падает (BUG-08). Без ручной установки модулей не запустятся.
+- **debug_client + breakpoints** — рабочая цепочка, но требует тёплый infobase (deploy успешен, конфа актуальна). Если не получается attach — проверь `deploy_project` сначала.
+
+## Памятки
+
+- Проект, в котором ты сейчас работаешь: смотри `list_projects` + `get_project name=X` (поле `exists`, `open`).
+- Infobase: `list_infobases` + `get_infobase`. Имя — то, что в EDT-IDE в `Window → 1C:Enterprise → Infobases`.
+- Token rotation: `Window → Preferences → EDT MCP → Regenerate token` — после ротации старый перестаёт работать, нужно обновить файл.
+- Прод-сервер пишет токен в Equinox secure prefs, не в открытом виде; забирать **только** через preference page.
