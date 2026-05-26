@@ -71,7 +71,7 @@ Tycho тянет target platform из локального p2-пула 1C:EDT
 **Window → Preferences → EDT MCP**:
 
 - **Port** — порт SSE (по умолчанию `3001`);
-- **Auto-start on IDE launch** — автозапуск при старте IDE (по умолчанию вкл);
+- **Auto-start on IDE launch** — автозапуск при старте IDE (по умолчанию выкл);
 - **Bearer token** — read-only поле, кнопка **Regenerate token** ротирует токен.
 
 При смене порта сервер перезапускается автоматически. В строке статуса
