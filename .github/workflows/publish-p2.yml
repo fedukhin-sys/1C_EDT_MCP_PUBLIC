@@ -1,0 +1,119 @@
+name: Build & publish p2 update site
+
+# Сборка p2-репозитория на self-hosted раннере (нужен установленный 1C:EDT
+# с локальным p2-пулом) и публикация в gh-pages (composite update site) + Release.
+#
+# Триггеры:
+#   - push тега vX.Y.Z  -> сборка + публикация в Pages + GitHub Release
+#   - ручной запуск      -> сборка; публикация только если publish=true
+#
+# Требования к раннеру (см. docs/p2-publishing.md):
+#   - labels: self-hosted, windows, edt
+#   - установленная 1C:EDT (локальный пул C:/Users/User/.p2/pool/plugins),
+#     gh CLI, git. JDK 17 ставит сам workflow (setup-java).
+#
+# Опционально: repo variable EDT_POOL_PATH переопределяет путь к пулу
+# (если раннер не на машине разработчика).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Публиковать в Pages (иначе только сборка)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write        # push в gh-pages + создание Release
+
+concurrency:
+  group: p2-publish
+  cancel-in-progress: false
+
+jobs:
+  build-publish:
+    runs-on: [self-hosted, windows, edt]
+    env:
+      MAVEN_BIN: 'E:\Tools\maven\apache-maven-3.9.9\bin'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Override EDT pool path (optional)
+        if: vars.EDT_POOL_PATH != ''
+        shell: pwsh
+        run: ./scripts/set-edt-pool.ps1 -TargetFile targets/default/default.target -PoolPath "${{ vars.EDT_POOL_PATH }}"
+
+      - name: Build p2 repository
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:MAVEN_BIN;$env:PATH"
+          mvn -B clean verify -DskipTests -Dtycho.localArtifacts=ignore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $v = $env:GITHUB_REF_NAME -replace '^v',''
+          } else {
+            $v = "dev-$($env:GITHUB_RUN_NUMBER)"
+          }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "version=$v"
+
+      - name: Package ZIP
+        id: pack
+        shell: pwsh
+        run: |
+          $src = 'repositories/ru.fedukhin.edt.mcp.repository/target/repository'
+          $zip = "edt-mcp-p2-${{ steps.ver.outputs.version }}.zip"
+          if (Test-Path $zip) { Remove-Item $zip }
+          Compress-Archive -Path "$src/*" -DestinationPath $zip
+          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-repository-${{ steps.ver.outputs.version }}
+          path: repositories/ru.fedukhin.edt.mcp.repository/target/repository/**
+          if-no-files-found: error
+
+      - name: Publish to GitHub Pages (composite p2)
+        if: startsWith(github.ref, 'refs/tags/') || inputs.publish
+        shell: pwsh
+        run: >
+          ./scripts/publish-pages.ps1
+          -Version "${{ steps.ver.outputs.version }}"
+          -RepoSlug "${{ github.repository }}"
+          -Token "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $owner,$repo = "${{ github.repository }}".Split('/')
+          $pages = "https://$owner.github.io/$repo"
+          $notes = @"
+          p2 update site (установка/обновление в 1C:EDT через Help -> Install New Software):
+
+              $pages/
+
+          ZIP ниже — для офлайн-установки (Add -> Archive).
+          "@
+          gh release create "${{ github.ref_name }}" "${{ steps.pack.outputs.zip }}" `
+            --title "EDT MCP ${{ steps.ver.outputs.version }}" `
+            --notes "$notes" `
+            --verify-tag

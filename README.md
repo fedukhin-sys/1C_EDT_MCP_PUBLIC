@@ -8,6 +8,27 @@ UI: страница Preferences, статус-бар, команды Start/Stop
 
 ---
 
+## Установка из update site (рекомендуется)
+
+Готовый p2-репозиторий публикуется на GitHub Pages — собирать из исходников не нужно.
+
+В 1C:EDT: **Help → Install New Software → Add…**, в поле *Location* вставить:
+
+```
+https://fedukhin-sys.github.io/1C_EDT_MCP_PUBLIC/
+```
+
+Отметить **EDT MCP** → Next → принять лицензию (Apache 2.0) → Finish → рестарт IDE.
+Обновление позже — тем же диалогом (**Check for Updates**): EDT подтянет свежую версию.
+
+Альтернатива (офлайн): скачать ZIP из [Releases](https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases) и **Add → Archive…**.
+
+После установки — сразу к шагу [5. Настроить и запустить](#5-настроить-и-запустить).
+
+> Как этот update site собирается и публикуется (self-hosted runner + Pages) — см. [`docs/p2-publishing.md`](docs/p2-publishing.md).
+
+---
+
 ## Быстрый старт с нуля
 
 Пошаговый сценарий: от пустой машины до первого вызова MCP-инструмента из Claude Code / Claude Desktop / любого MCP-клиента.

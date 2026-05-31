@@ -2,6 +2,20 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [Unreleased]
+
+### Добавлено
+
+- **p2 update site через GitHub Pages.** Плагин можно ставить и обновлять по URL
+  `https://fedukhin-sys.github.io/1C_EDT_MCP_PUBLIC/` (Help → Install New Software),
+  без сборки из исходников.
+- GitHub Actions workflow `.github/workflows/publish-p2.yml`: по тегу `vX.Y.Z`
+  собирает p2 на self-hosted runner (нужна установленная 1C:EDT) и публикует
+  composite-репозиторий в ветку `gh-pages` + ZIP в Release.
+- Скрипты `scripts/*.ps1` (локальная сборка, подмена пути к p2-пулу через
+  `EDT_POOL_PATH`, генерация composite, публикация) и `docs/p2-publishing.md`.
+- README: раздел «Установка из update site».
+
 ## [1.15.5] — 2026-05-31
 
 ### Добавлено
