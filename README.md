@@ -1,45 +1,134 @@
 # EDT_MCP
 
-MCP server plugin for 1C:EDT — **v1.15.0** (workspace, projects, BSL modules, infobases, deploy, client launch, debug, quality, metadata edit, form authoring, xUnitFor1C scaffolding and execution, DCS schema editing, event-log queries).
+MCP-сервер для 1C:EDT — **v1.15.1** (workspace, проекты, модули BSL, инфобазы, деплой, запуск клиента, отладка, проверки качества, редактирование метаданных, авторство форм, xUnitFor1C, схемы СКД, журнал регистрации).
 
-Exposes a Bearer-protected HTTP+SSE MCP server inside 1C:EDT with **89 MCP tools** для управления workspace, проектами, модулями BSL, информационными базами (включая deploy), запуском клиента 1С, сессиями отладки, проверками качества, метаданными (CRUD + editor для 11 видов объектов и табличных частей), формами (создание + UI-элементы), схемами компоновки данных (`.dcs`), журналом регистрации и xUnitFor1C (создание модулей + auto-run).
+Поднимает Bearer-защищённый HTTP+SSE MCP-сервер внутри 1C:EDT с **89 инструментами** для управления workspace'ом, проектами, модулями BSL, информационными базами (включая deploy), запуском клиента 1С, сессиями отладки, проверками качества, метаданными (CRUD + editor для 11 видов объектов и табличных частей), формами (создание + UI-элементы), схемами компоновки данных (`.dcs`), журналом регистрации и xUnitFor1C (создание модулей + auto-run).
 
-UI: Preferences page, status bar item, Start/Stop/Restart commands under **Window → EDT MCP**.
+UI: страница Preferences, статус-бар, команды Start/Stop/Restart в меню **Window → EDT MCP**.
 
-## Install
+---
 
-В IDE: **Help → Install New Software → Add → Local…**, указать на собранный p2-репозиторий
-`repositories/ru.fedukhin.edt.mcp.repository/target/repository/`, отметить **EDT MCP**, Next, Finish,
-рестарт IDE.
+## Быстрый старт с нуля
 
-## Configure
+Пошаговый сценарий: от пустой машины до первого вызова MCP-инструмента из Claude Code / Claude Desktop / любого MCP-клиента.
+
+### 1. Установить окружение
+
+- **1C:EDT 2026.1** или новее (с поддержкой 1С:Предприятие 8.3.27). [edt.1c.ru](https://edt.1c.ru/).
+- **JDK 17** (для сборки плагина из исходников). 1C:EDT приходит со своим JDK — его можно использовать.
+- **Maven 3.9+** — для сборки. На Windows необязательно добавлять в `PATH`, можно вызывать `bin/mvn.cmd` по абсолютному пути.
+- **Git** — клонировать репозиторий.
+
+### 2. Получить исходники
+
+```bash
+git clone https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC.git
+cd 1C_EDT_MCP_PUBLIC
+```
+
+### 3. Собрать p2-репозиторий
+
+Tycho тянет target platform из локально установленного 1C:EDT (пул p2 в `C:/Users/<user>/.p2/pool/plugins` на Windows, аналогично на других ОС — см. `targets/default/default.target`):
+
+```bash
+mvn clean verify
+```
+
+После сборки готовый p2-сайт лежит в:
+
+```
+repositories/ru.fedukhin.edt.mcp.repository/target/repository/
+```
+
+Это локальный URL, который понадобится на следующем шаге.
+
+### 4. Установить плагин в 1C:EDT
+
+В IDE: **Help → Install New Software → Add → Local…**, указать путь на собранный `repository/`. В списке появится **EDT MCP** — отметить, Next, принять лицензию (Apache 2.0), Finish, рестарт IDE.
+
+После рестарта в нижнем правом углу появится статус-бар `MCP: stopped`.
+
+### 5. Настроить и запустить
 
 **Window → Preferences → EDT MCP**:
-- **Port** (default 3001).
-- **Auto-start on IDE launch** (default off).
-- **Bearer token** — read-only; **Regenerate token** меняет.
+- **Port** — порт SSE (по умолчанию `3001`);
+- **Auto-start on IDE launch** — автозапуск при старте IDE (по умолчанию выкл);
+- **Bearer token** — read-only, нажать **Regenerate token** для генерации первого токена и скопировать значение в безопасное место (например `~/.edt-mcp-token`).
 
-Смена порта рестартит сервер автоматически.
+Запустить: **Window → EDT MCP → Start** (или клик по статус-бару). Статус становится `MCP :3001 ●` (зелёный).
 
-Status bar:
-- `MCP: stopped` / `MCP: starting` — серый
-- `MCP :<port> ●` — зелёный
-- `MCP: error` — красный, tooltip с сообщением
+### 6. Проверить, что работает
 
-Клик по статус-итему открывает Preferences. `Window → EDT MCP` — явные Start / Stop / Restart.
+Через `curl` (любой MCP-клиент достаточно, чтобы убедиться что сервер отдаёт SSE-handshake):
 
-## Sanity-check через mcp-inspector
-
+```bash
+curl -N -H "Authorization: Bearer <token>" http://127.0.0.1:3001/mcp/sse
 ```
+
+Ожидаем первое событие `event: endpoint` с URL для POST-сообщений. Без токена — `401 Unauthorized`.
+
+Через MCP Inspector:
+
+```bash
 npx @modelcontextprotocol/inspector --transport sse \
     --url http://127.0.0.1:3001/mcp/sse \
-    --header "Authorization: Bearer <token from Preferences>"
+    --header "Authorization: Bearer <token>"
 ```
 
-Ожидаемо:
-- `initialize` успешен.
-- `tools/list` показывает все 89 tools.
-- Запросы без валидного `Authorization` → 401.
+В разделе Tools должно быть **89 инструментов**.
+
+### 7. Подключить из MCP-клиента
+
+#### Claude Code
+
+```bash
+claude mcp add edt-mcp \
+    --transport sse \
+    --url http://127.0.0.1:3001/mcp/sse \
+    --header "Authorization: Bearer <token>"
+```
+
+После этого `claude` в любой папке видит `edt-mcp` как набор тулзов. Проверить: спросить `какие проекты открыты в EDT?` — Claude вызовет `list_projects`.
+
+#### Claude Desktop
+
+В `~/.config/claude/claude_desktop_config.json` (или `%APPDATA%\Claude\claude_desktop_config.json` на Windows):
+
+```json
+{
+  "mcpServers": {
+    "edt-mcp": {
+      "transport": "sse",
+      "url": "http://127.0.0.1:3001/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
+  }
+}
+```
+
+Рестарт Claude Desktop — иконка молотка покажет доступные инструменты.
+
+#### Свой MCP-клиент / smoke-тест
+
+Минимальный JS-клиент описан в [скилле `edt-mcp`](.claude/skills/edt-mcp/SKILL.md#smoke-harness). Подключение: SSE на `/mcp/sse` → ловим `event: endpoint` → POST в `/mcp/messages?sessionId=…` с JSON-RPC. Авторизация — `Authorization: Bearer <token>` в каждом запросе.
+
+### Что делать дальше
+
+- Полный каталог инструментов с описанием — [`docs/tools.md`](docs/tools.md).
+- Практический справочник по работе из MCP-клиента (рецепты, известные баги, workaround'ы) — [`.claude/skills/edt-mcp/SKILL.md`](.claude/skills/edt-mcp/SKILL.md).
+- Паттерны построения отчётов на СКД — [`.claude/skills/edt-skd/SKILL.md`](.claude/skills/edt-skd/SKILL.md).
+
+---
+
+## Статус-бар и управление сервером
+
+- `MCP: stopped` / `MCP: starting` — серый;
+- `MCP :<port> ●` — зелёный;
+- `MCP: error` — красный, tooltip содержит причину.
+
+Клик по статус-итему открывает страницу Preferences. В меню `Window → EDT MCP` доступны явные команды **Start / Stop / Restart**. Смена порта в Preferences автоматически перезапускает сервер.
 
 ## MCP tools
 
