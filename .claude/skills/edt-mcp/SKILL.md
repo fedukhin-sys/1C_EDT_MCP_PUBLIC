@@ -16,7 +16,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 
 ## Архитектурные допущения
 
-- **Проект** — это название Eclipse-проекта в workspace, на котором открыт EDT. Например `ЕСС.РасширениеТЕСТ`. Все tools принимают `project` как строку.
+- **Проект** — это название Eclipse-проекта в workspace, на котором открыт EDT. Например `МояКонфигурация.Расширение`. Все tools принимают `project` как строку.
 - **FQN** (fully qualified name) метаданных — формат `Kind.Name`, где `Kind` ∈ `{Catalog, Document, InformationRegister, AccumulationRegister, Constant, Enum, CommonModule, Role, Subsystem, DataProcessor, Report, ChartOfCharacteristicTypes, CommonForm, …}`. Примеры: `Catalog.Партнеры`, `Document.ЗаказКлиента`. Для вложенных — `Catalog.Контрагенты.TabularSection.КонтактнаяИнформация`, `Catalog.X.Form.Y`, `Catalog.X.Attribute.Y`/`Dimension.Y`/`Resource.Y`.
 - **modulePath** — относительный путь от корня проекта: `src/Catalogs/X/ObjectModule.bsl`, `src/Catalogs/X/Forms/Y/Module.bsl`, `src/CommonModules/X/Module.bsl`, `src/Documents/X/RecordSetModule.bsl` и т.п.
 - **Только русский identifier set** в этом проекте (если язык конфы Russian). Имена не транслитерируются.
@@ -197,7 +197,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 { "tool": "add_extension_method_override", "args": {
    "project": "X",
    "modulePath": "src/Documents/ЗаказКлиента/ObjectModule.bsl",
-   "source": "&После(\"ОбработкаПроведения\")\nПроцедура РасшТ_ОбработкаПроведения(Отказ, Режим)\n\tДвижения.МойРегистр.Записывать = Истина;\n\t...\nКонецПроцедуры\n"
+   "source": "&После(\"ОбработкаПроведения\")\nПроцедура Расш_ОбработкаПроведения(Отказ, Режим)\n\tДвижения.МойРегистр.Записывать = Истина;\n\t...\nКонецПроцедуры\n"
 } }
 ```
 Аннотации: `&Перед("Имя")`, `&После("Имя")`, `&ИзменениеИКонтроль("Имя")`. Сигнатура процедуры **должна 1:1 совпадать с базовой** (включая параметры и их имена).
@@ -523,7 +523,7 @@ MCP-инструменты создают **минимальные** объек�
 7. **Расширение метода (override)** — сигнатура процедуры **1:1** с базовой (имена параметров тоже). Иначе валидатор EDT отвергнет.
 8. **Объекты регистра**: для AccumulationRegister/InformationRegister `add_attribute` обязательно указать `role: "Dimension"` или `role: "Resource"`. Без role — создастся `Attribute`, что для регистра бессмысленно.
 9. **Inactive после кражи 1cv8**: если 1cv8 DESIGNER крашится посредине, EDT BM остаётся в неконсистентном состоянии. Помогает `close_project` + `open_project` + опрос BM.
-10. **Расположение конфы** — для extension `parentConfigurationName` обязателен (например `ЕСС`). Если родителя не указать — extension не привяжется и deploy будет жаловаться на UUID-маппинг.
+10. **Расположение конфы** — для extension `parentConfigurationName` обязателен (имя родительской конфигурации). Если родителя не указать — extension не привяжется и deploy будет жаловаться на UUID-маппинг.
 11. **Текст запроса — только по фактическим метаданным.** Перед написанием любого запроса (наборы данных СКД, `add_dcs_data_set_query`, `set_dcs_query_text`, запросы в BSL) сверь по `.mdo`, что все таблицы, реквизиты и поля ТЧ существуют — НЕ выдумывай реквизиты «по аналогии» и не угадывай «стандартные» имена. `check_run` ошибки запроса СКД не ловит — «Поле не найдено» всплывёт только в рантайме 1С.
 
 ## Что НЕ работает / не покрыто
