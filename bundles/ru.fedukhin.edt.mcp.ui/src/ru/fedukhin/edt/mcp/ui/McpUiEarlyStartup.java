@@ -3,14 +3,14 @@ package ru.fedukhin.edt.mcp.ui;
 import org.eclipse.ui.IStartup;
 
 /**
- * Forces the UI bundle to activate on workbench startup so that the
- * {@code org.eclipse.ui.menus} contribution at
- * {@code toolbar:org.eclipse.ui.trim.status} (the status-bar item)
- * registers before the workbench window builds its trim. Without an
- * early-startup hook the bundle stays lazy until something queries the
- * Window → EDT MCP menu, by which time the status-bar trim is already
- * frozen and the contribution silently never appears.
+ * @deprecated v1.15.4 — статус-бар переведён на e4 model fragment
+ *     ({@link ru.fedukhin.edt.mcp.ui.statusbar.McpStatusBarAddon}), который не
+ *     требует ранней активации bundle. Этот {@link IStartup} больше не
+ *     зарегистрирован в {@code plugin.xml} и не вызывается; класс оставлен
+ *     только чтобы не сломать бинарную совместимость для downstream'а, который
+ *     случайно мог сослаться на него через рефлексию.
  */
+@Deprecated(since = "1.15.4", forRemoval = true)
 public final class McpUiEarlyStartup implements IStartup {
-    @Override public void earlyStartup() { /* activation side effect only */ }
+    @Override public void earlyStartup() { /* dead code — см. javadoc */ }
 }

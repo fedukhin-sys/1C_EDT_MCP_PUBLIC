@@ -12,8 +12,16 @@ Require-Bundle: org.eclipse.core.runtime,
  org.eclipse.ui,
  org.eclipse.jface,
  org.eclipse.swt,
+ org.eclipse.e4.ui.model.workbench,
+ org.eclipse.e4.ui.workbench,
+ org.eclipse.e4.ui.services,
+ org.eclipse.e4.core.di,
+ org.eclipse.e4.core.di.annotations,
+ org.eclipse.e4.core.contexts,
  ru.fedukhin.edt.mcp.core,
  com._1c.g5.wiring,
  com.google.inject;bundle-version="[5.0,8)"
-Import-Package: org.osgi.framework;version="[1.10,2)"
+Import-Package: jakarta.annotation;version="[2.0,4)",
+ jakarta.inject;version="[2.0,3)",
+ org.osgi.framework;version="[1.10,2)"
 Automatic-Module-Name: ru.fedukhin.edt.mcp.ui

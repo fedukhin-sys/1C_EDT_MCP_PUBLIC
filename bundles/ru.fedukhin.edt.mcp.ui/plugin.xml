@@ -22,10 +22,6 @@
                class="ru.fedukhin.edt.mcp.ui.commands.RestartServerHandler"/>
    </extension>
 
-   <extension point="org.eclipse.ui.startup">
-      <startup class="ru.fedukhin.edt.mcp.ui.McpUiEarlyStartup"/>
-   </extension>
-
    <extension point="org.eclipse.ui.menus">
       <menuContribution locationURI="menu:window?after=additions">
          <menu id="ru.fedukhin.edt.mcp.menu" label="EDT MCP">
@@ -34,9 +30,14 @@
             <command commandId="ru.fedukhin.edt.mcp.ui.commands.restart" label="Restart MCP Server" style="push"/>
          </menu>
       </menuContribution>
-      <menuContribution locationURI="toolbar:org.eclipse.ui.trim.status">
-         <control id="ru.fedukhin.edt.mcp.ui.statusbar.item"
-                  class="ru.fedukhin.edt.mcp.ui.statusbar.McpStatusBarItem"/>
-      </menuContribution>
+   </extension>
+
+   <!-- Status-bar item: e4 model fragment, contributes an addon that injects
+        an MToolControl into the bottom trim of every MTrimmedWindow.
+        Legacy `toolbar:org.eclipse.ui.trim.status` does not get picked up by
+        the compatibility layer in 1C:EDT 2026.1, so we go through e4 directly. -->
+   <extension id="ru.fedukhin.edt.mcp.ui.statusbar.fragment"
+              point="org.eclipse.e4.workbench.model">
+      <fragment uri="fragment.e4xmi"/>
    </extension>
 </plugin>

@@ -17,10 +17,15 @@ import ru.fedukhin.edt.mcp.core.state.ServerState;
 import ru.fedukhin.edt.mcp.ui.McpUiPlugin;
 
 /**
- * Status-bar contribution for the trim:status location. Must extend
- * {@link WorkbenchWindowControlContribution} — Eclipse rejects plain
- * {@link org.eclipse.jface.action.ContributionItem} subclasses at that location.
+ * @deprecated v1.15.4 — этот legacy-вариант никогда не появлялся в трим-bar'е
+ *     EDT 2026.1, потому что compatibility layer Eclipse 4.x не маппит
+ *     {@code toolbar:org.eclipse.ui.trim.status} ни на одну реальную {@code MTrimBar}.
+ *     Замена — {@link McpStatusBarControl}, привязанный через
+ *     {@link McpStatusBarAddon} к bottom-trim'у каждого {@code MTrimmedWindow}.
+ *     Класс оставлен для бинарной совместимости и будет удалён в следующем
+ *     major-релизе.
  */
+@Deprecated(since = "1.15.4", forRemoval = true)
 public class McpStatusBarItem extends WorkbenchWindowControlContribution {
 
     private Label label;

@@ -1,5 +1,8 @@
 package ru.fedukhin.edt.mcp.ui;
 
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Platform;
+import org.eclipse.core.runtime.Status;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
@@ -13,6 +16,8 @@ public class McpUiPlugin extends AbstractUIPlugin {
     @Override public void start(BundleContext context) throws Exception {
         super.start(context);
         instance = this;
+        Platform.getLog(context.getBundle()).log(
+                new Status(IStatus.INFO, ID, "McpUiPlugin.start() — instance bound"));
     }
 
     @Override public void stop(BundleContext context) throws Exception {
