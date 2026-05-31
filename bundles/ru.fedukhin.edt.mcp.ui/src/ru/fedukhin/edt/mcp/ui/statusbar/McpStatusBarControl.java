@@ -6,8 +6,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;
-import org.eclipse.swt.layout.GridData;
-import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
@@ -35,13 +34,16 @@ public class McpStatusBarControl {
 
     @PostConstruct
     public void create(Composite parent) {
-        GridLayout layout = new GridLayout(1, false);
+        // Horizontal FillLayout: a single label takes the natural height of the
+        // status-trim row without stretching vertically. GridLayout (with vertical
+        // FILL) бы заставил Label занять всю свободную высоту — на узких трим-bar'ах
+        // это давало многострочную картинку (текст уходил в перенос).
+        FillLayout layout = new FillLayout(SWT.HORIZONTAL);
         layout.marginHeight = 0;
         layout.marginWidth  = 2;
         parent.setLayout(layout);
 
-        label = new Label(parent, SWT.BORDER);
-        label.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, true));
+        label = new Label(parent, SWT.BORDER | SWT.CENTER);
         label.setText("MCP: ?");
         label.addListener(SWT.MouseDown, e -> openPrefs());
 
@@ -97,6 +99,9 @@ public class McpStatusBarControl {
                     label.setToolTipText(s.errorMessage());
                     break;
             }
+            // Pack to natural width so the label takes only the space needed for
+            // current text (предотвращает «протягивание» по ширине трим-bar'а).
+            label.pack();
             label.getParent().layout();
         });
     }

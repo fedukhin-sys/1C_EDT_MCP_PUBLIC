@@ -2,6 +2,16 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [1.15.5] — 2026-05-31
+
+### Добавлено
+
+- На странице **Preferences → EDT MCP** появились кнопки **Start / Stop / Restart**. Дублируют меню `Window → EDT MCP` — выполняются через тот же `ICommandService`. Удобно когда страница уже открыта.
+
+### Исправлено
+
+- Status-bar item в трим-bar'е EDT теперь занимает одну строку (горизонтальный layout). Раньше использовался `GridLayout` c `GridData(FILL, CENTER, false, true)` — `grabExcessVerticalSpace=true` заставлял Label расти по высоте, текст уходил в перенос на узких трим-bar'ах. Заменено на `FillLayout(SWT.HORIZONTAL)`; в `onStateChange` добавлен `label.pack()`, чтобы виджет занимал только нужную ширину.
+
 ## [1.15.4] — 2026-05-31
 
 ### Исправлено
@@ -90,6 +100,7 @@
 
 История до v1.12.0 разработки внутренняя; первая публичная редакция отражает состояние v1.12.0.
 
+[1.15.5]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.5
 [1.15.4]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.4
 [1.15.3]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.3
 [1.15.2]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.2

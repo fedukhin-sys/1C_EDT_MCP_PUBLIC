@@ -1,5 +1,10 @@
 package ru.fedukhin.edt.mcp.ui.preferences;
 
+import org.eclipse.core.commands.Command;
+import org.eclipse.core.commands.ExecutionException;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Platform;
+import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.eclipse.jface.preference.BooleanFieldEditor;
 import org.eclipse.jface.preference.FieldEditorPreferencePage;
@@ -16,10 +21,14 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPreferencePage;
+import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.commands.ICommandService;
+import org.eclipse.ui.handlers.IHandlerService;
 import org.eclipse.ui.preferences.ScopedPreferenceStore;
 import ru.fedukhin.edt.mcp.core.internal.preferences.McpPreferences;
 import ru.fedukhin.edt.mcp.core.internal.security.EquinoxSecureStringStore;
 import ru.fedukhin.edt.mcp.core.internal.security.SecureTokenStore;
+import ru.fedukhin.edt.mcp.ui.McpUiPlugin;
 
 public class McpPreferencePage extends FieldEditorPreferencePage implements IWorkbenchPreferencePage {
 
@@ -84,6 +93,62 @@ public class McpPreferencePage extends FieldEditorPreferencePage implements IWor
         Button regenerate = new Button(buttons, SWT.PUSH);
         regenerate.setText("Regenerate");
         regenerate.addListener(SWT.Selection, e -> tokenField.setText(sanitize(tokens.regenerate())));
+
+        // ─── Server control: Start / Stop / Restart ───────────────────────
+        Label serverLabel = new Label(parent, SWT.NONE);
+        serverLabel.setText("Server:");
+        GridData slgd = new GridData();
+        slgd.horizontalSpan = 3;
+        serverLabel.setLayoutData(slgd);
+
+        Composite serverButtons = new Composite(parent, SWT.NONE);
+        GridData sbgd = new GridData();
+        sbgd.horizontalSpan = 3;
+        serverButtons.setLayoutData(sbgd);
+        serverButtons.setLayout(new org.eclipse.swt.layout.RowLayout());
+
+        Button startBtn = new Button(serverButtons, SWT.PUSH);
+        startBtn.setText("Start");
+        startBtn.addListener(SWT.Selection, e ->
+                runCommand("ru.fedukhin.edt.mcp.ui.commands.start"));
+
+        Button stopBtn = new Button(serverButtons, SWT.PUSH);
+        stopBtn.setText("Stop");
+        stopBtn.addListener(SWT.Selection, e ->
+                runCommand("ru.fedukhin.edt.mcp.ui.commands.stop"));
+
+        Button restartBtn = new Button(serverButtons, SWT.PUSH);
+        restartBtn.setText("Restart");
+        restartBtn.addListener(SWT.Selection, e ->
+                runCommand("ru.fedukhin.edt.mcp.ui.commands.restart"));
+    }
+
+    /**
+     * Executes the named Eclipse {@code Command} through the workbench
+     * {@code ICommandService}/{@code IHandlerService}. Same code path as the
+     * {@code Window → EDT MCP} menu entries — keeps a single source of truth for
+     * the server lifecycle. Errors land in the Eclipse log; no UI dialog so the
+     * preference page does not steal focus.
+     */
+    private static void runCommand(String commandId) {
+        try {
+            IWorkbench workbench = PlatformUI.getWorkbench();
+            ICommandService commandService = workbench.getService(ICommandService.class);
+            IHandlerService handlerService = workbench.getService(IHandlerService.class);
+            if (commandService == null || handlerService == null) {
+                throw new IllegalStateException("workbench services unavailable");
+            }
+            Command command = commandService.getCommand(commandId);
+            handlerService.executeCommand(command.getId(), null);
+        } catch (ExecutionException | RuntimeException e) {
+            Platform.getLog(McpUiPlugin.getPlugin().getBundle()).log(new Status(
+                    IStatus.ERROR, McpUiPlugin.ID,
+                    "Failed to execute " + commandId + ": " + e.getMessage(), e));
+        } catch (Exception e) {
+            Platform.getLog(McpUiPlugin.getPlugin().getBundle()).log(new Status(
+                    IStatus.ERROR, McpUiPlugin.ID,
+                    "Failed to execute " + commandId + ": " + e.getMessage(), e));
+        }
     }
 
     /**
