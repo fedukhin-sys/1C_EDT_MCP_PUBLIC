@@ -1,4 +1,4 @@
-<#
+﻿<#
   Подменяет путь к p2-пулу 1C:EDT в Directory-локации target-файла.
 
   Используется и в CI (self-hosted runner), и локально через build-p2.ps1.

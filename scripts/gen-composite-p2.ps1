@@ -1,4 +1,4 @@
-<#
+﻿<#
   Генерирует composite p2-репозиторий (compositeArtifacts.xml + compositeContent.xml)
   в корне site, ссылаясь на ВСЕ подкаталоги releases/*.
 
