@@ -137,12 +137,13 @@ public final class SetMdPropertyTool implements IMcpTool {
                     if ("defaultForm".equals(property) && path == null) {
                         // BUG-07: resolve form FQN to the form EObject before delegating
                         // to PropertyAccessor, which expects an already-resolved EObject.
+                        // CommonForm.X is a top object; Catalog.X.Form.Y / Document.X.Form.Y /
+                        // Report.X.Form.Y / etc. are nested — found via owner.getForms().
                         if (!(value instanceof String formFqn) || formFqn.isEmpty()) {
                             throw new ToolException("'defaultForm' expects a string form FQN "
                                     + "(e.g. 'Catalog.X.Form.Main' or 'CommonForm.Foo')");
                         }
-                        IBmObject formBm = locator.findTop(txn, formFqn, projectName);
-                        effectiveValue = formBm;
+                        effectiveValue = resolveFormByFqn(txn, formFqn, projectName);
                     }
                     accessor.set(target, targetKind, project, property, effectiveValue);
                 } catch (ToolException te) {
@@ -159,6 +160,38 @@ public final class SetMdPropertyTool implements IMcpTool {
         result.put("property", property);
         result.put("value",    value);
         return result;
+    }
+
+    /**
+     * BUG-07: resolves a form FQN to its {@link EObject}. {@code CommonForm.X} is a top
+     * object and resolves directly; {@code <Kind>.<Owner>.Form.<Name>} is nested and
+     * resolves via {@code owner.getForms()}.
+     */
+    private EObject resolveFormByFqn(com._1c.g5.v8.bm.core.IBmTransaction txn,
+                                     String formFqn, String projectName) throws ToolException {
+        int formMarker = formFqn.indexOf(".Form.");
+        if (formMarker < 0) {
+            // top-level form (CommonForm.X) — resolve directly.
+            return (EObject) locator.findTop(txn, formFqn, projectName);
+        }
+        String ownerFqn = formFqn.substring(0, formMarker);
+        String formName = formFqn.substring(formMarker + ".Form.".length());
+        if (formName.isEmpty() || formName.contains(".")) {
+            throw new ToolException("invalid form FQN '" + formFqn + "'");
+        }
+        EObject owner = (EObject) locator.findTop(txn, ownerFqn, projectName);
+        Object listObj;
+        try {
+            listObj = owner.getClass().getMethod("getForms").invoke(owner);
+        } catch (ReflectiveOperationException e) {
+            throw new ToolException("owner '" + ownerFqn + "' has no getForms()");
+        }
+        if (!(listObj instanceof Iterable)) {
+            throw new ToolException("getForms() on '" + ownerFqn + "' is not iterable");
+        }
+        @SuppressWarnings("unchecked")
+        EObject found = locator.findInList((Iterable<EObject>) listObj, formName);
+        return found;
     }
 
     private static String requireString(Map<String, Object> args, String key) throws ToolException {

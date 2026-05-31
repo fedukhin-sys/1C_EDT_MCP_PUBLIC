@@ -5,7 +5,7 @@ description: Manage 1C:EDT extension/configuration projects via the EDT_MCP MCP 
 
 # EDT_MCP — пользование MCP-сервером для 1C:EDT
 
-EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий **89 инструментов** работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, **известные баги и workaround**'ы.
+EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий **89 инструментов** работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, главные правила работы.
 
 ## TL;DR — как подключиться
 
@@ -35,7 +35,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `list_project_files` | `name*`, `glob` |
 | `open_project` | `name*` |
 | `close_project` | `name*` |
-| `create_project` | `name*`, `type*` (`configuration`/`extension`/`external-object`), `version*`, `parentConfigurationName` (для extension/external-object) — **СМ. BUG-01** |
+| `create_project` | `name*`, `type*` (`configuration`/`extension`/`external-object`), `version*`, `parentConfigurationName` (для extension/external-object) |
 
 ### Infobase + deploy (5)
 | Tool | Args |
@@ -89,7 +89,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | Tool | Args |
 |---|---|
 | `read_module` | `project*`, `path*` |
-| `write_module` | `project*`, `path*`, `content*`, `validate` (default true) — **СМ. BUG-09** |
+| `write_module` | `project*`, `path*`, `content*`, `validate` (default true). Создаёт файл (и недостающие папки), если его ещё нет |
 | `get_method` | `project*`, `path*`, `name*` |
 | `list_module_methods` | `project*`, `path*` |
 | `get_module_info` | `project*`, `path*` |
@@ -100,14 +100,14 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `list_forms` | `project*`, `parentFqn` |
 | `get_form` | `project*`, `fqn*` |
 | `get_form_item` | `project*`, `fqn*`, `itemPath*` |
-| `create_form` | `project*`, `parentFqn*`, `name*`, `formType` (`ItemForm`/`Form`/…) — **СМ. BUG-05** |
+| `create_form` | `project*`, `parentFqn*`, `name*`, `formType` (`ItemForm`/`Form`/…). Создаёт `Form.form`, пустой `Module.bsl`, `<commandInterface>` и проставляет форму основной у owner'а (kind-specific) |
 | `add_form_attribute` | `project*`, `formFqn*`, `name*`, `type*`, `title`, `main` |
 | `add_form_command` | `project*`, `formFqn*`, `name*`, `title`, `handlerName` |
 | `add_form_field` | `project*`, `formFqn*`, `name*`, `dataPath*`, `parentPath`, `title` |
 | `add_form_group` | `project*`, `formFqn*`, `name*`, `groupType*` (`Pages`/`Page`/`Group`/…), `parentPath`, `title` |
 | `add_form_button` | `project*`, `formFqn*`, `name*`, `commandName*`, `parentPath`, `title` |
 | `add_form_table` | `project*`, `formFqn*`, `name*`, `dataPath*`, `parentPath`, `title` |
-| `set_form_handler` | `project*`, `formFqn*`, `event*`, `handlerName*`, `itemPath` — **СМ. BUG-06** |
+| `set_form_handler` | `project*`, `formFqn*`, `event*`, `handlerName*`, `itemPath`. Прописывает связку в `Form.form` и дописывает в `Module.bsl` stub-процедуру с правильной аннотацией и стандартной сигнатурой по event'у (идемпотент по имени процедуры). Возвращает `stubAdded` (boolean) |
 
 ### Quality (4)
 | Tool | Args |
@@ -124,7 +124,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `add_test_method` | `project*`, `moduleFqn*`, `methodName*`, `body` |
 | `list_test_modules` | `project*`, `language` |
 | `get_test_methods` | `project*`, `moduleFqn*` |
-| `install_test_runner` | `project*` — **СМ. BUG-08** |
+| `install_test_runner` | `project*` |
 | `uninstall_test_runner` | `project*` |
 | `run_tests` | `project*`, `infobase*`, `moduleFqn`, `timeoutSeconds` |
 | `run_test_method` | `project*`, `infobase*`, `moduleFqn*`, `methodName*`, `timeoutSeconds` |
@@ -204,7 +204,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 
 **`#Вставка` — препроцессорная директива, НЕ комментарий.** Внутри `&ИзменениеИКонтроль` правки помечаются `#Вставка` / `#КонецВставки` (вставка) и `#Удаление` / `#КонецУдаления` (удаление) — директивами с `#` в начале строки (column 0), **без** `//`. Тело `&ИзменениеИКонтроль` должно содержать **полную копию базового метода** + эти блоки (EDT сверяет с оригиналом).
 
-**Обёртка `#Если` для методов модулей объектов (см. BUG-17):** методы `&После`/`&Перед`/`&ИзменениеИКонтроль` в `ObjectModule.bsl` адаптированного объекта обязательно обернуть в ТУ ЖЕ препроцессорную обёртку, что и базовый модуль (обычно `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда … #КонецЕсли`; бывает вложенной — напр. `Catalog.Номенклатура`: `#Если НЕ МобильныйАвтономныйСервер Тогда` + вложенный `#Если Сервер…`). Иначе — error «Метод расширения имеет большую видимость».
+**Обёртка `#Если` для методов модулей объектов:** методы `&После`/`&Перед`/`&ИзменениеИКонтроль` в `ObjectModule.bsl` адаптированного объекта обязательно обернуть в ТУ ЖЕ препроцессорную обёртку, что и базовый модуль (обычно `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда … #КонецЕсли`; бывает вложенной — напр. `Catalog.Номенклатура`: `#Если НЕ МобильныйАвтономныйСервер Тогда` + вложенный `#Если Сервер…`). Иначе — error «Метод расширения имеет большую видимость». Tool `add_extension_method_override` делает это автоматически — дублирует guard из базового `ObjectModule.bsl`.
 
 Tool сам создаёт файл если его нет, дописывает в конец. Дубль по имени процедуры — auto-merge body (v1.10.5+).
 
@@ -251,7 +251,7 @@ Tool сам создаёт файл если его нет, дописывает
   { "tool": "add_attribute", "args": { "project": "X", "fqn": "InformationRegister.МойРС", "name": "ДатаЗаписи", "type": "Date", "role": "Resource" } }
 ]
 ```
-`writeMode=Independent` и `dataLockControlMode=Managed` ставятся **по умолчанию** при `create_md_object`. Менять их через `set_md_property` нельзя — `property is not whitelisted` (см. **BUG-07**).
+`writeMode=Independent` и `dataLockControlMode=Managed` ставятся **по умолчанию** при `create_md_object`. Менять `writeMode` потом — через `set_md_property property=writeMode value=Independent/RecorderSubordinate`.
 
 ### Регистр накопления с регистраторами
 ```jsonc
@@ -290,7 +290,7 @@ Tool сам создаёт файл если его нет, дописывает
 ```
 **Текст запроса — только по реально существующим данным.** Перед тем как писать `query` в наборе данных СКД, проверь по `.mdo` (через `list_project_files` + Read), что КАЖДАЯ таблица, реквизит, поле ТЧ и стандартный атрибут реально существуют. Не выдумывай реквизиты по аналогии и не предполагай «стандартные» имена. Частые ловушки: `ЭтоГруппа`/`Родитель` есть только у иерархических справочников — у иерархии «только элементы» поля `ЭтоГруппа` НЕТ; имя реквизита-контрагента бывает `Контрагент`/`Партнер`/`Клиент`. **`check_run` ошибки в тексте запроса СКД НЕ ловит** — «Поле не найдено» вылезет только в рантайме 1С при открытии отчёта.
 
-`set_md_property` для `defaultForm` отвергнут (whitelist) — для основной формы отчёта пиши `<defaultForm>` напрямую в `.mdo` (см. **BUG-07**).
+Назначить основную форму отчёта/справочника/документа: `set_md_property property=defaultForm value=Kind.X.Form.Y` (универсальное имя; dispatch по kind на `setDefaultObjectForm` / `setDefaultForm` / `setDefaultRecordForm` / `setDefaultListForm`).
 
 ### Subsystem (командный интерфейс)
 ```jsonc
@@ -331,32 +331,7 @@ Tool сам создаёт файл если его нет, дописывает
 ]
 ```
 
-## Known bugs и workarounds
-
-История багов BUG-01..BUG-18 — все закрыты в коде MCP-сервера (v1.13.0..v1.15.2). Реальных open-issue нет.
-
-| # | Tool | Что было | Сейчас |
-|---|---|---|---|
-| **BUG-01** | `create_project` (extension) | Не писал `Configuration.mdo` → BM "namespace inactive" | FIXED v1.10.x: tool сам пишет шаблон c `<containedObjects>` × 7 и языковой адаптацией |
-| **BUG-02** | Любой Tool | `internal error: null` — реальная причина проглочена | FIXED: ошибки пробрасываются через `content[0].text` с cause-chain |
-| **BUG-03** | `get_md_object` | type для не-String атрибутов — пустая строка | FIXED v1.10.x: правильное форматирование TypeDescription |
-| **BUG-04** | `get_form` | Java toString вместо человекочитаемого type/title | FIXED: TypeDescription + EMap-локализация форматируются правильно |
-| **BUG-05** | `create_form` | Не создавал `Module.bsl` рядом с `Form.form` | FIXED: пустой `Module.bsl` создаётся, путь возвращается в `modulePath` |
-| **BUG-06** | `set_form_handler` | Не дописывал stub-процедуру в `Module.bsl` | FIXED v1.15.2: дописывает stub с правильной аннотацией (`&НаСервере`/`&НаКлиенте`) и стандартной сигнатурой для event'а; идемпотент по handler name. Возвращает `stubAdded` (boolean) |
-| **BUG-07** | `set_md_property` | `writeMode`/`defaultForm`/`serverCall` не в whitelist | FIXED: все три в whitelist; `defaultForm` — универсальное имя, dispatch по kind в `setDefaultObjectForm`/`setDefaultForm`/`setDefaultRecordForm`/`setDefaultListForm` (v1.15.2) |
-| **BUG-08** | `install_test_runner` | Падал на `serverCall` whitelist | FIXED: после BUG-07; live smoke 2026-05-17 на v1.0.8 PASS |
-| **BUG-09** | `write_module` | Не создавал новый файл | FIXED: флаг `creating`, `file.create()` + `createParentFolders()` |
-| **BUG-10** | `borrow_form_pictures` | Документ говорил `parentFqn`, требовался Form-FQN | FIXED: переименовано в `formFqn` (старое имя — deprecated alias) |
-| **BUG-11** | `create_project` (extension) | Deploy валился на отсутствии `<containedObjects>` | FIXED (вместе с BUG-01): шаблон содержит 7 `<containedObjects>` + `keepMappingToExtendedConfigurationObjectsByIDs` |
-| **BUG-12** | `create_form` | Не писал `<commandInterface>` → NPE в редакторе форм EDT | FIXED: шаблон содержит `<commandInterface><navigationPanel/><commandBar/></commandInterface>` |
-| **BUG-13** | `create_form` | Не назначал форму основной | FIXED: `setDefaultFormIfUnset` через reflection (Catalog/Document → `DefaultObjectForm`, DataProcessor/Report → `DefaultForm`, InformationRegister → `DefaultRecordForm`, AccumulationRegister → `DefaultListForm`); idempotent |
-| **BUG-14** | `add_attribute`, `set_md_type` | Парсер не понимал `ValueStorage`/`UUID`/`<Kind>Ref` для всех kind | FIXED: `ValueStorage`, `UUID`, `AnyRef` — explicit; `<Kind>Ref` — generic regex (все 11 kind ссылок) |
-| **BUG-15** | `create_md_object` | `synonym` игнорировался | FIXED: пишется в `EMap<String,String>` с ключом `defaultLanguage.languageCode` (fallback `ru`) |
-| **BUG-16** | `list_attributes`, `get_form` | Возвращали устаревшее сразу после мутации (BM async) | FIXED: disk-read из `.mdo`/`.form` (минуя BM-модель) |
-| **BUG-17** | `add_extension_method_override` | Override-метод без препроцессорной обёртки | FIXED: `ObjectModuleGuard` дублирует guard из базового `ObjectModule.bsl` (включая вложенные `#Если`) |
-| **BUG-18** | `deploy_project` | Иногда no-op за ~200 мс c `deployed:true` | DETECTION: если `durationMs < SUSPICIOUS_DEPLOY_MS` — возвращает warning "BUG-18 no-op", советует остановить клиенты/debug |
-
-### Известное ограничение (не баг)
+## Известное ограничение
 
 **Extension attributes на adopted Document + form binding** — EDT-редактор формы подсвечивает «Объект.X 2 сегмент ссылается на неизвестный объект» для new attributes на adopted Document, выведенных на форму. `deploy` зелёный, расширение работает в runtime. Workaround: использовать собственный Document расширения (а не adopted) для new attributes с form binding'ом.
 
@@ -444,7 +419,7 @@ node "C:\path\to\mcp-smoke.js" $tok "C:\path\to\steps.json"
 MCP-инструменты создают **минимальные** объекты — для чистого прохода `check_run` их `.mdo`/`.bsl` приходится дополнять вручную. Что именно дописывалось:
 
 ### Модули объектов и форм (`.bsl`)
-- **Обёртка `#Если`**: код модуля объекта (`ObjectModule.bsl`) — целиком в `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда … #КонецЕсли`. Условие копировать из БАЗОВОГО модуля (бывает вложенным, см. BUG-17). Без обёртки — warning «Метод доступен НаКлиенте», для адаптированных объектов — error «большая видимость».
+- **Обёртка `#Если`**: код модуля объекта (`ObjectModule.bsl`) — целиком в `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда … #КонецЕсли`. Условие копировать из БАЗОВОГО модуля (бывает вложенным — у некоторых объектов внешняя `#Если НЕ МобильныйАвтономныйСервер Тогда` + вложенный `#Если Сервер…`). Без обёртки — warning «Метод доступен НаКлиенте», для адаптированных объектов — error «большая видимость». `add_extension_method_override` делает это сам.
 - **Области `#Область`**: процедуры — в верхнеуровневых областях. Модуль объекта — `#Область ОбработчикиСобытий`. Модуль формы — `#Область ОбработчикиСобытийФормы` / `ОбработчикиКомандФормы` / `СлужебныеПроцедурыИФункции`. Без областей — warning «Метод необходимо разместить в одной из верхнеуровневых областей».
 - **Устаревшие методы** (warning «Используется не рекомендуемый метод»):
   - `Сообщить(Текст)` → на сервере `ОбщегоНазначения.СообщитьПользователю(Текст)`, на клиенте `ОбщегоНазначенияКлиент.СообщитьПользователю(Текст)`;
@@ -460,19 +435,19 @@ MCP-инструменты создают **минимальные** объек�
 `<setForNewObjects>true</setForNewObjects>` в `Rights.rights` авто-выдаёт новым объектам ВСЕ права, включая `Delete`/`InteractiveDelete` → errors `MdValidationChecker` «Право Удаление/ИнтерактивноеУдаление роли установлено для …». Фикс: `<setForNewObjects>false</setForNewObjects>` + явные блоки `<object><name>Kind.X</name><right><name>Read</name><value>true</value></right>…</object>` без delete-семейства прав. Порядок в `.rights`: сначала три флага (`setForNewObjects`, `setForAttributesByDefault`, `independentRightsOfChildObjects`), затем блоки `<object>`.
 
 ### Формы
-- После `create_form` всегда дописывать `<commandInterface>` (BUG-12) и `<defaultObjectForm>`/`<defaultForm>` в `.mdo` (BUG-13).
+- `create_form` сам пишет `<commandInterface>` и проставляет форму основной (`<defaultObjectForm>`/`<defaultForm>`/`<defaultRecordForm>`/`<defaultListForm>` — kind-specific).
 - Extension-реквизит адаптированного документа, выведенный на ЗАИМСТВОВАННУЮ форму, EDT может пометить «Путь к данным … N сегмент … ссылается на неизвестный объект». Помогает добавить в заимствованный `Form.form` явный атрибут `Объект` (`<attributes><name>Объект</name><id>1</id><valueType><types>DocumentObject.X</types></valueType><view><common>true</common></view><edit><common>true</common></edit><main>true</main><savedData>true</savedData></attributes>`) + пересборка модели (`close_project`/`open_project`).
 
 ### EDT / окружение
 - **Рассинхрон модели EDT** после удаления/пересоздания объектов (редактор показывает чужое содержимое формы либо не отрисовывает её) — лечится `close_project` + `open_project`. Файлы на диске при этом обычно корректны — проверяй их прежде, чем «чинить».
-- **`.metadata/.log`** EDT-воркспейса — первый источник РЕАЛЬНОЙ причины, когда форма/редактор «не работает». Грепай по имени объекта / `Exception` (так нашёлся BUG-12).
+- **`.metadata/.log`** EDT-воркспейса — первый источник РЕАЛЬНОЙ причины, когда форма/редактор «не работает». Грепай по имени объекта / `Exception`.
 - **MCP-сервер может отвалиться**: порт 3001 перестаёт слушаться при работающем EDT. Лечится перезапуском EDT / MCP-сервера. После рестарта порт слушается, но первые секунды соединение таймаутит (`ETIMEDOUT`) — опрашивай с паузой.
 - **Отладка**: `debug_client` ловит клиентские точки останова (`&НаКлиенте`); серверные (`&НаСервере`, код модулей объектов в rphost) этой сессией не перехватываются. `get_debug_state` → `state: suspended` + `location` = точка сработала, `state: running` = не сработала. Снятый из проекта breakpoint остаётся в активной debug-сессии — для полной очистки `stop_debug`.
 
 ## Главные правила работы
 
 1. **Перед `deploy_project`** — обязательно `check_list_markers`, фиксь только BLOCKER (см. категоризацию выше).
-2. **После любой мутации** через MCP — на критичных шагах проверяй `.mdo` на диске напрямую (BUG-03/04 — get_md_object/get_form неполно форматируют).
+2. **После любой мутации** через MCP — на критичных шагах ориентируйся на содержимое `.mdo` на диске: BM-модель обновляется асинхронно, дисковая запись — синхронная и достоверная.
 3. **EDT BM async**: после `create_project`/`open_project` сразу `list_md_objects` может вернуть `namespace inactive`. Опрашивай с интервалом 5-10s до 90 секунд.
 4. **1cv8 процессы**: deploy запускает 1cv8 DESIGNER который захватывает infobase. Между двумя deploys убедись что предыдущий 1cv8 завершён (`Get-Process 1cv8 | Stop-Process -Force`). Авторизуй убийство процессов у пользователя заранее.
 5. **Кодировка**: EDT-файлы (`.mdo`, `.bsl`, `.form`) **только UTF-8 без BOM**. В PowerShell `Set-Content -Encoding utf8` пишет **с BOM** и double-encoding'ом, кириллица превращается в `Р`-иероглифы. Используй `[System.IO.File]::WriteAllText(path, content, [System.Text.UTF8Encoding]::new($false))` или MCP-`write_module`.
@@ -485,8 +460,8 @@ MCP-инструменты создают **минимальные** объек�
 
 ## Что НЕ работает / не покрыто
 
-- **Деплой может зависнуть** при чистом расширении без `containedObjects` (см. BUG-11) или при «грязной» BM-сериализации. Если deploy висит больше 5-10 минут — отмени, кильни 1cv8, перепроверь `containedObjects` в `Configuration.mdo`, повтори.
-- **xUnit run_tests/run_test_method** — требуют установленного test_runner, который тоже падает (BUG-08). Без ручной установки модулей не запустятся.
+- **Деплой может зависнуть** при «грязной» BM-сериализации. Если deploy висит больше 5-10 минут — отмени, кильни 1cv8, перезапусти.
+- **xUnit run_tests/run_test_method** — требуют предварительного `install_test_runner` на проекте.
 - **debug_client + breakpoints** — рабочая цепочка, но требует тёплый infobase (deploy успешен, конфа актуальна). Если не получается attach — проверь `deploy_project` сначала.
 
 ## Памятки
