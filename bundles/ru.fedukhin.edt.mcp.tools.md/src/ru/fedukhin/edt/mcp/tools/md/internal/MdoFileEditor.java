@@ -7,6 +7,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -650,6 +651,120 @@ public class MdoFileEditor {
         return true;
     }
 
+    /**
+     * BUG-16: reads attributes / dimensions / resources straight from the .mdo on
+     * disk, so {@code list_attributes} never returns stale data after a DOM-route
+     * mutation (the BM model lags behind the file by the last mutation).
+     *
+     * @param kind owner kind — registers also contribute dimensions and resources
+     */
+    public List<Map<String, Object>> readAttributes(IFile mdoFile, String kind) throws ToolException {
+        Document doc = load(mdoFile);
+        Element root = doc.getDocumentElement();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        readAttrTag(root, "attributes", "Attribute", out);
+        if ("InformationRegister".equals(kind) || "AccumulationRegister".equals(kind)) {
+            readAttrTag(root, "dimensions", "Dimension", out);
+            readAttrTag(root, "resources",  "Resource",  out);
+        }
+        return out;
+    }
+
+    private static void readAttrTag(Element root, String tag, String role,
+                                    List<Map<String, Object>> out) {
+        NodeList kids = root.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node k = kids.item(i);
+            if (k.getNodeType() != Node.ELEMENT_NODE || !tag.equals(k.getNodeName())) {
+                continue;
+            }
+            Element a = (Element) k;
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            String name = childText(a, "name");
+            m.put("name", name != null ? name : "");
+            m.put("role", role);
+            m.put("type", formatTypeElement(firstChildByName(a, "type")));
+            m.put("synonym", synonymRu(a));
+            String comment = childText(a, "comment");
+            m.put("comment", comment != null ? comment : "");
+            out.add(m);
+        }
+    }
+
+    /** Formats an attribute {@code <type>} DOM element back to a type string (or list for composite). */
+    private static Object formatTypeElement(Node typeNode) {
+        if (!(typeNode instanceof Element typeEl)) {
+            return "";
+        }
+        List<String> rawTypes = new java.util.ArrayList<>();
+        Element stringQ = null;
+        Element numberQ = null;
+        NodeList kids = typeEl.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node k = kids.item(i);
+            if (k.getNodeType() != Node.ELEMENT_NODE) {
+                continue;
+            }
+            switch (k.getNodeName()) {
+                case "types"            -> rawTypes.add(k.getTextContent().trim());
+                case "stringQualifiers" -> stringQ = (Element) k;
+                case "numberQualifiers" -> numberQ = (Element) k;
+                default                 -> { /* dateQualifiers etc. — not needed for the short form */ }
+            }
+        }
+        if (rawTypes.isEmpty()) {
+            return "";
+        }
+        List<String> formatted = new java.util.ArrayList<>(rawTypes.size());
+        for (String t : rawTypes) {
+            if ("String".equals(t) && stringQ != null) {
+                String len = childText(stringQ, "length");
+                formatted.add(isPositiveInt(len) ? "String(" + len.trim() + ")" : "String");
+            } else if ("Number".equals(t) && numberQ != null) {
+                String precision = childText(numberQ, "precision");
+                String scale = childText(numberQ, "scale");
+                if (isPositiveInt(precision)) {
+                    formatted.add(isPositiveInt(scale)
+                            ? "Number(" + precision.trim() + "," + scale.trim() + ")"
+                            : "Number(" + precision.trim() + ")");
+                } else {
+                    formatted.add("Number");
+                }
+            } else {
+                formatted.add(t);
+            }
+        }
+        return formatted.size() == 1 ? formatted.get(0) : formatted;
+    }
+
+    private static boolean isPositiveInt(String s) {
+        if (s == null || s.isBlank()) {
+            return false;
+        }
+        try {
+            return Integer.parseInt(s.trim()) > 0;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /** Reads the {@code ru} value among an element's {@code <synonym>} children, or "". */
+    private static String synonymRu(Element parent) {
+        NodeList kids = parent.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node k = kids.item(i);
+            if (k.getNodeType() != Node.ELEMENT_NODE || !"synonym".equals(k.getNodeName())) {
+                continue;
+            }
+            Element syn = (Element) k;
+            if ("ru".equals(childText(syn, "key"))) {
+                String v = childText(syn, "value");
+                return v != null ? v : "";
+            }
+        }
+        return "";
+    }
+
     // ---
 
     /**
@@ -732,7 +847,8 @@ public class MdoFileEditor {
             }
             case "Boolean":
             case "UUID":
-            case "AnyRef":   // «Любая ссылка»
+            case "ValueStorage":   // «Хранилище значения»
+            case "AnyRef":         // «Любая ссылка»
                 appendText(doc, typeParent, "types", base);
                 break;
             default:

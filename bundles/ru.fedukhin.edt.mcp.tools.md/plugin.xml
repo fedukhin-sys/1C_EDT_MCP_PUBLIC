@@ -80,5 +80,14 @@
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.SetDcsQueryTextTool"
             name="set_dcs_query_text"
             description="Stage 8f: replace the &lt;query&gt; text on an existing &lt;dataSet xsi:type=&quot;DataSetQuery&quot;&gt; in Template.dcs. Args: reportFqn, templateName?, dataSetName, query. Throws if dataSet not found or not DataSetQuery."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddDcsSettingGroupingTool"
+            name="add_dcs_setting_grouping"
+            description="Stage 8g: append a GroupItemField (grouping by a field) to the root StructureItemGroup of a settingsVariant in Template.dcs. Args: reportFqn, templateName?, variantName? (default 'Основной'), field, groupType? (Items|Hierarchy|HierarchyOnly, default Items). Idempotent on (variantName, field)."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddDcsSettingFilterTool"
+            name="add_dcs_setting_filter"
+            description="Stage 8g: append a FilterItemComparison to a settingsVariant of Template.dcs. Args: reportFqn, templateName?, variantName? (default 'Основной'), leftField, comparisonType (Equal|NotEqual|Greater|Less|Contains|...), use? (boolean, default false). Idempotent on (leftField, comparisonType)."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.SetDcsSettingParameterValueTool"
+            name="set_dcs_setting_parameter_value"
+            description="Stage 8g: set (or add) a SettingsParameterValue in a settingsVariant of Template.dcs. Args: reportFqn, templateName?, variantName? (default 'Основной'), parameterName, value? (omitted ⇒ xsi:nil). Replace-or-add."/>
    </extension>
 </plugin>

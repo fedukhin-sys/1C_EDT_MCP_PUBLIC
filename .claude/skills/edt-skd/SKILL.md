@@ -92,7 +92,7 @@ dataSource → dataSet(s) → calculatedField* → totalField* → parameter* �
 
 ## Рабочий процесс через EDT_MCP
 
-MCP-сервер покрывает СКД восемью инструментами (точные аргументы — в [edt-mcp](../edt-mcp/SKILL.md)):
+MCP-сервер покрывает СКД одиннадцатью инструментами (точные аргументы — в [edt-mcp](../edt-mcp/SKILL.md)):
 
 | Что покрыто | Инструмент |
 |---|---|
@@ -104,15 +104,18 @@ MCP-сервер покрывает СКД восемью инструмента
 | Ресурс (итоговое поле) | `add_dcs_total_field` |
 | Связь наборов | `add_dcs_dataset_link` |
 | Переписать текст запроса набора | `set_dcs_query_text` |
+| Группировка в `settingsVariant` (Items/Hierarchy) | `add_dcs_setting_grouping` |
+| Условие отбора в `settingsVariant` | `add_dcs_setting_filter` |
+| Значение параметра в `settingsVariant` | `set_dcs_setting_parameter_value` |
 
 **Чего инструментов НЕТ — правится прямой Edit-правкой `.dcs`:**
 - наборы `DataSetObject` и `DataSetUnion`;
 - роли полей (`<role>` — `dimension`, `period`, `balance`);
-- структура настроек `settingsVariant` (группировки, выбранные поля, отбор, условное оформление, параметры вывода);
+- структура `settingsVariant` за пределами grouping/filter/parameter-value: выбранные поля (`selection`), сортировка (`order`), условное оформление (`conditionalAppearance`), параметры вывода (`outputParameters`);
 - производные параметры (`<expression>&Период.ДатаНачала`), типы `StandardPeriod`;
 - предопределённые макеты `<template>`, вложенные схемы `<nestedSchema>`.
 
-MCP-инструменты создают **минимальную** валидную схему — структуру `settingsVariant` и роли почти всегда дописываются вручную. После генерации **всегда читай `.dcs` с диска** и дорабатывай.
+MCP-инструменты создают **минимальную** валидную схему — selection/order/conditionalAppearance в `settingsVariant` и роли полей почти всегда дописываются вручную. После генерации **всегда читай `.dcs` с диска** и дорабатывай.
 
 ### Базовый рецепт (один набор, период, ресурс)
 

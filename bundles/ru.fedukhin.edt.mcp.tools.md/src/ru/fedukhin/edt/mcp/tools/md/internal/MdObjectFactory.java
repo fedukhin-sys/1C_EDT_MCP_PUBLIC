@@ -4,6 +4,7 @@ import com._1c.g5.v8.bm.core.IBmObject;
 import com._1c.g5.v8.bm.integration.IBmSingleNamespaceTask;
 import com._1c.g5.v8.dt.core.platform.IConfigurationProvider;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.Language;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import org.eclipse.emf.ecore.EEnum;
 import org.eclipse.emf.ecore.EEnumLiteral;
@@ -81,8 +82,10 @@ public final class MdObjectFactory {
                 // Делаем явно везде где создаём MdObject.
                 invokeSetUuid(obj, java.util.UUID.randomUUID());
                 if (comment != null) invokeSetComment(obj, comment);
-                // synonym is left to set_md_property / PropertyAccessor (Plan 2 Task 5)
-                // because building the EMap<String,String> requires IV8Project default language.
+                // BUG-15: write the <synonym> localised string when provided.
+                if (synonym != null && !synonym.isEmpty()) {
+                    applySynonym(obj, cfg, synonym);
+                }
                 applyKindDefaults(obj, kindName);
                 addToContainer(cfg, kind.containerFeatureName(), obj);
                 txn.attachTopObject((IBmObject) obj, fqn);
@@ -148,6 +151,36 @@ public final class MdObjectFactory {
             obj.getClass().getMethod("setComment", String.class).invoke(obj, comment);
         } catch (ReflectiveOperationException e) {
             // some kinds may not have comment — silently skip
+        }
+    }
+
+    /**
+     * BUG-15: writes the {@code <synonym>} localised string of a freshly created
+     * MdObject. The synonym is an EMF {@code EMap<String,String>} keyed by language
+     * code; the configuration's default language code is used (fallback {@code "ru"}).
+     * Silently skipped for kinds without a synonym feature (e.g. CommonModule).
+     */
+    private static void applySynonym(EObject obj, Configuration cfg, String synonym) {
+        String langCode = "ru";
+        try {
+            Language lang = cfg.getDefaultLanguage();
+            if (lang != null && lang.getLanguageCode() != null && !lang.getLanguageCode().isEmpty()) {
+                langCode = lang.getLanguageCode();
+            }
+        } catch (RuntimeException ignored) {
+            // default language unavailable — fall back to "ru"
+        }
+        try {
+            Object synonymEMap = obj.getClass().getMethod("getSynonym").invoke(obj);
+            if (synonymEMap != null) {
+                // getSynonym() returns an EMF EMap<String,String>, which does NOT
+                // implement java.util.Map — call its own put(Object,Object).
+                synonymEMap.getClass()
+                        .getMethod("put", Object.class, Object.class)
+                        .invoke(synonymEMap, langCode, synonym);
+            }
+        } catch (ReflectiveOperationException e) {
+            // kind has no synonym feature (e.g. CommonModule) — skip
         }
     }
 

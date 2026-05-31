@@ -1,6 +1,7 @@
 package ru.fedukhin.edt.mcp.tests.tools.infobase;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,6 +45,48 @@ public class DeployProjectToolTest {
         assertEquals("Demo", out.get("infobase"));
         assertTrue((Boolean) out.get("deployed"));
         assertEquals(1234L, ((Number) out.get("durationMs")).longValue());
+    }
+
+    @Test
+    public void call_suspiciouslyFastDeploy_returnsNoOpWarning() throws Exception {
+        IProject project = mock(IProject.class);
+        when(project.exists()).thenReturn(true); when(project.isOpen()).thenReturn(true);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("MyConf")).thenReturn(project);
+        InfobaseReference ref = mock(InfobaseReference.class);
+        InfobaseRegistry registry = mock(InfobaseRegistry.class);
+        when(registry.findByName("Demo")).thenReturn(Optional.of(ref));
+        InfobaseDeployer deployer = mock(InfobaseDeployer.class);
+        when(deployer.deployWithTimeout(eq(project), eq(ref), eq(false), anyInt()))
+            .thenReturn(new InfobaseDeployer.DeployResult(true, 200L));
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("project", "MyConf"); args.put("infobase", "Demo");
+        Map<String, Object> out = new DeployProjectTool(() -> root, registry, deployer).call(args);
+        assertTrue((Boolean) out.get("deployed"));
+        // BUG-18: a ~200ms "successful" deploy is a no-op and must be flagged.
+        Object warning = out.get("warning");
+        assertTrue("a suspiciously fast deploy must warn", warning instanceof String);
+        assertTrue(((String) warning).contains("BUG-18"));
+    }
+
+    @Test
+    public void call_realDeploy_noWarning() throws Exception {
+        IProject project = mock(IProject.class);
+        when(project.exists()).thenReturn(true); when(project.isOpen()).thenReturn(true);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("MyConf")).thenReturn(project);
+        InfobaseReference ref = mock(InfobaseReference.class);
+        InfobaseRegistry registry = mock(InfobaseRegistry.class);
+        when(registry.findByName("Demo")).thenReturn(Optional.of(ref));
+        InfobaseDeployer deployer = mock(InfobaseDeployer.class);
+        when(deployer.deployWithTimeout(eq(project), eq(ref), eq(false), anyInt()))
+            .thenReturn(new InfobaseDeployer.DeployResult(true, 30_000L));
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("project", "MyConf"); args.put("infobase", "Demo");
+        Map<String, Object> out = new DeployProjectTool(() -> root, registry, deployer).call(args);
+        assertNull("a real 30s deploy must not warn", out.get("warning"));
     }
 
     @Test

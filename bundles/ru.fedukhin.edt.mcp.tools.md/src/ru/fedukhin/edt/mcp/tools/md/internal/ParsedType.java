@@ -13,7 +13,7 @@ package ru.fedukhin.edt.mcp.tools.md.internal;
  */
 public final class ParsedType {
 
-    public enum Kind { STRING, NUMBER, DATE, BOOLEAN, REF, ANY_REF, UUID }
+    public enum Kind { STRING, NUMBER, DATE, BOOLEAN, REF, ANY_REF, UUID, VALUE_STORAGE }
 
     private final Kind kind;
     private final Integer length;      // String/Number
@@ -36,6 +36,7 @@ public final class ParsedType {
     public static ParsedType ref(String refKind, String refName){ return new ParsedType(Kind.REF, null, null, refKind, refName); }
     public static ParsedType anyRef()                            { return new ParsedType(Kind.ANY_REF, null, null, null, null); }
     public static ParsedType uuid()                              { return new ParsedType(Kind.UUID, null, null, null, null); }
+    public static ParsedType valueStorage()                      { return new ParsedType(Kind.VALUE_STORAGE, null, null, null, null); }
 
     public Kind    kind()      { return kind; }
     public Integer length()    { return length; }

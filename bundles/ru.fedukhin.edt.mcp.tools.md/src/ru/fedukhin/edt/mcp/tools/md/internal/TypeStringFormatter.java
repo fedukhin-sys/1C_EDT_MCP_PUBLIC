@@ -23,10 +23,13 @@ public class TypeStringFormatter {
                 return (t.precision() != null)
                         ? "Number(" + t.length() + "," + t.precision() + ")"
                         : "Number(" + t.length() + ")";
-            case DATE:    return "Date";
-            case BOOLEAN: return "Boolean";
-            case REF:     return t.refKind() + "Ref." + t.refName();
-            default:      throw new IllegalStateException("unreachable: " + t.kind());
+            case DATE:          return "Date";
+            case BOOLEAN:       return "Boolean";
+            case ANY_REF:       return "AnyRef";
+            case UUID:          return "UUID";
+            case VALUE_STORAGE: return "ValueStorage";
+            case REF:           return t.refKind() + "Ref." + t.refName();
+            default:            throw new IllegalStateException("unreachable: " + t.kind());
         }
     }
 

@@ -1,5 +1,6 @@
 package ru.fedukhin.edt.mcp.tools.edt.workspace;
 
+import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
 import jakarta.inject.Inject;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,14 +17,17 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
 public class CloseProjectTool implements IMcpTool {
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
+    private final DtProjectLifecycle lifecycle;
 
     @Inject
-    public CloseProjectTool() {
-        this(() -> ResourcesPlugin.getWorkspace().getRoot());
+    public CloseProjectTool(IV8ProjectManager projectManager) {
+        this(() -> ResourcesPlugin.getWorkspace().getRoot(),
+             DtProjectLifecycle.production(projectManager));
     }
 
-    public CloseProjectTool(Supplier<IWorkspaceRoot> rootSupplier) {
+    public CloseProjectTool(Supplier<IWorkspaceRoot> rootSupplier, DtProjectLifecycle lifecycle) {
         this.rootSupplier = rootSupplier;
+        this.lifecycle = lifecycle;
     }
 
     @Override public String name() { return "close_project"; }
@@ -53,6 +57,14 @@ public class CloseProjectTool implements IMcpTool {
                 project.close(new NullProgressMonitor());
             } catch (CoreException e) {
                 throw new ToolException("failed to close '" + name + "': " + e.getMessage());
+            }
+            // Drain EDT's async DT-project teardown so a later open_project does
+            // not race a still-pending teardown job.
+            try {
+                lifecycle.drainAfterClose(project);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ToolException("interrupted while closing '" + name + "'");
             }
         }
         Map<String, Object> out = new LinkedHashMap<>();

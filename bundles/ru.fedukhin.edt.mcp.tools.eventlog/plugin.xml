@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.eventlog.di.ToolsEventLogExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.eventlog.GetEventLogPathTool"
+            name="get_event_log_path"
+            description="Get path to the 1Cv8Log directory and partition list for an infobase"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.eventlog.di.ToolsEventLogExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.eventlog.QueryEventLogTool"
+            name="query_event_log"
+            description="Query the 1C event log (.lgf/.lgp) with filters: date range, user, event, severity, comment, metadata"/>
+   </extension>
+</plugin>

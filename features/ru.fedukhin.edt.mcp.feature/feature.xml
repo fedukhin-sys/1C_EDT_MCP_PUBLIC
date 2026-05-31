@@ -2,7 +2,7 @@
 <feature
       id="ru.fedukhin.edt.mcp.feature"
       label="EDT MCP"
-      version="1.12.0.qualifier"
+      version="1.15.0.qualifier"
       provider-name="Fedukhin">
 
    <description>MCP server plugin for 1C:EDT.</description>
@@ -22,6 +22,8 @@
    <plugin id="ru.fedukhin.edt.mcp.tools.bsl"
            download-size="0" install-size="0" version="0.0.0" unpack="false"/>
    <plugin id="ru.fedukhin.edt.mcp.tools.infobase"
+           download-size="0" install-size="0" version="0.0.0" unpack="false"/>
+   <plugin id="ru.fedukhin.edt.mcp.tools.eventlog"
            download-size="0" install-size="0" version="0.0.0" unpack="false"/>
    <plugin id="ru.fedukhin.edt.mcp.tools.client"
            download-size="0" install-size="0" version="0.0.0" unpack="false"/>

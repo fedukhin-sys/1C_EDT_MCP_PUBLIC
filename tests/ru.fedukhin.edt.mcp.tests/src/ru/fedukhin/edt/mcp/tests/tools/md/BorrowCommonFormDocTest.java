@@ -3,6 +3,7 @@ package ru.fedukhin.edt.mcp.tests.tools.md;
 import static org.junit.Assert.*;
 import java.io.ByteArrayInputStream;
 import java.lang.reflect.Method;
+import java.util.List;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.Test;
@@ -34,7 +35,8 @@ public class BorrowCommonFormDocTest {
                 baseRoot, "CommonForm", "TestForm",
                 "11111111-2222-3333-4444-555555555555",
                 "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-                new KindMeta("CommonForms", "commonForms", "CommonFormExtension"));
+                new KindMeta("CommonForms", "commonForms", "CommonFormExtension"),
+                List.of());
 
         Element root = adopted.getDocumentElement();
         Element ext = firstElement(root, "extension");
@@ -64,11 +66,35 @@ public class BorrowCommonFormDocTest {
                 baseRoot, "Catalog", "Goods",
                 "11111111-2222-3333-4444-555555555555",
                 "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-                new KindMeta("Catalogs", "catalogs", "CatalogExtension"));
+                new KindMeta("Catalogs", "catalogs", "CatalogExtension"),
+                List.of());
 
         Element ext = firstElement(adopted.getDocumentElement(), "extension");
         assertNotNull(ext);
         assertNull("Catalog extension MUST NOT contain <form>", firstElement(ext, "form"));
+    }
+
+    @Test
+    public void buildAdoptedDoc_catalog_copiesOwnersFromBase() throws Exception {
+        // A1 fix: при borrow Catalog с <owners> в base — в adopted .mdo должны появиться
+        // те же <owners> ссылки. Без них deploy валится «нельзя добавлять без загрузки
+        // родительского». Cascade-borrow в borrow() заимствует owner-catalog отдельно;
+        // здесь проверяем только что <owners> элементы перекочёвывают в adopted XML.
+        Document base = parseBaseCommonForm();
+        Element baseRoot = base.getDocumentElement();
+
+        Document adopted = invokeBuildAdoptedDoc(
+                baseRoot, "Catalog", "Goods",
+                "11111111-2222-3333-4444-555555555555",
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                new KindMeta("Catalogs", "catalogs", "CatalogExtension"),
+                List.of("Catalog.Номенклатура", "Catalog.НаборыУпаковок"));
+
+        Element root = adopted.getDocumentElement();
+        NodeList ownersList = root.getElementsByTagName("owners");
+        assertEquals("expected exactly 2 <owners> elements", 2, ownersList.getLength());
+        assertEquals("Catalog.Номенклатура", ownersList.item(0).getTextContent());
+        assertEquals("Catalog.НаборыУпаковок", ownersList.item(1).getTextContent());
     }
 
     private static Document parseBaseCommonForm() throws Exception {
@@ -85,13 +111,14 @@ public class BorrowCommonFormDocTest {
 
     /** Reflection-вызов private static MdObjectBorrower.buildAdoptedDoc. */
     private static Document invokeBuildAdoptedDoc(Element baseRoot, String kind, String name,
-                                                  String adoptedUuid, String baseUuid, KindMeta meta)
+                                                  String adoptedUuid, String baseUuid, KindMeta meta,
+                                                  List<String> ownersFqns)
             throws Exception {
         Method m = MdObjectBorrower.class.getDeclaredMethod(
                 "buildAdoptedDoc", Element.class, String.class, String.class,
-                String.class, String.class, KindMeta.class);
+                String.class, String.class, KindMeta.class, List.class);
         m.setAccessible(true);
-        return (Document) m.invoke(null, baseRoot, kind, name, adoptedUuid, baseUuid, meta);
+        return (Document) m.invoke(null, baseRoot, kind, name, adoptedUuid, baseUuid, meta, ownersFqns);
     }
 
     private static Element firstElement(Element parent, String tag) {

@@ -219,12 +219,13 @@ public final class AddAttributeTool implements IMcpTool {
         switch (t.kind()) {
             case STRING:  base = "String";  break;
             case NUMBER:  base = "Number";  break;
-            case DATE:    return "Date";
-            case BOOLEAN: return "Boolean";
-            case ANY_REF: return "AnyRef";
-            case UUID:    return "UUID";
-            case REF:     return t.refKind() + "Ref." + t.refName();
-            default:      return t.kind().toString();
+            case DATE:          return "Date";
+            case BOOLEAN:       return "Boolean";
+            case ANY_REF:       return "AnyRef";
+            case UUID:          return "UUID";
+            case VALUE_STORAGE: return "ValueStorage";
+            case REF:           return t.refKind() + "Ref." + t.refName();
+            default:            return t.kind().toString();
         }
         if (t.length() != null && t.precision() != null) return base + "(" + t.length() + "," + t.precision() + ")";
         if (t.length() != null)                           return base + "(" + t.length() + ")";

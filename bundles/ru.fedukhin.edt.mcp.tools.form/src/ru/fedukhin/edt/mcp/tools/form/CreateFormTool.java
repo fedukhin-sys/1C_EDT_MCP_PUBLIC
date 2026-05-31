@@ -208,6 +208,12 @@ public final class CreateFormTool implements IMcpTool {
                 // для form'ы. Inner UI Form (.form file, item-tree) создаётся
                 // EDT-редактором лениво при первом открытии.
                 parentForms.add(basicForm);
+
+                // BUG-13: register the new form as the owner's default form so
+                // 1С actually opens it (and its handlers fire) instead of the
+                // auto-generated one. Only when no default form is set yet —
+                // a second create_form must not clobber the first.
+                setDefaultFormIfUnset(parentObj, parentKind, basicForm);
             } catch (ToolException te) {
                 err[0] = te;
             } catch (Throwable t) {
@@ -307,6 +313,10 @@ public final class CreateFormTool implements IMcpTool {
                     <main>true</main>
                     <savedData>true</savedData>
                   </attributes>
+                  <commandInterface>
+                    <navigationPanel/>
+                    <commandBar/>
+                  </commandInterface>
                   <extInfo xsi:type="%s"/>
                 </form:Form>
                 """.formatted(objType, parentName, extInfo);
@@ -332,6 +342,44 @@ public final class CreateFormTool implements IMcpTool {
             ensureFolder(parent);
         }
         folder.create(/*force*/ false, /*local*/ true, new NullProgressMonitor());
+    }
+
+    /**
+     * BUG-13: sets the owner's default form to {@code basicForm} when the owner
+     * has no default form yet. The property name is kind-specific; reflection
+     * keeps this independent of the concrete mdclass interfaces. A second
+     * create_form on the same owner does not override an existing default form.
+     */
+    private static void setDefaultFormIfUnset(Object parentObj, String parentKind, EObject basicForm) {
+        String prop = switch (parentKind) {
+            case "Catalog", "Document"     -> "DefaultObjectForm";
+            case "DataProcessor", "Report" -> "DefaultForm";
+            case "InformationRegister"     -> "DefaultRecordForm";
+            case "AccumulationRegister"    -> "DefaultListForm";
+            default                        -> null;
+        };
+        if (prop == null) {
+            return;
+        }
+        try {
+            Object current = parentObj.getClass().getMethod("get" + prop).invoke(parentObj);
+            if (current != null) {
+                return;   // owner already has a default form — do not override it
+            }
+        } catch (ReflectiveOperationException e) {
+            return;       // kind has no such property — skip
+        }
+        for (java.lang.reflect.Method m : parentObj.getClass().getMethods()) {
+            if (m.getName().equals("set" + prop) && m.getParameterCount() == 1
+                    && m.getParameterTypes()[0].isInstance(basicForm)) {
+                try {
+                    m.invoke(parentObj, basicForm);
+                } catch (ReflectiveOperationException ignored) {
+                    /* leave default form unset — non-fatal */
+                }
+                return;
+            }
+        }
     }
 
     private static EObject createBasicForm(String parentKind) throws ToolException {

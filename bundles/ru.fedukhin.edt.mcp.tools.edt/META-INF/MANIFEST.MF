@@ -16,7 +16,10 @@ Require-Bundle: ru.fedukhin.edt.mcp.core,
  com._1c.g5.v8.dt.platform,
  com.google.inject;bundle-version="[5.0,8)"
 Import-Package: jakarta.inject;version="[1.0,3)",
- org.osgi.framework;version="[1.10,2)"
+ javax.xml.parsers,
+ org.osgi.framework;version="[1.10,2)",
+ org.w3c.dom,
+ org.xml.sax
 Export-Package: ru.fedukhin.edt.mcp.tools.edt,
  ru.fedukhin.edt.mcp.tools.edt.workspace
 Automatic-Module-Name: ru.fedukhin.edt.mcp.tools.edt

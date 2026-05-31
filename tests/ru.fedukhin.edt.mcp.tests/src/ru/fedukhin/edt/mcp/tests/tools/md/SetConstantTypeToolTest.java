@@ -99,9 +99,11 @@ public class SetConstantTypeToolTest {
         when(root.getProject("Demo")).thenReturn(project);
 
         SetConstantTypeTool tool = new SetConstantTypeTool(() -> root, mock(MdoFileEditor.class), parser);
+        // BUG-14: <Kind>Ref.<Name> is now parsed generically, so an unknown type
+        // must be one that is neither a primitive nor a <Kind>Ref reference.
         tool.call(Map.of(
                 "project", "Demo",
                 "fqn",     "Constant.Тест",
-                "type",    "FrobRef.X"));
+                "type",    "Frobnicate"));
     }
 }

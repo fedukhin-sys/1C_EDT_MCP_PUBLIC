@@ -26,17 +26,22 @@ public class TypeStringParser {
 
     private static final Pattern STRING_RE = Pattern.compile("^String(?:\\((\\d+)\\))?$");
     private static final Pattern NUMBER_RE = Pattern.compile("^Number(?:\\((\\d+)(?:,(\\d+))?\\))?$");
-    private static final Pattern REF_RE    = Pattern.compile("^(Catalog|Document|Enum)Ref\\.([A-Za-zА-Яа-я_][A-Za-zА-Яа-я0-9_]*)$");
+    // BUG-14: any <Kind>Ref reference — Catalog/Document/Enum plus
+    // ChartOfCharacteristicTypes/ChartOfAccounts/ChartOfCalculationTypes/
+    // ExchangePlan/BusinessProcess/Task and so on.
+    private static final Pattern REF_RE    = Pattern.compile(
+            "^([A-Za-zА-Яа-я][A-Za-zА-Яа-я0-9]*)Ref\\.([A-Za-zА-Яа-я_][A-Za-zА-Яа-я0-9_]*)$");
 
     public ParsedType parseOne(String s) throws ToolException {
         if (s == null || s.isEmpty()) {
             throw bad(s);
         }
         switch (s) {
-            case "Date":    return ParsedType.date();
-            case "Boolean": return ParsedType.bool();
-            case "AnyRef":  return ParsedType.anyRef();
-            case "UUID":    return ParsedType.uuid();
+            case "Date":         return ParsedType.date();
+            case "Boolean":      return ParsedType.bool();
+            case "AnyRef":       return ParsedType.anyRef();
+            case "UUID":         return ParsedType.uuid();
+            case "ValueStorage": return ParsedType.valueStorage();
             default: // fall through
         }
         Matcher m = STRING_RE.matcher(s);
@@ -71,7 +76,7 @@ public class TypeStringParser {
     private static ToolException bad(String s) {
         return new ToolException(
             "cannot parse type string '" + s + "'; expected forms: "
-            + "String[(N)], Number[(N[,M])], Date, Boolean, "
-            + "CatalogRef.<Name>, DocumentRef.<Name>, EnumRef.<Name>");
+            + "String[(N)], Number[(N[,M])], Date, Boolean, ValueStorage, UUID, AnyRef, "
+            + "<Kind>Ref.<Name> (Catalog/Document/Enum/ChartOfCharacteristicTypes/...)");
     }
 }

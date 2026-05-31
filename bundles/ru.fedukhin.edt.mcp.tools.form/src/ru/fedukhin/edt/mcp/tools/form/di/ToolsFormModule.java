@@ -18,6 +18,7 @@ import ru.fedukhin.edt.mcp.tools.form.GetFormTool;
 import ru.fedukhin.edt.mcp.tools.form.ListFormsTool;
 import ru.fedukhin.edt.mcp.tools.form.SetFormHandlerTool;
 import ru.fedukhin.edt.mcp.tools.form.internal.FormFileEditor;
+import ru.fedukhin.edt.mcp.tools.form.internal.FormFileReader;
 import ru.fedukhin.edt.mcp.tools.form.internal.FormReader;
 import ru.fedukhin.edt.mcp.tools.form.internal.FormRegistry;
 import ru.fedukhin.edt.mcp.tools.form.internal.MdObjectLocator;
@@ -41,6 +42,8 @@ public final class ToolsFormModule extends AbstractServiceAwareModule {
         // Internal singletons
         bind(FormRegistry.class).in(Singleton.class);
         bind(FormReader.class).in(Singleton.class);
+        // 2026-05-31 A8 — disk-read для get_form
+        bind(FormFileReader.class).in(Singleton.class);
         bind(FormFileEditor.class).in(Singleton.class);
         // BmPersistentExecutor from tools.md.internal — re-bind per-bundle.
         bind(BmPersistentExecutor.class).in(Singleton.class);

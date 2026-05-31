@@ -5,7 +5,7 @@ description: Manage 1C:EDT extension/configuration projects via the EDT_MCP MCP 
 
 # EDT_MCP — пользование MCP-сервером для 1C:EDT
 
-EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 84 инструмента работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, **известные баги и workaround**'ы.
+EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий **89 инструментов** работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, **известные баги и workaround**'ы.
 
 ## TL;DR — как подключиться
 
@@ -21,7 +21,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 - **modulePath** — относительный путь от корня проекта: `src/Catalogs/X/ObjectModule.bsl`, `src/Catalogs/X/Forms/Y/Module.bsl`, `src/CommonModules/X/Module.bsl`, `src/Documents/X/RecordSetModule.bsl` и т.п.
 - **Только русский identifier set** в этом проекте (если язык конфы Russian). Имена не транслитерируются.
 
-## Полный список инструментов (84)
+## Полный список инструментов (89)
 
 Точные имена аргументов получены из `tools/list`. Если параметра нет в списке `props` — он будет отвергнут (`additionalProperties: false`). Required помечены *.
 
@@ -46,7 +46,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `associate_infobase` | `project*`, `infobase*`, `setDefault` |
 | `deploy_project` | `project*`, `infobase*`, `force`, `timeoutSeconds` |
 
-### Metadata (26)
+### Metadata (29)
 | Tool | Args |
 |---|---|
 | `list_md_objects` | `project*`, `kind` |
@@ -75,6 +75,15 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `add_dcs_total_field` | `project*`, `reportFqn*`, `dataPath*`, `expression*`, `templateName`, `groupKeys` |
 | `add_dcs_dataset_link` | `project*`, `reportFqn*`, `source*`, `destination*`, `sourceExpression*`, `destinationExpression*`, `templateName`, `parameter` |
 | `set_dcs_query_text` | `project*`, `reportFqn*`, `dataSetName*`, `query*`, `templateName` |
+| `add_dcs_setting_grouping` | `project*`, `reportFqn*`, `field*`, `templateName`, `variantName` (default `Основной`), `groupType` (`Items`/`Hierarchy`/`HierarchyOnly`, default `Items`) |
+| `add_dcs_setting_filter` | `project*`, `reportFqn*`, `leftField*`, `comparisonType*` (`Equal`/`NotEqual`/...), `templateName`, `variantName`, `use` (default `false`) |
+| `set_dcs_setting_parameter_value` | `project*`, `reportFqn*`, `parameterName*`, `templateName`, `variantName`, `value` (omitted ⇒ `xsi:nil`) |
+
+### Eventlog (2)
+| Tool | Args |
+|---|---|
+| `get_event_log_path` | `name` или `uuid` (oneOf*), `srvinfoDir`, `clusterPort` (для SERVER ИБ) |
+| `query_event_log` | `name`/`uuid`/`logDir` (один из), `from`, `to`, `severity[]`, `user[]`, `userUuid[]`, `application[]`, `event[]`, `eventContains`, `commentContains`, `metadataContains`, `limit` (≤10000), `srvinfoDir`, `clusterPort` |
 
 ### BSL модули (5)
 | Tool | Args |
@@ -345,36 +354,6 @@ Tool сам создаёт файл если его нет, дописывает
 | **BUG-17** | `add_extension_method_override` | Метод `&После`/`&Перед`/`&ИзменениеИКонтроль` в модуле объекта без препроцессорной обёртки → error «Метод расширения имеет большую видимость» | Обернуть метод в ТУ ЖЕ `#Если…Тогда … #КонецЕсли`, что и базовый `ObjectModule.bsl` (Catalog/Document — обычно `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда`; `Номенклатура` — вложенная `#Если НЕ МобильныйАвтономныйСервер` + `#Если Сервер…`) |
 | **BUG-18** | `deploy_project` | Иногда возвращает `deployed:true` за ~200 мс без реального запуска 1cv8 (no-op), вместо честных ~30-80 с | Подозрительно малый `durationMs` = деплоя не было. Останови все клиенты и debug-сессии перед деплоем, повтори |
 
-
-## Паттерны: печатные формы и рантайм-ошибки 1С (вне `check_run`)
-
-  ### Что проверяет валидация
-  - **`write_module` (`validate`) — только СИНТАКСИС.** Несуществующий член перечисления, «поле не найдено» не ловит. После записи кода с API/перечислениями обязателен `check_run`.
-  - **`check_run` проверяет**: глобальные системные перечисления (`ОриентацияСтраницы.X` и т.п.), члены типизированных переменных. **НЕ проверяет**: текст запросов, методы/свойства на нетипизированных параметрах процедур.
-
-  ### Запросы
-  - **Анти-паттерн: документ И его табличная часть как два источника одного запроса** → рантайм-ошибка `Неоднозначное поле "ТЧ.Ссылка"`. Правильно: не соединять документ отдельно — таблица ТЧ даёт владельца через `.Ссылка`, реквизиты —
-  `ТЧ.Ссылка.<Реквизит>`. Цепочку строить только на ТЧ-таблицах.
-
-  ### Табличный документ
-  - `ОриентацияСтраницы` — члены `Портрет` / `Ландшафт` (не `Книжная`/`Альбомная`). Ориентация — свойство всего документа → разная ориентация = отдельные печатные формы.
-  - `Новый Шрифт(Ячейка.Шрифт, , Истина)` на свежей ячейке → шрифт без размера → невидимый текст. Правильно: `Новый Шрифт("Arial", Размер, Жирность)`.
-  - Перенос: `Область.РазмещениеТекста = ТипРазмещенияТекстаТабличногоДокумента.Переносить` + `ТабДок.Область(Стр, , Стр).АвтоВысотаСтроки = Истина`.
-  - Граница: `Область.Обвести(Линия, Линия, Линия, Линия)`, `Линия = Новый Линия(ТипЛинииЯчейкиТабличногоДокумента.Сплошная)`.
-  - `ШиринаКолонки` задавать на документе с уже выведенным содержимым.
-
-  ### Своя печатная форма из `&После("Печать")` модуля менеджера
-  - Новая строка `КоллекцияПечатныхФорм`: задать `ИмяМакета`, `Экземпляров`, **`ИмяВРЕГ = ВРег(ИмяМакета)`** — без `ИмяВРЕГ` `ВывестиТабличныйДокументВКоллекцию` не находит строку.
-  - Обязательна разметка: `УправлениеПечатью.ЗадатьОбластьПечатиДокумента(ТабДок, НомерСтрокиНачало, ОбъектыПечати, СсылкаОбъекта)` на каждый объект — иначе БСП бросает «Отсутствует разметка по объектам печати».
-  - `&После("Печать")` даёт `ОбъектыПечати` — прокинуть до формирования. Эталон — базовый `СформироватьКомплектПечатныхФорм`.
-
-  ### Диагностика
-  - `debug_client` не ловит серверный код (общие модули, `rphost`) на серверной инфобазе. Для серверных багов — оборачивать в `Попытка/Исключение` + `ЗаписьЖурналаРегистрации(...,
-  ОбработкаОшибок.ПодробноеПредставлениеОшибки(ИнформацияОбОшибке()))`, читать журнал регистрации.
-  - `ibases.v8i` `Version=8.3` → EDT парсит `8.3.0`, `debug_client` падает. Фикс — `Version=8.3.27`, требует перезапуска EDT.
-  - `close_project`+`open_project` может оставить контекст «stopped» (`get_project` → `type:"unknown"`) — повторный цикл чинит. После прямой записи файлов с диска close/open без нужды не делать.
-
-
 ## Шаблон минимального `Configuration.mdo` для extension (workaround BUG-01)
 
 ```xml
@@ -402,18 +381,25 @@ Tool сам создаёт файл если его нет, дописывает
   <defaultRunMode>ManagedApplication</defaultRunMode>
   <usePurposes>PersonalComputer</usePurposes>
   <scriptVariant>Russian</scriptVariant>
-  <defaultLanguage>Language.Русский</defaultLanguage>
-  <languages uuid="{{NEW-GUID}}" extendedConfigurationObject="{{NEW-GUID}}">
-    <name>Русский</name>
+  <defaultLanguage>Language.{{PARENT-LANGUAGE-NAME}}</defaultLanguage>
+  <languages uuid="{{NEW-GUID}}" extendedConfigurationObject="{{PARENT-LANGUAGE-UUID}}">
+    <name>{{PARENT-LANGUAGE-NAME}}</name>
     <objectBelonging>Adopted</objectBelonging>
     <extension xsi:type="mdclassExtension:LanguageExtension">
       <extendedConfigurationObject>Checked</extendedConfigurationObject>
       <languageCode>Checked</languageCode>
     </extension>
-    <languageCode>ru</languageCode>
+    <languageCode>{{PARENT-LANGUAGE-CODE}}</languageCode>
   </languages>
 </mdclass:Configuration>
 ```
+
+**`<languages>` адаптированного языка обязан ссылаться на язык родительской конфигурации:**
+- `extendedConfigurationObject` = **реальный `uuid`** элемента `<languages>` из `Configuration.mdo` родительской конфигурации (НЕ новый GUID!). Это `{{PARENT-LANGUAGE-UUID}}`. Возьми его так: открой `<parent>/src/Configuration/Configuration.mdo`, найди `<languages uuid="…">` — это и есть нужный uuid.
+- `{{PARENT-LANGUAGE-NAME}}` и `{{PARENT-LANGUAGE-CODE}}` — `<name>` и `<languageCode>` того же языка родителя (обычно `Русский` / `ru`).
+- Только `uuid` самого `<languages>` (первый атрибут) — свой, новый `{{NEW-GUID}}`.
+
+Если поставить случайный `extendedConfigurationObject`, EDT даст `major`-маркер «Не найден объект расширяемой конфигурации с внутренним идентификатором …», а `deploy_project` упадёт: «Значение контролируемого свойства ОбъектРасширяемойКонфигурации у объекта Язык.… не совпадает со значением в расширяемой конфигурации».
 
 После записи файла → `open_project` → опрос `list_md_objects` пока вернёт OK (10-80 секунд). Файл писать **UTF-8 без BOM**, иначе EDT может ругаться на кодировку.
 

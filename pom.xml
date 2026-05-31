@@ -25,6 +25,7 @@
         <module>bundles/ru.fedukhin.edt.mcp.tools.edt</module>
         <module>bundles/ru.fedukhin.edt.mcp.tools.bsl</module>
         <module>bundles/ru.fedukhin.edt.mcp.tools.infobase</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.eventlog</module>
         <module>bundles/ru.fedukhin.edt.mcp.tools.client</module>
         <module>bundles/ru.fedukhin.edt.mcp.tools.debug</module>
         <module>bundles/ru.fedukhin.edt.mcp.tools.quality</module>

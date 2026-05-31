@@ -69,6 +69,29 @@ public class TypeStringParserTest {
         assertEquals("Status", t.refName());
     }
 
+    @Test public void parsesChartOfCharacteristicTypesRef() throws Exception {
+        ParsedType t = p.parseOne("ChartOfCharacteristicTypesRef.Свойства");
+        assertEquals(ParsedType.Kind.REF, t.kind());
+        assertEquals("ChartOfCharacteristicTypes", t.refKind());
+        assertEquals("Свойства", t.refName());
+    }
+
+    @Test public void parsesOtherRefKinds() throws Exception {
+        assertEquals("ChartOfAccounts", p.parseOne("ChartOfAccountsRef.Основной").refKind());
+        assertEquals("ExchangePlan",    p.parseOne("ExchangePlanRef.Обмен").refKind());
+        assertEquals("BusinessProcess", p.parseOne("BusinessProcessRef.Задание").refKind());
+        assertEquals("Task",            p.parseOne("TaskRef.Поручение").refKind());
+    }
+
+    @Test public void parsesValueStorage() throws Exception {
+        assertEquals(ParsedType.Kind.VALUE_STORAGE, p.parseOne("ValueStorage").kind());
+    }
+
+    @Test public void parsesUuidAndAnyRef() throws Exception {
+        assertEquals(ParsedType.Kind.UUID,    p.parseOne("UUID").kind());
+        assertEquals(ParsedType.Kind.ANY_REF, p.parseOne("AnyRef").kind());
+    }
+
     @Test public void parsesCompositeArray() throws Exception {
         List<ParsedType> ts = p.parseMany(new String[]{"String(50)", "CatalogRef.Goods"});
         assertEquals(2, ts.size());

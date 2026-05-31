@@ -1,5 +1,8 @@
 package ru.fedukhin.edt.mcp.tools.md;
 
+import com._1c.g5.v8.dt.core.platform.IDependentProject;
+import com._1c.g5.v8.dt.core.platform.IV8Project;
+import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
 import jakarta.inject.Inject;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -20,6 +23,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.md.internal.ExtensionModuleMerger;
+import ru.fedukhin.edt.mcp.tools.md.internal.ObjectModuleGuard;
 
 /**
  * {@code add_extension_method_override} — добавить annotated procedure
@@ -53,14 +57,17 @@ import ru.fedukhin.edt.mcp.tools.md.internal.ExtensionModuleMerger;
 public final class AddExtensionMethodOverrideTool implements IMcpTool {
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
+    private final IV8ProjectManager projectManager;
 
     @Inject
-    public AddExtensionMethodOverrideTool() {
-        this(() -> ResourcesPlugin.getWorkspace().getRoot());
+    public AddExtensionMethodOverrideTool(IV8ProjectManager projectManager) {
+        this(() -> ResourcesPlugin.getWorkspace().getRoot(), projectManager);
     }
 
-    public AddExtensionMethodOverrideTool(Supplier<IWorkspaceRoot> rootSupplier) {
+    public AddExtensionMethodOverrideTool(Supplier<IWorkspaceRoot> rootSupplier,
+                                          IV8ProjectManager projectManager) {
         this.rootSupplier = rootSupplier;
+        this.projectManager = projectManager;
     }
 
     @Override public String name()        { return "add_extension_method_override"; }
@@ -110,9 +117,14 @@ public final class AddExtensionMethodOverrideTool implements IMcpTool {
             byte[] existing = file.exists() ? readAll(file.getContents()) : new byte[0];
             String existingText = new String(existing, StandardCharsets.UTF_8);
 
+            // BUG-17: an object-side override method must carry the same #Если
+            // preprocessor guard as the base module, otherwise EDT reports
+            // «Метод расширения имеет большую видимость». Wrap it if needed.
+            String effectiveSource = guardObjectModuleSource(project, modulePath, source);
+
             // Merge: либо append с blank-line separator, либо inject в существующую
             // процедуру с тем же именем (см. ExtensionModuleMerger).
-            ExtensionModuleMerger.Result merged = ExtensionModuleMerger.merge(existingText, source);
+            ExtensionModuleMerger.Result merged = ExtensionModuleMerger.merge(existingText, effectiveSource);
             byte[] bytes = merged.text().getBytes(StandardCharsets.UTF_8);
 
             if (file.exists()) {
@@ -126,13 +138,59 @@ public final class AddExtensionMethodOverrideTool implements IMcpTool {
             result.put("modulePath",    modulePath);
             result.put("action",        merged.action().name().toLowerCase());
             if (merged.procName() != null) result.put("procName", merged.procName());
-            result.put("appendedBytes", source.getBytes(StandardCharsets.UTF_8).length);
+            result.put("appendedBytes", effectiveSource.getBytes(StandardCharsets.UTF_8).length);
             result.put("totalBytes",    bytes.length);
             return result;
 
         } catch (CoreException | IOException e) {
             throw new ToolException("failed to append to " + modulePath + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * BUG-17: when {@code modulePath} is an object-side module, wraps {@code source}
+     * in the base module's {@code #Если} guard so the override has the same
+     * compilation visibility. Returns {@code source} unchanged when no guard is
+     * needed or the base module cannot be resolved.
+     */
+    private String guardObjectModuleSource(IProject extProject, String modulePath, String source) {
+        if (!ObjectModuleGuard.isGuardedModule(modulePath)
+                || ObjectModuleGuard.alreadyGuarded(source)) {
+            return source;
+        }
+        String[] guard = baseModuleGuard(extProject, modulePath);
+        return guard == null ? source : ObjectModuleGuard.wrap(source, guard);
+    }
+
+    /**
+     * Reads the parent configuration's module at the same {@code modulePath} and
+     * detects its {@code #Если} guard. Returns {@code null} when the project is
+     * not an extension, the base module is missing, or it is not guarded.
+     */
+    private String[] baseModuleGuard(IProject extProject, String modulePath) {
+        try {
+            IProject parentProject = resolveParentProject(extProject);
+            if (parentProject == null || !parentProject.isAccessible()) {
+                return null;
+            }
+            IFile baseFile = parentProject.getFile(modulePath);
+            if (!baseFile.exists()) {
+                return null;
+            }
+            String baseText = new String(readAll(baseFile.getContents()), StandardCharsets.UTF_8);
+            return ObjectModuleGuard.detectGuard(baseText);
+        } catch (CoreException | IOException | RuntimeException e) {
+            return null;   // best-effort — fall back to appending the source as-is
+        }
+    }
+
+    /** Resolves the parent configuration project of an extension project. */
+    private IProject resolveParentProject(IProject extProject) {
+        if (projectManager == null) {
+            return null;
+        }
+        IV8Project v8 = projectManager.getProject(extProject);
+        return (v8 instanceof IDependentProject dep) ? dep.getParentProject() : null;
     }
 
     private static void ensureFolder(IFolder folder) throws CoreException {

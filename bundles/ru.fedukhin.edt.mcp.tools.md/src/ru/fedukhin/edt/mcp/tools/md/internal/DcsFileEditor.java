@@ -482,6 +482,260 @@ public class DcsFileEditor {
         return e != null ? e.getTextContent() : null;
     }
 
+    // =========================================================================
+    // Stage 8g (2026-05-31): settingsVariant editing —
+    // add_dcs_setting_grouping / add_dcs_setting_filter / set_dcs_setting_parameter_value.
+    //
+    // Все операции работают внутри <settingsVariant>/<dcsset:settings>:
+    //  - grouping: добавить <dcsset:item xsi:type="dcsset:GroupItemField"> в
+    //      <dcsset:groupItems> корневого <dcsset:item xsi:type="dcsset:StructureItemGroup">.
+    //  - filter: добавить <dcsset:item xsi:type="dcsset:FilterItemComparison"> в
+    //      <dcsset:filter>; <dcsset:filter> создаётся если отсутствует.
+    //  - parameter_value: добавить/обновить <dcscor:item xsi:type="dcsset:SettingsParameterValue">
+    //      в <dcsset:dataParameters>; контейнер создаётся если отсутствует.
+    // =========================================================================
+
+    /**
+     * Добавить группировку (поле с типом группировки) в root StructureItemGroup
+     * settingsVariant'а.
+     *
+     * <p>Пример: {@code add_dcs_setting_grouping(file, "Основной", "Номенклатура", "Items")}
+     * добавит группировку по полю Номенклатура с типом Items внутрь корневой группы
+     * настроек варианта.
+     *
+     * @param variantName имя settingsVariant'а ({@code <dcsset:name>X</dcsset:name>})
+     * @param field       имя поля DCS (e.g. "Номенклатура")
+     * @param groupType   тип группировки: Items | Hierarchy | HierarchyOnly (default Items)
+     * @return {@code true} если добавлено, {@code false} если такое поле уже сгруппировано
+     */
+    public boolean addSettingsGrouping(IFile dcsFile, String variantName, String field,
+                                       String groupType) throws ToolException {
+        if (field == null || field.isEmpty()) throw new ToolException("field required");
+        Document doc = load(dcsFile);
+        boolean changed = applyAddSettingsGrouping(doc, variantName, field, groupType);
+        if (changed) save(dcsFile, doc);
+        return changed;
+    }
+
+    /** Pure-DOM helper для {@link #addSettingsGrouping}. */
+    public static boolean applyAddSettingsGrouping(Document doc, String variantName,
+                                                    String field, String groupType)
+            throws ToolException {
+        Element settings = findSettings(doc, variantName);
+        Element structureGroup = findStructureItemGroup(settings);
+        if (structureGroup == null) {
+            throw new ToolException("settingsVariant '" + variantName + "' has no root StructureItemGroup");
+        }
+
+        Element groupItems = firstChildByTag(structureGroup, "dcsset:groupItems");
+        if (groupItems == null) {
+            groupItems = doc.createElement("dcsset:groupItems");
+            // Insert before <dcsset:order>/<dcsset:selection>/<dcsset:itemsViewMode>
+            Node anchor = firstChildByTag(structureGroup, "dcsset:order");
+            if (anchor == null) anchor = firstChildByTag(structureGroup, "dcsset:selection");
+            if (anchor == null) anchor = firstChildByTag(structureGroup, "dcsset:itemsViewMode");
+            if (anchor != null) structureGroup.insertBefore(groupItems, anchor);
+            else                structureGroup.appendChild(groupItems);
+        }
+
+        // Dup check: уже есть GroupItemField с таким <dcsset:field>?
+        NodeList items = groupItems.getChildNodes();
+        for (int i = 0; i < items.getLength(); i++) {
+            Node n = items.item(i);
+            if (n.getNodeType() != Node.ELEMENT_NODE || !"dcsset:item".equals(n.getNodeName())) continue;
+            Element it = (Element) n;
+            if (!"dcsset:GroupItemField".equals(it.getAttribute("xsi:type"))) continue;
+            if (field.equals(childTextStr(it, "dcsset:field"))) return false;
+        }
+
+        String effectiveType = (groupType == null || groupType.isEmpty()) ? "Items" : groupType;
+
+        Element item = doc.createElement("dcsset:item");
+        item.setAttribute("xsi:type", "dcsset:GroupItemField");
+        appendText(doc, item, "dcsset:field",     field);
+        appendText(doc, item, "dcsset:groupType", effectiveType);
+        // Канонический контракт: periodAdditionType + начальные даты-нулевые
+        appendText(doc, item, "dcsset:periodAdditionType", "None");
+        Element begin = doc.createElement("dcsset:periodAdditionBegin");
+        begin.setAttribute("xsi:type", "xs:dateTime");
+        begin.setTextContent("0001-01-01T00:00:00");
+        item.appendChild(begin);
+        Element end = doc.createElement("dcsset:periodAdditionEnd");
+        end.setAttribute("xsi:type", "xs:dateTime");
+        end.setTextContent("0001-01-01T00:00:00");
+        item.appendChild(end);
+
+        groupItems.appendChild(item);
+        return true;
+    }
+
+    /**
+     * Добавить filter-условие {@code FilterItemComparison} в settingsVariant.
+     *
+     * <p>{@code <dcsset:filter>} создаётся при первом filter'е. Дубль (по left+comparisonType)
+     * — no-op.
+     *
+     * @param variantName     имя settingsVariant'а
+     * @param leftField       выражение слева (поле DCS, e.g. "Номенклатура.ВидНоменклатуры")
+     * @param comparisonType  тип сравнения: Equal | NotEqual | Greater | Less | Contains | ...
+     * @param use             начальное значение {@code <use>} (default false — отключён до явного use)
+     */
+    public boolean addSettingsFilter(IFile dcsFile, String variantName, String leftField,
+                                     String comparisonType, boolean use) throws ToolException {
+        if (leftField == null || leftField.isEmpty()) throw new ToolException("leftField required");
+        if (comparisonType == null || comparisonType.isEmpty()) {
+            throw new ToolException("comparisonType required (Equal|NotEqual|Greater|Less|...)");
+        }
+        Document doc = load(dcsFile);
+        boolean changed = applyAddSettingsFilter(doc, variantName, leftField, comparisonType, use);
+        if (changed) save(dcsFile, doc);
+        return changed;
+    }
+
+    /** Pure-DOM helper для {@link #addSettingsFilter}. */
+    public static boolean applyAddSettingsFilter(Document doc, String variantName, String leftField,
+                                                 String comparisonType, boolean use)
+            throws ToolException {
+        Element settings = findSettings(doc, variantName);
+
+        Element filter = firstChildByTag(settings, "dcsset:filter");
+        if (filter == null) {
+            filter = doc.createElement("dcsset:filter");
+            // dcsset:filter идёт после dataParameters/selection, перед StructureItemGroup
+            Node anchor = findStructureItemGroup(settings);
+            if (anchor != null) settings.insertBefore(filter, anchor);
+            else                settings.appendChild(filter);
+        }
+
+        // Dup check
+        NodeList items = filter.getChildNodes();
+        for (int i = 0; i < items.getLength(); i++) {
+            Node n = items.item(i);
+            if (n.getNodeType() != Node.ELEMENT_NODE || !"dcsset:item".equals(n.getNodeName())) continue;
+            Element it = (Element) n;
+            if (!"dcsset:FilterItemComparison".equals(it.getAttribute("xsi:type"))) continue;
+            String lf = childTextStr(it, "dcsset:left");
+            String ct = childTextStr(it, "dcsset:comparisonType");
+            if (leftField.equals(lf) && comparisonType.equals(ct)) return false;
+        }
+
+        Element item = doc.createElement("dcsset:item");
+        item.setAttribute("xsi:type", "dcsset:FilterItemComparison");
+        appendText(doc, item, "dcsset:use", use ? "true" : "false");
+        Element left = doc.createElement("dcsset:left");
+        left.setAttribute("xsi:type", "dcscor:Field");
+        left.setTextContent(leftField);
+        item.appendChild(left);
+        appendText(doc, item, "dcsset:comparisonType", comparisonType);
+
+        filter.appendChild(item);
+        return true;
+    }
+
+    /**
+     * Установить значение параметра в settingsVariant'а. Replace-or-add семантика:
+     * если SettingsParameterValue с таким parameter name уже есть — обновляем
+     * {@code <dcscor:value>}; иначе создаём новый.
+     *
+     * @param variantName   имя settingsVariant'а
+     * @param parameterName имя параметра (must match an existing root {@code <parameter>})
+     * @param value         текстовое значение; {@code null} → {@code xsi:nil="true"}
+     */
+    public boolean setSettingsParameterValue(IFile dcsFile, String variantName, String parameterName,
+                                              String value) throws ToolException {
+        if (parameterName == null || parameterName.isEmpty()) {
+            throw new ToolException("parameterName required");
+        }
+        Document doc = load(dcsFile);
+        boolean changed = applySetSettingsParameterValue(doc, variantName, parameterName, value);
+        if (changed) save(dcsFile, doc);
+        return changed;
+    }
+
+    /** Pure-DOM helper для {@link #setSettingsParameterValue}. */
+    public static boolean applySetSettingsParameterValue(Document doc, String variantName,
+                                                          String parameterName, String value)
+            throws ToolException {
+        Element settings = findSettings(doc, variantName);
+
+        Element dataParameters = firstChildByTag(settings, "dcsset:dataParameters");
+        if (dataParameters == null) {
+            dataParameters = doc.createElement("dcsset:dataParameters");
+            // Канонически dataParameters идёт первым в <dcsset:settings>
+            Node first = settings.getFirstChild();
+            if (first != null) settings.insertBefore(dataParameters, first);
+            else               settings.appendChild(dataParameters);
+        }
+
+        // Replace-or-add: найти существующий item с этим параметром
+        NodeList items = dataParameters.getChildNodes();
+        for (int i = 0; i < items.getLength(); i++) {
+            Node n = items.item(i);
+            if (n.getNodeType() != Node.ELEMENT_NODE || !"dcscor:item".equals(n.getNodeName())) continue;
+            Element it = (Element) n;
+            if (!"dcsset:SettingsParameterValue".equals(it.getAttribute("xsi:type"))) continue;
+            String pName = childTextStr(it, "dcscor:parameter");
+            if (!parameterName.equals(pName)) continue;
+            // Update existing value
+            Element existingVal = firstChildByTag(it, "dcscor:value");
+            if (existingVal != null) it.removeChild(existingVal);
+            it.appendChild(buildValue(doc, value));
+            return true;
+        }
+
+        // Add new
+        Element item = doc.createElement("dcscor:item");
+        item.setAttribute("xsi:type", "dcsset:SettingsParameterValue");
+        appendText(doc, item, "dcscor:parameter", parameterName);
+        item.appendChild(buildValue(doc, value));
+        dataParameters.appendChild(item);
+        return true;
+    }
+
+    private static Element buildValue(Document doc, String value) {
+        Element v = doc.createElement("dcscor:value");
+        if (value == null) {
+            v.setAttribute("xsi:nil", "true");
+        } else {
+            v.setTextContent(value);
+        }
+        return v;
+    }
+
+    /** Находит {@code <dcsset:settings>} внутри settingsVariant с именем variantName. */
+    private static Element findSettings(Document doc, String variantName) throws ToolException {
+        Element root = doc.getDocumentElement();
+        if (root == null) throw new ToolException("empty .dcs document");
+        if (variantName == null || variantName.isEmpty()) {
+            throw new ToolException("variantName required");
+        }
+        NodeList variants = root.getElementsByTagName("settingsVariant");
+        for (int i = 0; i < variants.getLength(); i++) {
+            Element v = (Element) variants.item(i);
+            if (v.getParentNode() != root) continue;
+            if (variantName.equals(childTextStr(v, "dcsset:name"))) {
+                Element s = firstChildByTag(v, "dcsset:settings");
+                if (s == null) {
+                    throw new ToolException("settingsVariant '" + variantName + "' has no <dcsset:settings>");
+                }
+                return s;
+            }
+        }
+        throw new ToolException("settingsVariant '" + variantName + "' not found in .dcs");
+    }
+
+    /** Находит корневой {@code <dcsset:item xsi:type="dcsset:StructureItemGroup">} внутри settings. */
+    private static Element findStructureItemGroup(Element settings) {
+        NodeList kids = settings.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node n = kids.item(i);
+            if (n.getNodeType() != Node.ELEMENT_NODE || !"dcsset:item".equals(n.getNodeName())) continue;
+            Element it = (Element) n;
+            if ("dcsset:StructureItemGroup".equals(it.getAttribute("xsi:type"))) return it;
+        }
+        return null;
+    }
+
     /** Найти элемент {@code <tag>} (direct child) с {@code <dataPath>X</dataPath>}. */
     private static Element findChildByDataPathTag(Element parent, String tag, String dataPath) {
         NodeList kids = parent.getChildNodes();

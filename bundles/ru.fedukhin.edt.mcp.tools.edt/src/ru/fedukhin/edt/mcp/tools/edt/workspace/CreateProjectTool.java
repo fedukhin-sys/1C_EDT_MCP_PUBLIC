@@ -10,6 +10,7 @@ import com._1c.g5.v8.dt.platform.IRuntimeRegistry;
 import com._1c.g5.v8.dt.platform.version.Version;
 import jakarta.inject.Inject;
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
+import javax.xml.parsers.DocumentBuilderFactory;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
@@ -26,6 +28,10 @@ import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 
@@ -153,9 +159,10 @@ public class CreateProjectTool implements IMcpTool {
         // project without src/Configuration/Configuration.mdo — the BM namespace
         // never activates and deploy later fails with a missing-InternalInfo error.
         boolean configWritten = false;
+        String configWarning = null;
         if ("extension".equals(type)) {
-            writeExtensionConfiguration(created, configurationName(name), namePrefix,
-                    String.valueOf(versionFinal));
+            configWarning = writeExtensionConfiguration(created, parentFinal,
+                    configurationName(name), namePrefix, String.valueOf(versionFinal));
             configWritten = true;
         }
 
@@ -169,6 +176,9 @@ public class CreateProjectTool implements IMcpTool {
             out.put("note", "Configuration.mdo written and project reloaded; "
                     + "the BM namespace may take a few seconds to activate — "
                     + "poll list_md_objects until it succeeds.");
+            if (configWarning != null) {
+                out.put("warning", configWarning);
+            }
         }
         return out;
     }
@@ -186,14 +196,44 @@ public class CreateProjectTool implements IMcpTool {
      * (including the {@code <containedObjects>} block required so deploy does not
      * fail with «Отсутствует InternalInfo») and reloads the project so EDT parses
      * it into the BM model. No-op if the file already exists.
+     *
+     * <p>The adopted {@code <languages>} element must reference the parent
+     * configuration's language by its real {@code uuid} via
+     * {@code extendedConfigurationObject} — otherwise deploy fails with
+     * «Значение контролируемого свойства ОбъектРасширяемойКонфигурации … не
+     * совпадает». The uuid/name/languageCode are read from the parent's
+     * {@code Configuration.mdo}.
+     *
+     * @return a warning message when the parent language could not be resolved
+     *         (a placeholder uuid was used), otherwise {@code null}
      */
-    private void writeExtensionConfiguration(IProject project, String configName,
-                                             String namePrefix, String version)
-                                             throws ToolException {
+    private String writeExtensionConfiguration(IProject project, IProject parent,
+                                               String configName, String namePrefix,
+                                               String version) throws ToolException {
         IFile mdo = project.getFile("src/Configuration/Configuration.mdo");
         if (mdo.exists()) {
-            return;
+            return null;
         }
+
+        ParentLanguage lang = resolveParentLanguage(parent);
+        String warning = null;
+        String langUuid;
+        String langName;
+        String langCode;
+        if (lang != null) {
+            langUuid = lang.uuid;
+            langName = lang.name;
+            langCode = lang.code;
+        } else {
+            langUuid = UUID.randomUUID().toString();
+            langName = "Русский";
+            langCode = "ru";
+            warning = "could not resolve the parent configuration language from its "
+                    + "Configuration.mdo; <languages extendedConfigurationObject> was "
+                    + "filled with a placeholder uuid — deploy will fail until you set "
+                    + "it to the parent language's real uuid.";
+        }
+
         // Fixed mdclass classIds for the 7 contained-object slots an extension
         // Configuration must declare; objectIds are freshly generated.
         String[] classIds = {
@@ -235,16 +275,16 @@ public class CreateProjectTool implements IMcpTool {
         sb.append("  <defaultRunMode>ManagedApplication</defaultRunMode>\n");
         sb.append("  <usePurposes>PersonalComputer</usePurposes>\n");
         sb.append("  <scriptVariant>Russian</scriptVariant>\n");
-        sb.append("  <defaultLanguage>Language.Русский</defaultLanguage>\n");
+        sb.append("  <defaultLanguage>Language.").append(langName).append("</defaultLanguage>\n");
         sb.append("  <languages uuid=\"").append(UUID.randomUUID())
-          .append("\" extendedConfigurationObject=\"").append(UUID.randomUUID()).append("\">\n");
-        sb.append("    <name>Русский</name>\n");
+          .append("\" extendedConfigurationObject=\"").append(langUuid).append("\">\n");
+        sb.append("    <name>").append(langName).append("</name>\n");
         sb.append("    <objectBelonging>Adopted</objectBelonging>\n");
         sb.append("    <extension xsi:type=\"mdclassExtension:LanguageExtension\">\n");
         sb.append("      <extendedConfigurationObject>Checked</extendedConfigurationObject>\n");
         sb.append("      <languageCode>Checked</languageCode>\n");
         sb.append("    </extension>\n");
-        sb.append("    <languageCode>ru</languageCode>\n");
+        sb.append("    <languageCode>").append(langCode).append("</languageCode>\n");
         sb.append("  </languages>\n");
         sb.append("</mdclass:Configuration>\n");
 
@@ -268,6 +308,76 @@ public class CreateProjectTool implements IMcpTool {
             throw new ToolException("extension project created, but writing "
                     + "Configuration.mdo failed: " + e.getMessage());
         }
+        return warning;
+    }
+
+    /** Parent configuration language coordinates needed for an adopted extension language. */
+    private static final class ParentLanguage {
+        final String uuid;
+        final String name;
+        final String code;
+        ParentLanguage(String uuid, String name, String code) {
+            this.uuid = uuid;
+            this.name = name;
+            this.code = code;
+        }
+    }
+
+    /**
+     * Reads the parent configuration's primary {@code <languages>} element from its
+     * {@code src/Configuration/Configuration.mdo}. Returns {@code null} when the file
+     * is missing or cannot be parsed.
+     */
+    private ParentLanguage resolveParentLanguage(IProject parent) {
+        if (parent == null) {
+            return null;
+        }
+        IFile cfg = parent.getFile("src/Configuration/Configuration.mdo");
+        try {
+            if (!cfg.exists()) {
+                return null;
+            }
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(false);
+            try {
+                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            } catch (Exception ignore) {
+                // feature unsupported by this parser — the parsed file is trusted project metadata
+            }
+            Document doc;
+            try (InputStream in = cfg.getContents()) {
+                doc = factory.newDocumentBuilder().parse(in);
+            }
+            NodeList langs = doc.getElementsByTagName("languages");
+            if (langs.getLength() == 0) {
+                return null;
+            }
+            Element lang = (Element) langs.item(0);
+            String uuid = lang.getAttribute("uuid");
+            if (uuid == null || uuid.isEmpty()) {
+                return null;
+            }
+            String name = childText(lang, "name");
+            String code = childText(lang, "languageCode");
+            return new ParentLanguage(uuid,
+                    name == null || name.isEmpty() ? "Русский" : name,
+                    code == null || code.isEmpty() ? "ru" : code);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Text of the first direct child element {@code <tag>} of {@code parent}, or {@code null}. */
+    private static String childText(Element parent, String tag) {
+        NodeList nl = parent.getElementsByTagName(tag);
+        for (int i = 0; i < nl.getLength(); i++) {
+            Node n = nl.item(i);
+            if (n.getParentNode() == parent) {
+                String text = n.getTextContent();
+                return text == null ? null : text.trim();
+            }
+        }
+        return null;
     }
 
     private Version findRuntimeVersion(String s) {

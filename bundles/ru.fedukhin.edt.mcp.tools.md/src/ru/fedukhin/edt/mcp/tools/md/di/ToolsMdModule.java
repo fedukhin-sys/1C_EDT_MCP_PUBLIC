@@ -13,8 +13,11 @@ import ru.fedukhin.edt.mcp.tools.md.AddDcsDataSetLinkTool;
 import ru.fedukhin.edt.mcp.tools.md.AddDcsDataSetQueryTool;
 import ru.fedukhin.edt.mcp.tools.md.AddDcsFieldTool;
 import ru.fedukhin.edt.mcp.tools.md.AddDcsParameterTool;
+import ru.fedukhin.edt.mcp.tools.md.AddDcsSettingFilterTool;
+import ru.fedukhin.edt.mcp.tools.md.AddDcsSettingGroupingTool;
 import ru.fedukhin.edt.mcp.tools.md.AddDcsTotalFieldTool;
 import ru.fedukhin.edt.mcp.tools.md.SetDcsQueryTextTool;
+import ru.fedukhin.edt.mcp.tools.md.SetDcsSettingParameterValueTool;
 import ru.fedukhin.edt.mcp.tools.md.AddExtensionMethodOverrideTool;
 import ru.fedukhin.edt.mcp.tools.md.AddRegisterRecorderTool;
 import ru.fedukhin.edt.mcp.tools.md.AddSubsystemContentTool;
@@ -119,5 +122,9 @@ public final class ToolsMdModule extends AbstractServiceAwareModule {
         bind(AddDcsTotalFieldTool.class);
         bind(AddDcsDataSetLinkTool.class);
         bind(SetDcsQueryTextTool.class);
+        // 2026-05-31 — Stage 8g: settingsVariant editing
+        bind(AddDcsSettingGroupingTool.class);
+        bind(AddDcsSettingFilterTool.class);
+        bind(SetDcsSettingParameterValueTool.class);
     }
 }

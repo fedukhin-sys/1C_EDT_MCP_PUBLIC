@@ -11,8 +11,13 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -102,7 +107,13 @@ public class MdObjectBorrower {
     }
 
     public record BorrowResult(String project, String fqn, String adoptedUuid,
-                                String baseUuid, String mdoPath) { }
+                                String baseUuid, String mdoPath,
+                                List<String> cascadedOwners) {
+        public BorrowResult(String project, String fqn, String adoptedUuid,
+                            String baseUuid, String mdoPath) {
+            this(project, fqn, adoptedUuid, baseUuid, mdoPath, List.of());
+        }
+    }
 
     private final IV8ProjectManager projectManager;
     private final IBmModelManager   bmModelManager;
@@ -114,6 +125,17 @@ public class MdObjectBorrower {
     }
 
     public BorrowResult borrow(IProject extIProject, String fqn) throws ToolException {
+        return borrow(extIProject, fqn, new HashSet<>());
+    }
+
+    /**
+     * Внутренний рекурсивный borrow с visited-set для каскадного обхода owner-цепочек
+     * (Bug A1, 2026-05-31). Catalog с {@code <owners>} требует, чтобы хотя бы один owner
+     * был тоже adopted в extension'е, иначе deploy валится «нельзя добавлять без загрузки
+     * родительского». Cascade: при borrow X — auto-borrow всех owners X, которых ещё нет.
+     */
+    private BorrowResult borrow(IProject extIProject, String fqn, Set<String> visited)
+            throws ToolException {
         // Parse fqn
         int dot = fqn.indexOf('.');
         if (dot <= 0 || dot == fqn.length() - 1) {
@@ -158,9 +180,34 @@ public class MdObjectBorrower {
             throw new ToolException("base " + kind + "." + name + " has no 'uuid' attribute on root");
         }
 
+        // A1 fix (cascade owners): для Catalog читаем <owners> из base. Для каждого
+        // owner-fqn, который НЕ заимствован в extension'е и НЕ адаптирован уже —
+        // borrow его рекурсивно (visited-set против циклов). Без этого Catalog с
+        // owner-родителем валится на deploy «нельзя добавлять без загрузки родительского».
+        List<String> ownersFqns = ("Catalog".equals(kind)) ? readOwners(baseRoot) : List.of();
+        List<String> cascaded = new ArrayList<>();
+        visited.add(fqn);
+        for (String ownerFqn : ownersFqns) {
+            if (visited.contains(ownerFqn)) continue;
+            // Owner FQN format: "Catalog.X"
+            int odot = ownerFqn.indexOf('.');
+            if (odot <= 0) continue;
+            String oName = ownerFqn.substring(odot + 1);
+            IFile ownerAdopted = extIProject.getFile("src/Catalogs/" + oName + "/" + oName + ".mdo");
+            if (ownerAdopted.exists()) continue; // уже borrowed
+            try {
+                borrow(extIProject, ownerFqn, visited);
+                cascaded.add(ownerFqn);
+            } catch (ToolException e) {
+                throw new ToolException("cascade borrow of owner '" + ownerFqn + "' failed: "
+                        + e.getMessage());
+            }
+        }
+
         // Build adopted doc
         String adoptedUuid = UUID.randomUUID().toString();
-        Document adoptedDoc = buildAdoptedDoc(baseRoot, kind, name, adoptedUuid, baseUuid, meta);
+        Document adoptedDoc = buildAdoptedDoc(baseRoot, kind, name, adoptedUuid, baseUuid, meta,
+                ownersFqns);
 
         // Write adopted .mdo
         try {
@@ -191,14 +238,31 @@ public class MdObjectBorrower {
         } catch (Throwable ignored) { /* best-effort */ }
 
         return new BorrowResult(extIProject.getName(), fqn, adoptedUuid, baseUuid,
-                "src/" + meta.folder + "/" + name + "/" + name + ".mdo");
+                "src/" + meta.folder + "/" + name + "/" + name + ".mdo",
+                Collections.unmodifiableList(cascaded));
+    }
+
+    /** Читает {@code <owners>Catalog.X</owners>} child-элементы корня base catalog .mdo. */
+    private static List<String> readOwners(Element baseRoot) {
+        List<String> out = new ArrayList<>();
+        NodeList kids = baseRoot.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node k = kids.item(i);
+            if (k.getNodeType() != Node.ELEMENT_NODE) continue;
+            if (!"owners".equals(k.getNodeName())) continue;
+            if (k.getParentNode() != baseRoot) continue;
+            String txt = k.getTextContent();
+            if (txt != null && !txt.isBlank()) out.add(txt.trim());
+        }
+        return out;
     }
 
     // -------------------------------------------------------------------------
 
     private static Document buildAdoptedDoc(Element baseRoot, String kind, String name,
                                             String adoptedUuid, String baseUuid,
-                                            KindMeta meta) throws ToolException {
+                                            KindMeta meta, List<String> ownersFqns)
+            throws ToolException {
         Document doc;
         try {
             doc = newDocumentBuilder().newDocument();
@@ -231,6 +295,16 @@ public class MdObjectBorrower {
 
         appendText(doc, root, "name", name);
         appendText(doc, root, "objectBelonging", "Adopted");
+
+        // A1 fix: Catalog с <owners> — копируем owner-ссылки из base в adopted.
+        // Документирует ownership-связь и помогает платформе резолвить «нельзя
+        // добавлять без загрузки родительского». Cascade-borrow гарантирует, что
+        // owner-catalog тоже adopted в этом extension'е.
+        if (ownersFqns != null && !ownersFqns.isEmpty()) {
+            for (String owner : ownersFqns) {
+                appendText(doc, root, "owners", owner);
+            }
+        }
 
         Element ext = doc.createElement("extension");
         ext.setAttributeNS(XSI_NS, "xsi:type", "mdclassExtension:" + meta.extType);

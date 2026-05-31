@@ -19,9 +19,11 @@ bin/
 .claude/settings.local.json
 .claude/cache/
 
-# Локальные docs с креденшалами
+# Локальные docs с креденшалами и рабочие артефакты
 docs/Логин-пароль ЕСС.txt
 docs/финальные тесты план.txt
+docs/*.mxl
+docs/*.pdf
 
 # OS / IDE temp
 .DS_Store
@@ -39,3 +41,7 @@ replay_pid*
 .env.local
 *.secret
 docs/errors1.txt
+
+# Claude Code harness runtime
+.claude/scheduled_tasks.lock
+.claude/tasks/

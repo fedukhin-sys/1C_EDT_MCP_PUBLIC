@@ -23,12 +23,21 @@ public class TypeStringFormatterTest {
     @Test public void formatCatalogRef()       { assertEquals("CatalogRef.Goods",   f.formatOne(ParsedType.ref("Catalog", "Goods"))); }
     @Test public void formatDocumentRef()      { assertEquals("DocumentRef.Sale",   f.formatOne(ParsedType.ref("Document", "Sale"))); }
     @Test public void formatEnumRef()          { assertEquals("EnumRef.Status",     f.formatOne(ParsedType.ref("Enum", "Status"))); }
+    @Test public void formatValueStorage()     { assertEquals("ValueStorage", f.formatOne(ParsedType.valueStorage())); }
+    @Test public void formatUuid()             { assertEquals("UUID",         f.formatOne(ParsedType.uuid())); }
+    @Test public void formatAnyRef()           { assertEquals("AnyRef",       f.formatOne(ParsedType.anyRef())); }
+    @Test public void formatChartOfCharacteristicTypesRef() {
+        assertEquals("ChartOfCharacteristicTypesRef.Свойства",
+                f.formatOne(ParsedType.ref("ChartOfCharacteristicTypes", "Свойства")));
+    }
 
     @Test
     public void roundtripCovers_all_basic_forms() throws Exception {
         String[] cases = {
             "String", "String(50)", "Number", "Number(10)", "Number(10,2)",
-            "Date", "Boolean", "CatalogRef.Goods", "DocumentRef.Sale", "EnumRef.Status"
+            "Date", "Boolean", "ValueStorage", "UUID", "AnyRef",
+            "CatalogRef.Goods", "DocumentRef.Sale", "EnumRef.Status",
+            "ChartOfCharacteristicTypesRef.Свойства", "ChartOfAccountsRef.Основной"
         };
         for (String s : cases) {
             assertEquals("roundtrip: " + s, s, f.formatOne(p.parseOne(s)));

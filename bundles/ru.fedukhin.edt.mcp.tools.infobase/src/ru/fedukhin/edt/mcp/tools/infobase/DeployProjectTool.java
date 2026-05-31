@@ -20,6 +20,12 @@ public class DeployProjectTool implements IMcpTool {
     private static final int MIN_TIMEOUT_SECONDS = 30;
     private static final int MAX_TIMEOUT_SECONDS = 3600;
 
+    /**
+     * A real 1cv8 configuration update never completes this fast. A successful
+     * deploy below this duration is a BUG-18 no-op — 1cv8 was not actually run.
+     */
+    private static final long SUSPICIOUS_DEPLOY_MS = 5_000L;
+
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final InfobaseRegistry registry;
     private final InfobaseDeployer deployer;
@@ -81,6 +87,14 @@ public class DeployProjectTool implements IMcpTool {
         out.put("infobase", infobaseName);
         out.put("deployed", res.ok());
         out.put("durationMs", res.durationMs());
+        // BUG-18: a "successful" deploy that returns almost instantly did not
+        // actually run 1cv8 — surface it instead of reporting a false success.
+        if (res.ok() && res.durationMs() < SUSPICIOUS_DEPLOY_MS) {
+            out.put("warning", "deploy returned in " + res.durationMs() + " ms — too fast "
+                    + "for a real 1cv8 configuration update (BUG-18 no-op): the configuration "
+                    + "was most likely NOT applied. Ensure no Enterprise clients or debug "
+                    + "sessions hold infobase '" + infobaseName + "', then retry deploy_project.");
+        }
         return out;
     }
 

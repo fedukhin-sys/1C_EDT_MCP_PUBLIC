@@ -1,22 +1,20 @@
 package ru.fedukhin.edt.mcp.tools.form;
 
-import com._1c.g5.v8.bm.core.IBmObject;
-import com._1c.g5.v8.bm.core.IBmTransaction;
-import com._1c.g5.v8.bm.integration.IBmSingleNamespaceTask;
-import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import jakarta.inject.Inject;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.emf.ecore.EObject;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
-import ru.fedukhin.edt.mcp.tools.form.internal.FormReader;
-import ru.fedukhin.edt.mcp.tools.form.internal.MdObjectLocator;
+import ru.fedukhin.edt.mcp.tools.form.internal.FormFileReader;
 
 /**
  * {@code get_form} — детальная информация о конкретной форме по FQN.
@@ -24,34 +22,29 @@ import ru.fedukhin.edt.mcp.tools.form.internal.MdObjectLocator;
  * <p>Args: {@code { project, fqn }}
  * <p>Result: {@code { fqn, name, title?, items[], tree[], attributes[], commands[], hasModule, modulePath? }}
  *
- * <p>Spike §9.2: fqn = {@code Catalog.X.Form.Y} или {@code CommonForm.Y}.
- * Form-object в BM — top-object типа CatalogForm/DocumentForm/… (BasicForm subtype).
- * Детальные данные (items, attributes, commands) живут на {@code basicForm.getForm()} —
- * AbstractForm. Но поскольку BasicForm тоже EObject, FormReader применяет рефлексию
- * и автоматически попробует getItems()/getAttributes()/getFormCommands() на нём.
- * Если у BasicForm этих методов нет — FormReader вернёт пустые списки (best-effort).
+ * <p>fqn = {@code Catalog.X.Form.Y} или {@code CommonForm.Y}.
+ *
+ * <p>2026-05-31 A8 fix: tool читает {@code Form.form} напрямую с диска (через
+ * {@link FormFileReader}), а не из BM-модели. До фикса использовалась BM-рефлексия
+ * с мити­гацией {@code refreshLocal + waitModelSynchronization}, которая всё равно
+ * могла отдать stale данные сразу после {@code create_form}/{@code add_form_*}
+ * (Xtext re-parse отстаёт). Disk-read даёт fresh data всегда и снимает зависимость
+ * от BM-sync timing.
  */
 public final class GetFormTool implements IMcpTool {
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
-    private final IBmModelManager bm;
-    private final MdObjectLocator locator;
-    private final FormReader formReader;
+    private final FormFileReader formFileReader;
 
     @Inject
-    public GetFormTool(IBmModelManager bm, MdObjectLocator locator, FormReader formReader) {
-        this(() -> ResourcesPlugin.getWorkspace().getRoot(), bm, locator, formReader);
+    public GetFormTool(FormFileReader formFileReader) {
+        this(() -> ResourcesPlugin.getWorkspace().getRoot(), formFileReader);
     }
 
     /** Test seam. */
-    public GetFormTool(Supplier<IWorkspaceRoot> rootSupplier,
-                       IBmModelManager bm,
-                       MdObjectLocator locator,
-                       FormReader formReader) {
-        this.rootSupplier = rootSupplier;
-        this.bm           = bm;
-        this.locator      = locator;
-        this.formReader   = formReader;
+    public GetFormTool(Supplier<IWorkspaceRoot> rootSupplier, FormFileReader formFileReader) {
+        this.rootSupplier   = rootSupplier;
+        this.formFileReader = formFileReader;
     }
 
     @Override public String name()        { return "get_form"; }
@@ -80,79 +73,57 @@ public final class GetFormTool implements IMcpTool {
         if (project == null || !project.exists() || !project.isOpen()) {
             throw new ToolException("project '" + projectName + "' not found or not open");
         }
+        // Lightweight refresh — workspace local refresh подхватывает свежезаписанные
+        // файлы (например после create_form). BM-sync уже не нужен — мы читаем .form
+        // напрямую с диска.
+        try {
+            project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor());
+        } catch (CoreException ignored) {
+            // best-effort
+        }
 
-        Map<String, Object>[] result = new Map[1];
-        Throwable[] err = new Throwable[1];
+        String formRel = deriveFormPath(fqn);
+        if (formRel == null) {
+            throw new ToolException("cannot derive Form.form path from fqn '" + fqn
+                    + "'; expected 'CommonForm.X' or '<Kind>.<Owner>.Form.<Name>'");
+        }
+        IFile formFile = project.getFile(formRel);
+        if (!formFile.exists()) {
+            throw new ToolException("Form.form not found at " + formRel);
+        }
 
-        bm.executeReadOnlyTask(project, (IBmSingleNamespaceTask<Void>) txn -> {
-            try {
-                // Stage 6 fix: формы — inline-nested в parent .mdo, не top-objects.
-                // findForm делает parent traversal для Kind.Name.Form.X и
-                // top-lookup для CommonForm.X.
-                IBmObject bmObj = locator.findForm(txn, fqn, projectName);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("fqn", fqn);
+        m.put("name", deriveName(fqn));
 
-                // bmObj is BasicForm (CatalogForm, DocumentForm, etc.)
-                // Try to get the AbstractForm from getForm() for rich detail
-                Object formDetail = getAbstractForm(bmObj);
-                Object formForReader = (formDetail != null) ? formDetail : bmObj;
+        String title = formFileReader.readTitle(formFile);
+        if (title != null && !title.isEmpty()) m.put("title", title);
 
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("fqn", fqn);
-                m.put("name", deriveName(fqn));
+        m.put("items",      formFileReader.readItemsFlat(formFile));
+        m.put("tree",       formFileReader.readItemsTree(formFile));
+        m.put("attributes", formFileReader.readAttributes(formFile));
+        m.put("commands",   formFileReader.readCommands(formFile));
 
-                // Title — from the AbstractForm (Titled interface)
-                Object titleMap = invoke(formForReader, "getTitle");
-                if (titleMap != null) {
-                    String titleStr = FormReader.extractLocalizedString(titleMap);
-                    if (titleStr != null && !titleStr.isEmpty()) {
-                        m.put("title", titleStr);
-                    }
-                }
+        String modulePath = deriveModulePath(fqn);
+        IFile moduleFile  = modulePath != null ? project.getFile(modulePath) : null;
+        boolean hasModule = moduleFile != null && moduleFile.exists();
+        m.put("hasModule", hasModule);
+        if (hasModule) m.put("modulePath", modulePath);
 
-                // Items / tree
-                m.put("items", formReader.readItemsFlat(formForReader));
-                m.put("tree",  formReader.readItemsTree(formForReader));
-
-                // Attributes / commands
-                m.put("attributes", formReader.readAttributes(formForReader));
-                m.put("commands",   formReader.readCommands(formForReader));
-
-                // Module
-                Object module = invoke(formForReader, "getModule");
-                boolean hasModule = (module != null);
-                m.put("hasModule", hasModule);
-                if (hasModule) {
-                    m.put("modulePath", deriveModulePath(fqn));
-                }
-
-                result[0] = m;
-            } catch (ToolException e) {
-                err[0] = e;
-            }
-            return null;
-        });
-
-        if (err[0] instanceof ToolException te) throw te;
-        return result[0];
+        return m;
     }
 
-    /** Try to get the AbstractForm from a BasicForm via getForm(). */
-    private static Object getAbstractForm(Object bmObj) {
-        try {
-            Object form = bmObj.getClass().getMethod("getForm").invoke(bmObj);
-            return form;
-        } catch (ReflectiveOperationException e) {
-            return null;
+    /** Derive the disk-path of Form.form from FQN. */
+    private static String deriveFormPath(String fqn) {
+        if (fqn == null || fqn.isEmpty()) return null;
+        if (fqn.startsWith("CommonForm.")) {
+            return "src/CommonForms/" + fqn.substring("CommonForm.".length()) + "/Form.form";
         }
-    }
-
-    private static Object invoke(Object obj, String method) {
-        if (obj == null) return null;
-        try {
-            return obj.getClass().getMethod(method).invoke(obj);
-        } catch (ReflectiveOperationException e) {
-            return null;
+        String[] parts = fqn.split("\\.");
+        if (parts.length == 4 && "Form".equals(parts[2])) {
+            return "src/" + pluralize(parts[0]) + "/" + parts[1] + "/Forms/" + parts[3] + "/Form.form";
         }
+        return null;
     }
 
     /**

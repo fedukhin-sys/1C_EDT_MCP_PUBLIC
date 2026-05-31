@@ -97,6 +97,9 @@ public final class BorrowMdObjectTool implements IMcpTool {
         result.put("adoptedUuid", res.adoptedUuid());
         result.put("baseUuid",    res.baseUuid());
         result.put("mdoPath",     res.mdoPath());
+        if (res.cascadedOwners() != null && !res.cascadedOwners().isEmpty()) {
+            result.put("cascadedOwners", res.cascadedOwners());
+        }
         return result;
     }
 
