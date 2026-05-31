@@ -1,6 +1,6 @@
 # EDT_MCP
 
-MCP-сервер для 1C:EDT — **v1.15.1** (workspace, проекты, модули BSL, инфобазы, деплой, запуск клиента, отладка, проверки качества, редактирование метаданных, авторство форм, xUnitFor1C, схемы СКД, журнал регистрации).
+MCP-сервер для 1C:EDT — **v1.15.5** (workspace, проекты, модули BSL, инфобазы, деплой, запуск клиента, отладка, проверки качества, редактирование метаданных, авторство форм, xUnitFor1C, схемы СКД, журнал регистрации).
 
 Поднимает Bearer-защищённый HTTP+SSE MCP-сервер внутри 1C:EDT с **89 инструментами** для управления workspace'ом, проектами, модулями BSL, информационными базами (включая deploy), запуском клиента 1С, сессиями отладки, проверками качества, метаданными (CRUD + editor для 11 видов объектов и табличных частей), формами (создание + UI-элементы), схемами компоновки данных (`.dcs`), журналом регистрации и xUnitFor1C (создание модулей + auto-run).
 
@@ -8,68 +8,31 @@ UI: страница Preferences, статус-бар, команды Start/Stop
 
 ---
 
-## Установка из update site (рекомендуется)
+## Быстрый старт
 
-Готовый p2-репозиторий публикуется на GitHub Pages — собирать из исходников не нужно.
+От установки плагина до первого вызова MCP-инструмента из Claude Code / Claude Desktop / любого MCP-клиента. Сборка из исходников не нужна — плагин ставится из готового update site (для разработки из исходников см. раздел [Сборка из исходников](#сборка-из-исходников)).
 
-В 1C:EDT: **Help → Install New Software → Add…**, в поле *Location* вставить:
+### 1. Установить 1C:EDT
+
+**1C:EDT 2026.1** или новее (с поддержкой 1С:Предприятие 8.3.27) — [edt.1c.ru](https://edt.1c.ru/). Больше ничего ставить не нужно: JDK, Maven и сборка требуются только при работе из исходников.
+
+### 2. Установить плагин из update site
+
+В 1C:EDT: **Help → Install New Software → Add…**, в поле *Location* вставить URL и нажать **Add**:
 
 ```
 https://fedukhin-sys.github.io/1C_EDT_MCP_PUBLIC/
 ```
 
-Отметить **EDT MCP** → Next → принять лицензию (Apache 2.0) → Finish → рестарт IDE.
-Обновление позже — тем же диалогом (**Check for Updates**): EDT подтянет свежую версию.
+Отметить **EDT MCP** → Next (EDT сам разрешит зависимости) → принять лицензию (Apache 2.0) → Finish → рестарт IDE.
 
-Альтернатива (офлайн): скачать ZIP из [Releases](https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases) и **Add → Archive…**.
+После рестарта в правом нижнем углу появится статус-бар `MCP: stopped`.
 
-После установки — сразу к шагу [5. Настроить и запустить](#5-настроить-и-запустить).
+Обновление позже — тем же диалогом (**Help → Check for Updates**): EDT подтянет свежую версию из того же URL.
 
-> Как этот update site собирается и публикуется (self-hosted runner + Pages) — см. [`docs/p2-publishing.md`](docs/p2-publishing.md).
+> Альтернатива (офлайн): скачать ZIP из [Releases](https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases) и **Add → Archive…**.
 
----
-
-## Быстрый старт с нуля
-
-Пошаговый сценарий: от пустой машины до первого вызова MCP-инструмента из Claude Code / Claude Desktop / любого MCP-клиента.
-
-### 1. Установить окружение
-
-- **1C:EDT 2026.1** или новее (с поддержкой 1С:Предприятие 8.3.27). [edt.1c.ru](https://edt.1c.ru/).
-- **JDK 17** (для сборки плагина из исходников). 1C:EDT приходит со своим JDK — его можно использовать.
-- **Maven 3.9+** — для сборки. На Windows необязательно добавлять в `PATH`, можно вызывать `bin/mvn.cmd` по абсолютному пути.
-- **Git** — клонировать репозиторий.
-
-### 2. Получить исходники
-
-```bash
-git clone https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC.git
-cd 1C_EDT_MCP_PUBLIC
-```
-
-### 3. Собрать p2-репозиторий
-
-Tycho тянет target platform из локально установленного 1C:EDT (пул p2 в `C:/Users/<user>/.p2/pool/plugins` на Windows, аналогично на других ОС — см. `targets/default/default.target`):
-
-```bash
-mvn clean verify
-```
-
-После сборки готовый p2-сайт лежит в:
-
-```
-repositories/ru.fedukhin.edt.mcp.repository/target/repository/
-```
-
-Это локальный URL, который понадобится на следующем шаге.
-
-### 4. Установить плагин в 1C:EDT
-
-В IDE: **Help → Install New Software → Add → Local…**, указать путь на собранный `repository/`. В списке появится **EDT MCP** — отметить, Next, принять лицензию (Apache 2.0), Finish, рестарт IDE.
-
-После рестарта в нижнем правом углу появится статус-бар `MCP: stopped`.
-
-### 5. Настроить и запустить
+### 3. Настроить и запустить
 
 **Window → Preferences → EDT MCP**:
 - **Port** — порт SSE (по умолчанию `3001`);
@@ -78,7 +41,7 @@ repositories/ru.fedukhin.edt.mcp.repository/target/repository/
 
 Запустить: **Window → EDT MCP → Start** (или клик по статус-бару). Статус становится `MCP :3001 ●` (зелёный).
 
-### 6. Проверить, что работает
+### 4. Проверить, что работает
 
 Через `curl` (любой MCP-клиент достаточно, чтобы убедиться что сервер отдаёт SSE-handshake):
 
@@ -98,7 +61,7 @@ npx @modelcontextprotocol/inspector --transport sse \
 
 В разделе Tools должно быть **89 инструментов**.
 
-### 7. Подключить из MCP-клиента
+### 5. Подключить из MCP-клиента
 
 #### Claude Code
 
@@ -170,9 +133,21 @@ claude mcp add edt-mcp \
 | `tools.testrun` | Запуск тестов xUnit | 4 |
 | **Итого** | | **89** |
 
-## Build
+## Сборка из исходников
 
-См. [`CONTRIBUTING.md`](CONTRIBUTING.md) — требования к окружению, Maven/Tycho-сборка, тесты, релизный процесс.
+Нужна только разработчикам плагина — для обычной установки достаточно [update site](#2-установить-плагин-из-update-site).
+
+Требуется: **1C:EDT 2026.1+**, **JDK 17**, **Maven 3.9+**, **Git**.
+
+```bash
+git clone https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC.git
+cd 1C_EDT_MCP_PUBLIC
+mvn clean verify
+```
+
+Tycho тянет target platform из локально установленного 1C:EDT (пул p2 в `C:/Users/<user>/.p2/pool/plugins` на Windows — см. `targets/default/default.target`). Готовый p2-сайт окажется в `repositories/ru.fedukhin.edt.mcp.repository/target/repository/` — его можно поставить через **Help → Install New Software → Add → Local…**.
+
+Подробнее об окружении, тестах и релизном процессе — [`CONTRIBUTING.md`](CONTRIBUTING.md). Как публикуется update site (self-hosted runner + GitHub Pages) — [`docs/p2-publishing.md`](docs/p2-publishing.md).
 
 ## Лицензия
 
