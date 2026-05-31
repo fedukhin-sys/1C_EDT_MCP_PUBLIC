@@ -333,75 +333,32 @@ Tool сам создаёт файл если его нет, дописывает
 
 ## Known bugs и workarounds
 
-| # | Tool | Симптом | Workaround |
+История багов BUG-01..BUG-18 — все закрыты в коде MCP-сервера (v1.13.0..v1.15.2). Реальных open-issue нет.
+
+| # | Tool | Что было | Сейчас |
 |---|---|---|---|
-| **BUG-01** | `create_project` (extension) | Создаёт каркас на диске (`.project`, `DT-INF`), но не пишет `src/Configuration/Configuration.mdo` → BM сообщает `internal error: The namespace 'X' is inactive` на любые операции | После `create_project`: `close_project`, **руками** записать `src/Configuration/Configuration.mdo` (см. шаблон ниже), `open_project`, дождаться ~10-80s пока BM активизируется (опрос `list_md_objects` до OK) |
-| **BUG-02** | Любой Tool с ToolException | Текст `internal error: null` (реальная причина проглочена) | Если tool падает с `null`-сообщением, прогони ту же операцию через `node mcp-poll.js` (захватывает `content[0].text`) — увидишь реальную причину |
-| **BUG-03** | `get_md_object` | type для не-String атрибутов (Date/Boolean/Refs) возвращается пустой строкой; на диске .mdo правильный | Не доверяй `get_md_object` для type — читай `.mdo` напрямую через `list_project_files` + Read |
-| **BUG-04** | `get_form` | attribute types и command titles форматируются как Java toString (`com._1c.g5.v8.dt.mcore.impl.TypeDescriptionImpl@…`) | См. `Form.form` на диске |
-| **BUG-05** | `create_form` | Создаёт только `Form.form`, не создаёт `Module.bsl` рядом | Создавай stub файлом перед `write_module`: `[System.IO.File]::WriteAllText(path, "", [System.Text.UTF8Encoding]::new($false))` |
-| **BUG-06** | `set_form_handler` | Записывает связку в `Form.form`, но не создаёт `Module.bsl` и не объявляет stub-процедуру с правильной аннотацией | После `set_form_handler` — `write_module` со всем телом, включая `&НаСервере`/`&НаКлиенте` и нужной сигнатурой |
-| **BUG-07** | `set_md_property` | Whitelist слишком узкий — `writeMode` (InformationRegister), `defaultForm` (Report), `serverCall` (CommonModule) не пускает | Дефолты обычно правильные (`writeMode=Independent`). Если нужно `defaultForm` — впиши `<defaultForm>CommonForm.X</defaultForm>` в `.mdo` напрямую |
-| **BUG-08** | `install_test_runner` | Падает с `property 'serverCall' is not whitelisted for kind CommonModule` (внутри использует `set_md_property`) | Создай два модуля руками: `EDT_MCP_TestRunner_Клиент` (Client=true) и `EDT_MCP_TestRunner_Сервер` (Server=true), и добавь в `Configuration/ManagedApplicationModule.bsl` обработчик `ПриНачалеРаботыСистемы` который ищет `EDT_MCP_TESTS=` в `ПараметрЗапуска`. Без runner'а `run_tests`/`run_test_method` тоже не работают. |
-| **BUG-09** | `write_module` | Не создаёт новый файл (`module 'X' not found in project`) | До `write_module` создай пустой файл через PowerShell: `[System.IO.File]::WriteAllText(path, "", [System.Text.UTF8Encoding]::new($false))` |
-| **BUG-10** | `borrow_form_pictures` | Документация говорит «parentFqn», но **обязательно** Form-FQN (`Document.X.Form.Y` или `CommonForm.Y`), а не родительский MdObject FQN | Передавай Form-FQN, не родителя |
-| **BUG-11** | `create_project` (extension) | Deploy чисто пересозданного через MCP extension падает: «Файл `/Configuration.xml`, узел Configuration: Отсутствует внутренняя информация (узел InternalInfo)» — в `Configuration.mdo` нет `<containedObjects>`, который генерируется UI-wizard'ом | Не пересоздавай extension через MCP — пользователь создаёт пустое расширение через UI EDT, а ты работаешь поверх. Если всё же надо — впиши **руками** в `Configuration.mdo` блок `<containedObjects classId="..." objectId="..."/>` × 7 (взять classId из любого рабочего extension, generate новые objectId) + `<keepMappingToExtendedConfigurationObjectsByIDs>true</keepMappingToExtendedConfigurationObjectsByIDs>` |
-| **BUG-12** | `create_form` | Не генерирует элемент `<commandInterface>` → графический редактор форм EDT падает с `NullPointerException: FormCommandInterface.getNavigationPanel() … "ci" is null`, форма **не отрисовывается в редакторе** (рантайм при этом работает). Видно в `.metadata/.log` | Дописать в `Form.form` перед `<extInfo>`: `<commandInterface><navigationPanel/><commandBar/></commandInterface>` |
-| **BUG-13** | `create_form` | Не назначает форму основной формой объекта. Для Catalog/Document не пишет `<defaultObjectForm>`, для DataProcessor — `<defaultForm>`. Итог: 1С открывает авто-форму, **обработчики кастомной формы не срабатывают** | Вписать в `.mdo` объекта: Catalog/Document — `<defaultObjectForm>Kind.X.Form.Y</defaultObjectForm>`; DataProcessor — `<defaultForm>DataProcessor.X.Form.Y</defaultForm>` |
-| **BUG-14** | `add_attribute`, `set_md_type` | Парсер типов поддерживает только `String/Number/Date/Boolean/CatalogRef/DocumentRef/EnumRef/AnyRef`. `ValueStorage`, `UUID`, `ChartOfCharacteristicTypesRef` и т.п. → `cannot parse type string` | Создать атрибут с типом-заглушкой (`Boolean`), затем вписать нужный `<types>…</types>` в `.mdo` напрямую (Edit-тулом, не PowerShell) |
-| **BUG-15** | `create_md_object` | Аргумент `synonym` игнорируется — `<synonym>` в `.mdo` не пишется (проверено на Catalog, Subsystem) | Вписать `<synonym><key>ru</key><value>…</value></synonym>` в `.mdo` сразу после `<name>` |
-| **BUG-16** | `list_attributes`, `get_form` | Сразу после мутации возвращают пусто/устаревшее (BM async): `list_attributes` → `{"attributes":[]}`, хотя атрибуты на диске уже есть | Проверяй по `.mdo`/`.form` на диске; либо повторный вызов после паузы |
-| **BUG-17** | `add_extension_method_override` | Метод `&После`/`&Перед`/`&ИзменениеИКонтроль` в модуле объекта без препроцессорной обёртки → error «Метод расширения имеет большую видимость» | Обернуть метод в ТУ ЖЕ `#Если…Тогда … #КонецЕсли`, что и базовый `ObjectModule.bsl` (Catalog/Document — обычно `#Если Сервер Или ТолстыйКлиентОбычноеПриложение Или ВнешнееСоединение Тогда`; `Номенклатура` — вложенная `#Если НЕ МобильныйАвтономныйСервер` + `#Если Сервер…`) |
-| **BUG-18** | `deploy_project` | Иногда возвращает `deployed:true` за ~200 мс без реального запуска 1cv8 (no-op), вместо честных ~30-80 с | Подозрительно малый `durationMs` = деплоя не было. Останови все клиенты и debug-сессии перед деплоем, повтори |
+| **BUG-01** | `create_project` (extension) | Не писал `Configuration.mdo` → BM "namespace inactive" | FIXED v1.10.x: tool сам пишет шаблон c `<containedObjects>` × 7 и языковой адаптацией |
+| **BUG-02** | Любой Tool | `internal error: null` — реальная причина проглочена | FIXED: ошибки пробрасываются через `content[0].text` с cause-chain |
+| **BUG-03** | `get_md_object` | type для не-String атрибутов — пустая строка | FIXED v1.10.x: правильное форматирование TypeDescription |
+| **BUG-04** | `get_form` | Java toString вместо человекочитаемого type/title | FIXED: TypeDescription + EMap-локализация форматируются правильно |
+| **BUG-05** | `create_form` | Не создавал `Module.bsl` рядом с `Form.form` | FIXED: пустой `Module.bsl` создаётся, путь возвращается в `modulePath` |
+| **BUG-06** | `set_form_handler` | Не дописывал stub-процедуру в `Module.bsl` | FIXED v1.15.2: дописывает stub с правильной аннотацией (`&НаСервере`/`&НаКлиенте`) и стандартной сигнатурой для event'а; идемпотент по handler name. Возвращает `stubAdded` (boolean) |
+| **BUG-07** | `set_md_property` | `writeMode`/`defaultForm`/`serverCall` не в whitelist | FIXED: все три в whitelist; `defaultForm` — универсальное имя, dispatch по kind в `setDefaultObjectForm`/`setDefaultForm`/`setDefaultRecordForm`/`setDefaultListForm` (v1.15.2) |
+| **BUG-08** | `install_test_runner` | Падал на `serverCall` whitelist | FIXED: после BUG-07; live smoke 2026-05-17 на v1.0.8 PASS |
+| **BUG-09** | `write_module` | Не создавал новый файл | FIXED: флаг `creating`, `file.create()` + `createParentFolders()` |
+| **BUG-10** | `borrow_form_pictures` | Документ говорил `parentFqn`, требовался Form-FQN | FIXED: переименовано в `formFqn` (старое имя — deprecated alias) |
+| **BUG-11** | `create_project` (extension) | Deploy валился на отсутствии `<containedObjects>` | FIXED (вместе с BUG-01): шаблон содержит 7 `<containedObjects>` + `keepMappingToExtendedConfigurationObjectsByIDs` |
+| **BUG-12** | `create_form` | Не писал `<commandInterface>` → NPE в редакторе форм EDT | FIXED: шаблон содержит `<commandInterface><navigationPanel/><commandBar/></commandInterface>` |
+| **BUG-13** | `create_form` | Не назначал форму основной | FIXED: `setDefaultFormIfUnset` через reflection (Catalog/Document → `DefaultObjectForm`, DataProcessor/Report → `DefaultForm`, InformationRegister → `DefaultRecordForm`, AccumulationRegister → `DefaultListForm`); idempotent |
+| **BUG-14** | `add_attribute`, `set_md_type` | Парсер не понимал `ValueStorage`/`UUID`/`<Kind>Ref` для всех kind | FIXED: `ValueStorage`, `UUID`, `AnyRef` — explicit; `<Kind>Ref` — generic regex (все 11 kind ссылок) |
+| **BUG-15** | `create_md_object` | `synonym` игнорировался | FIXED: пишется в `EMap<String,String>` с ключом `defaultLanguage.languageCode` (fallback `ru`) |
+| **BUG-16** | `list_attributes`, `get_form` | Возвращали устаревшее сразу после мутации (BM async) | FIXED: disk-read из `.mdo`/`.form` (минуя BM-модель) |
+| **BUG-17** | `add_extension_method_override` | Override-метод без препроцессорной обёртки | FIXED: `ObjectModuleGuard` дублирует guard из базового `ObjectModule.bsl` (включая вложенные `#Если`) |
+| **BUG-18** | `deploy_project` | Иногда no-op за ~200 мс c `deployed:true` | DETECTION: если `durationMs < SUSPICIOUS_DEPLOY_MS` — возвращает warning "BUG-18 no-op", советует остановить клиенты/debug |
 
-## Шаблон минимального `Configuration.mdo` для extension (workaround BUG-01)
+### Известное ограничение (не баг)
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<mdclass:Configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" xmlns:mdclassExtension="http://g5.1c.ru/v8/dt/metadata/mdclass/extension" uuid="{{NEW-GUID}}">
-  <name>{{EXTENSION-NAME}}</name>
-  <synonym><key>ru</key><value>{{EXTENSION-NAME}}</value></synonym>
-  <objectBelonging>Adopted</objectBelonging>
-  <extension xsi:type="mdclassExtension:ConfigurationExtension">
-    <defaultRunMode>Checked</defaultRunMode>
-    <usePurposes>Checked</usePurposes>
-    <defaultLanguage>Checked</defaultLanguage>
-  </extension>
-  <containedObjects classId="9cd510cd-abfc-11d4-9434-004095e12fc7" objectId="{{NEW-GUID}}"/>
-  <containedObjects classId="9fcd25a0-4822-11d4-9414-008048da11f9" objectId="{{NEW-GUID}}"/>
-  <containedObjects classId="e3687481-0a87-462c-a166-9f34594f9bba" objectId="{{NEW-GUID}}"/>
-  <containedObjects classId="9de14907-ec23-4a07-96f0-85521cb6b53b" objectId="{{NEW-GUID}}"/>
-  <containedObjects classId="51f2d5d8-ea4d-4064-8892-82951750031e" objectId="{{NEW-GUID}}"/>
-  <containedObjects classId="e68182ea-4237-4383-967f-90c1e3370bc7" objectId="{{NEW-GUID}}"/>
-  <containedObjects classId="fb282519-d103-4dd3-bc12-cb271d631dfc" objectId="{{NEW-GUID}}"/>
-  <keepMappingToExtendedConfigurationObjectsByIDs>true</keepMappingToExtendedConfigurationObjectsByIDs>
-  <namePrefix>{{PREFIX_}}</namePrefix>
-  <configurationExtensionCompatibilityMode>{{RUNTIME-VER}}</configurationExtensionCompatibilityMode>
-  <configurationExtensionPurpose>Customization</configurationExtensionPurpose>
-  <defaultRunMode>ManagedApplication</defaultRunMode>
-  <usePurposes>PersonalComputer</usePurposes>
-  <scriptVariant>Russian</scriptVariant>
-  <defaultLanguage>Language.{{PARENT-LANGUAGE-NAME}}</defaultLanguage>
-  <languages uuid="{{NEW-GUID}}" extendedConfigurationObject="{{PARENT-LANGUAGE-UUID}}">
-    <name>{{PARENT-LANGUAGE-NAME}}</name>
-    <objectBelonging>Adopted</objectBelonging>
-    <extension xsi:type="mdclassExtension:LanguageExtension">
-      <extendedConfigurationObject>Checked</extendedConfigurationObject>
-      <languageCode>Checked</languageCode>
-    </extension>
-    <languageCode>{{PARENT-LANGUAGE-CODE}}</languageCode>
-  </languages>
-</mdclass:Configuration>
-```
-
-**`<languages>` адаптированного языка обязан ссылаться на язык родительской конфигурации:**
-- `extendedConfigurationObject` = **реальный `uuid`** элемента `<languages>` из `Configuration.mdo` родительской конфигурации (НЕ новый GUID!). Это `{{PARENT-LANGUAGE-UUID}}`. Возьми его так: открой `<parent>/src/Configuration/Configuration.mdo`, найди `<languages uuid="…">` — это и есть нужный uuid.
-- `{{PARENT-LANGUAGE-NAME}}` и `{{PARENT-LANGUAGE-CODE}}` — `<name>` и `<languageCode>` того же языка родителя (обычно `Русский` / `ru`).
-- Только `uuid` самого `<languages>` (первый атрибут) — свой, новый `{{NEW-GUID}}`.
-
-Если поставить случайный `extendedConfigurationObject`, EDT даст `major`-маркер «Не найден объект расширяемой конфигурации с внутренним идентификатором …», а `deploy_project` упадёт: «Значение контролируемого свойства ОбъектРасширяемойКонфигурации у объекта Язык.… не совпадает со значением в расширяемой конфигурации».
-
-После записи файла → `open_project` → опрос `list_md_objects` пока вернёт OK (10-80 секунд). Файл писать **UTF-8 без BOM**, иначе EDT может ругаться на кодировку.
+**Extension attributes на adopted Document + form binding** — EDT-редактор формы подсвечивает «Объект.X 2 сегмент ссылается на неизвестный объект» для new attributes на adopted Document, выведенных на форму. `deploy` зелёный, расширение работает в runtime. Workaround: использовать собственный Document расширения (а не adopted) для new attributes с form binding'ом.
 
 ## Smoke harness
 

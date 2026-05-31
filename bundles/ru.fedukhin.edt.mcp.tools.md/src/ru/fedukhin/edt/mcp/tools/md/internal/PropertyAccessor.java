@@ -19,6 +19,10 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
  *   <li>CommonModule additionally: server, client, externalConnection, global, privileged,
  *       serverCallsAllowed / serverCall (boolean — aliases).</li>
  *   <li>InformationRegister additionally: writeMode (String: Independent / RecorderSubordinate).</li>
+ *   <li>Catalog/Document/Report/DataProcessor/InformationRegister/AccumulationRegister
+ *       additionally: {@code defaultForm} — value-EObject формы. Маппится в kind-specific
+ *       свойство (DefaultObjectForm/DefaultForm/DefaultRecordForm/DefaultListForm). Резолв FQN
+ *       формы делает {@link ru.fedukhin.edt.mcp.tools.md.SetMdPropertyTool}.</li>
  *   <li>Attribute/Dimension/Resource: synonym (String), comment (String);
  *       type — только через add_attribute/rename_attribute.</li>
  * </ul>
@@ -43,6 +47,12 @@ public final class PropertyAccessor {
     private static final Set<String> ATTRIBUTE_PROPS = Set.of("synonym", "comment", "type");
     /** InformationRegister-only properties (BUG-07). */
     private static final Set<String> INFORMATION_REGISTER_PROPS = Set.of("writeMode");
+    /** Kinds whose objects support a "default form" (BUG-07 follow-up). */
+    private static final Set<String> DEFAULT_FORM_KINDS =
+            Set.of("Catalog", "Document", "Report", "DataProcessor",
+                   "InformationRegister", "AccumulationRegister",
+                   "ChartOfCharacteristicTypes", "ChartOfAccounts", "ChartOfCalculationTypes",
+                   "BusinessProcess", "Task", "ExchangePlan");
 
     private final IV8ProjectManager projectManager;
 
@@ -71,9 +81,11 @@ public final class PropertyAccessor {
 
         boolean isCommonModule = "CommonModule".equals(kind);
         boolean isInformationRegister = "InformationRegister".equals(kind);
+        boolean isDefaultForm = "defaultForm".equals(property) && DEFAULT_FORM_KINDS.contains(kind);
         if (!allowed.contains(property)
                 && !(isCommonModule && COMMON_MODULE_FLAGS.contains(property))
-                && !(isInformationRegister && INFORMATION_REGISTER_PROPS.contains(property))) {
+                && !(isInformationRegister && INFORMATION_REGISTER_PROPS.contains(property))
+                && !isDefaultForm) {
             throw new ToolException("property '" + property + "' is not whitelisted for kind " + kind);
         }
         try {
@@ -101,6 +113,15 @@ public final class PropertyAccessor {
                 case "writeMode":
                     // BUG-07: InformationRegister write mode (Independent / RecorderSubordinate).
                     setWriteMode(target, requireString(value, property));
+                    break;
+                case "defaultForm":
+                    // BUG-07: kind-specific default form. value must be the form EObject
+                    // already resolved (SetMdPropertyTool does the FQN lookup).
+                    if (!(value instanceof EObject formObj)) {
+                        throw new ToolException("'defaultForm' expects a resolved form EObject; "
+                                + "callers must resolve the FQN before invoking the accessor");
+                    }
+                    setDefaultForm(target, kind, formObj);
                     break;
                 case "server":
                 case "externalConnection":
@@ -173,6 +194,42 @@ public final class PropertyAccessor {
         } catch (ReflectiveOperationException e) {
             throw new ToolException("failed to set writeMode: " + e.getMessage());
         }
+    }
+
+    /**
+     * Sets a kind-specific "default form" property (BUG-07). The mdclass property name
+     * depends on the owner kind: {@code Catalog}/{@code Document} → {@code DefaultObjectForm};
+     * {@code Report}/{@code DataProcessor} → {@code DefaultForm}; {@code InformationRegister}
+     * → {@code DefaultRecordForm}; {@code AccumulationRegister} → {@code DefaultListForm}.
+     * Resolution is reflective so this class stays independent of the concrete mdclass
+     * interfaces.
+     */
+    static void setDefaultForm(EObject target, String kind, EObject formObj) throws ToolException {
+        String prop = switch (kind) {
+            case "Catalog", "Document",
+                 "ChartOfCharacteristicTypes", "ChartOfAccounts", "ChartOfCalculationTypes",
+                 "BusinessProcess", "Task", "ExchangePlan"          -> "DefaultObjectForm";
+            case "Report", "DataProcessor"                          -> "DefaultForm";
+            case "InformationRegister"                              -> "DefaultRecordForm";
+            case "AccumulationRegister"                             -> "DefaultListForm";
+            default -> throw new ToolException(
+                    "kind '" + kind + "' has no default-form property");
+        };
+        for (java.lang.reflect.Method m : target.getClass().getMethods()) {
+            if (m.getName().equals("set" + prop) && m.getParameterCount() == 1
+                    && m.getParameterTypes()[0].isInstance(formObj)) {
+                try {
+                    m.invoke(target, formObj);
+                    return;
+                } catch (ReflectiveOperationException e) {
+                    throw new ToolException("failed to set " + prop + ": " + e.getMessage());
+                }
+            }
+        }
+        throw new ToolException("setter set" + prop + "() not found on "
+                + target.getClass().getSimpleName()
+                + " for the form's runtime type "
+                + formObj.getClass().getSimpleName());
     }
 
     private static String requireString(Object v, String prop) throws ToolException {

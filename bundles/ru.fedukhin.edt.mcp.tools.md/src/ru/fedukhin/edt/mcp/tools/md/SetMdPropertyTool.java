@@ -133,7 +133,18 @@ public final class SetMdPropertyTool implements IMcpTool {
                         target = found;
                     }
 
-                    accessor.set(target, targetKind, project, property, value);
+                    Object effectiveValue = value;
+                    if ("defaultForm".equals(property) && path == null) {
+                        // BUG-07: resolve form FQN to the form EObject before delegating
+                        // to PropertyAccessor, which expects an already-resolved EObject.
+                        if (!(value instanceof String formFqn) || formFqn.isEmpty()) {
+                            throw new ToolException("'defaultForm' expects a string form FQN "
+                                    + "(e.g. 'Catalog.X.Form.Main' or 'CommonForm.Foo')");
+                        }
+                        IBmObject formBm = locator.findTop(txn, formFqn, projectName);
+                        effectiveValue = formBm;
+                    }
+                    accessor.set(target, targetKind, project, property, effectiveValue);
                 } catch (ToolException te) {
                     err[0] = te;
                 }
