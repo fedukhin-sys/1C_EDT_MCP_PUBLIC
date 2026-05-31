@@ -22,6 +22,10 @@
                class="ru.fedukhin.edt.mcp.ui.commands.RestartServerHandler"/>
    </extension>
 
+   <extension point="org.eclipse.ui.startup">
+      <startup class="ru.fedukhin.edt.mcp.ui.McpUiEarlyStartup"/>
+   </extension>
+
    <extension point="org.eclipse.ui.menus">
       <menuContribution locationURI="menu:window?after=additions">
          <menu id="ru.fedukhin.edt.mcp.menu" label="EDT MCP">
