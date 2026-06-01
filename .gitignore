@@ -8,9 +8,10 @@ target/
 *.jar
 *.class
 
-# Third-party libs vendored into ru.example.edt.mcp.core via Bundle-ClassPath
+# Third-party libs vendored into ru.fedukhin.edt.mcp.core via Bundle-ClassPath
 # (not OSGi-registered → no conflicts with host 1C:EDT runtime).
-!bundles/ru.example.edt.mcp.core/lib/*.jar
+# Нужны для сборки на CI (jars.extra.classpath) — без них core не компилируется.
+!bundles/ru.fedukhin.edt.mcp.core/lib/*.jar
 
 # Eclipse build outputs внутри bundles (PDE-проектов)
 bin/
