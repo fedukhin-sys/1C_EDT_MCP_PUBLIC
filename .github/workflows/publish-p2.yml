@@ -62,7 +62,10 @@ jobs:
       - name: Build p2 repository
         run: |
           $env:PATH = "$env:MAVEN_BIN;$env:PATH"
-          mvn -B clean verify -DskipTests -Dtycho.localArtifacts=ignore
+          # -D-аргументы в кавычках: иначе PowerShell/mvn.cmd дробит
+          # -Dtycho.localArtifacts=ignore -> mvn видит ".localArtifacts=ignore"
+          # как фазу жизненного цикла и падает (Unknown lifecycle phase).
+          mvn -B clean verify "-DskipTests" "-Dtycho.localArtifacts=ignore"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Resolve version
