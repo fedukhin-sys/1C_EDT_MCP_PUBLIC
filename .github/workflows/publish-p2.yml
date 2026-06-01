@@ -109,8 +109,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $owner,$repo = "${{ github.repository }}".Split('/')
-          $pages = "https://$owner.github.io/$repo"
+          # checkout-папку мог создать прежний аккаунт службы → git ругается
+          # dubious ownership при любом git-вызове gh. Помечаем безопасной.
+          git config --global --add safe.directory "$($PWD.Path)"
+          $pages = "https://fedukhin-sys.github.io/1C_EDT_MCP_PUBLIC"
           $notes = @"
           p2 update site (установка/обновление в 1C:EDT через Help -> Install New Software):
 
@@ -118,7 +120,9 @@ jobs:
 
           ZIP ниже — для офлайн-установки (Add -> Archive).
           "@
+          # -R фиксирует репозиторий явно (gh не угадывает из локального git);
+          # без --verify-tag — тег уже на remote (push его и запустил).
           gh release create "${{ github.ref_name }}" "${{ steps.pack.outputs.zip }}" `
+            -R "${{ github.repository }}" `
             --title "EDT MCP ${{ steps.ver.outputs.version }}" `
-            --notes "$notes" `
-            --verify-tag
+            --notes "$notes"
