@@ -38,6 +38,13 @@ jobs:
     env:
       MAVEN_BIN: 'E:\Tools\maven\apache-maven-3.9.9\bin'
 
+    defaults:
+      run:
+        # На runner'е только Windows PowerShell 5.1 (нет pwsh 7). Дефолтный
+        # shell: powershell падает с PSSecurityException, если ExecutionPolicy
+        # запрещает скрипты — поэтому явно Bypass для временных step-скриптов.
+        shell: powershell -ExecutionPolicy Bypass -Command "& '{0}'"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,11 +57,9 @@ jobs:
 
       - name: Override EDT pool path (optional)
         if: vars.EDT_POOL_PATH != ''
-        shell: powershell
         run: ./scripts/set-edt-pool.ps1 -TargetFile targets/default/default.target -PoolPath "${{ vars.EDT_POOL_PATH }}"
 
       - name: Build p2 repository
-        shell: powershell
         run: |
           $env:PATH = "$env:MAVEN_BIN;$env:PATH"
           mvn -B clean verify -DskipTests -Dtycho.localArtifacts=ignore
@@ -62,7 +67,6 @@ jobs:
 
       - name: Resolve version
         id: ver
-        shell: powershell
         run: |
           if ($env:GITHUB_REF -like 'refs/tags/*') {
             $v = $env:GITHUB_REF_NAME -replace '^v',''
@@ -75,7 +79,6 @@ jobs:
 
       - name: Package ZIP
         id: pack
-        shell: powershell
         run: |
           $src = 'repositories/ru.fedukhin.edt.mcp.repository/target/repository'
           $zip = "edt-mcp-p2-${{ steps.ver.outputs.version }}.zip"
@@ -92,7 +95,6 @@ jobs:
 
       - name: Publish to GitHub Pages (composite p2)
         if: startsWith(github.ref, 'refs/tags/') || inputs.publish
-        shell: powershell
         run: >
           ./scripts/publish-pages.ps1
           -Version "${{ steps.ver.outputs.version }}"
@@ -101,7 +103,6 @@ jobs:
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
