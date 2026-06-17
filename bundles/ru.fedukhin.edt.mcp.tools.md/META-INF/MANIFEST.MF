@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: EDT MCP — Metadata edit tools
 Bundle-SymbolicName: ru.fedukhin.edt.mcp.tools.md;singleton:=true
-Bundle-Version: 1.10.0.qualifier
+Bundle-Version: 1.11.0.qualifier
 Bundle-Vendor: fedukhin
 Automatic-Module-Name: ru.fedukhin.edt.mcp.tools.md
 Bundle-RequiredExecutionEnvironment: JavaSE-17

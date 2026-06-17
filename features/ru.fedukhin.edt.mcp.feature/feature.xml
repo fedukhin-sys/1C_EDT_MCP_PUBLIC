@@ -2,7 +2,7 @@
 <feature
       id="ru.fedukhin.edt.mcp.feature"
       label="EDT MCP"
-      version="1.15.5.qualifier"
+      version="1.16.0.qualifier"
       provider-name="Fedukhin">
 
    <description>MCP server plugin for 1C:EDT.</description>

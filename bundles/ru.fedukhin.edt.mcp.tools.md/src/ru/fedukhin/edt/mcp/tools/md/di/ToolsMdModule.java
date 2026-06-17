@@ -28,6 +28,8 @@ import ru.fedukhin.edt.mcp.tools.md.BorrowFormPicturesTool;
 import ru.fedukhin.edt.mcp.tools.md.BorrowFormTool;
 import ru.fedukhin.edt.mcp.tools.md.BorrowMdObjectTool;
 import ru.fedukhin.edt.mcp.tools.md.CreateMdObjectTool;
+import ru.fedukhin.edt.mcp.tools.md.CreateExternalObjectTool;
+import ru.fedukhin.edt.mcp.tools.md.AddMdTemplateTool;
 import ru.fedukhin.edt.mcp.tools.md.GetMdObjectTool;
 import ru.fedukhin.edt.mcp.tools.md.ListAttributesTool;
 import ru.fedukhin.edt.mcp.tools.md.ListMdObjectsTool;
@@ -126,5 +128,8 @@ public final class ToolsMdModule extends AbstractServiceAwareModule {
         bind(AddDcsSettingGroupingTool.class);
         bind(AddDcsSettingFilterTool.class);
         bind(SetDcsSettingParameterValueTool.class);
+        // 2026-06-16 — Phase B: external objects + .mxlx print-form templates
+        bind(CreateExternalObjectTool.class);
+        bind(AddMdTemplateTool.class);
     }
 }

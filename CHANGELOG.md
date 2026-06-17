@@ -2,6 +2,13 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [1.16.0] — 2026-06-16
+
+### Добавлено
+
+- **Внешние объекты.** Инструмент `create_external_object` создаёт `ExternalDataProcessor` / `ExternalReport` в проекте внешних объектов (nature `V8ExternalObjectsNature`). Реализация файловая (у внешних объектов нет Configuration-контейнера, а EDT API умеет создавать только новый проект с объектом-семенем): пишется `src/<Folder>/<Name>/<Name>.mdo` (skeleton `producedTypes/objectType` + `containedObjects` с `classId` соответствующего MdClass — `c3831ec8…` для обработки, `e41aff26…` для отчёта) и пустой `ObjectModule.bsl`. Args: `project, kind, name, synonym?, comment?`.
+- **Генератор макетов печатных форм.** Инструмент `add_md_template` создаёт spreadsheet-макет `.mxlx` по структурному спеку `columns`/`rows` и регистрирует его в `.mdo` владельца как `<templates>`. `ownerFqn = '<Kind>.<Name>'` (ExternalDataProcessor/ExternalReport/DataProcessor/Report/Catalog/Document/…). Ячейки поддерживают `text|parameter`, объединение через `span`/`rowSpan` (→ `<merge>`), `bold`, `size`, `align` (left/center/right/justify), `valign` (top/center/bottom), `wrap`. `<i>` на ячейках не используется, объединение — отдельными `<merge>` (0-based `r`/`c`, `w`=span−1). `overwrite=false` по умолчанию не трогает существующий `Template.mxlx`.
+
 ## [Unreleased]
 
 ### Добавлено

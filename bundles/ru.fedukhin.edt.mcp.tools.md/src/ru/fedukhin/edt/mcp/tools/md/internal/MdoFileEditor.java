@@ -553,6 +553,61 @@ public class MdoFileEditor {
     }
 
     /**
+     * Добавить в .mdo (ExternalDataProcessor/ExternalReport/DataProcessor/Report/Catalog/Document/…)
+     * блок {@code <templates>} для spreadsheet-макета печатной формы ({@code .mxlx}).
+     *
+     * <p>В отличие от {@link #addReportDcsTemplate} (DCS-схема) — здесь
+     * {@code <templateType>} НЕ пишется: для spreadsheet-макета это default,
+     * и в каноне EDT тег отсутствует (проверено по эталонным внешним обработкам Upiter).
+     *
+     * <p>Идемпотентно: если {@code <templates>} с таким именем уже есть — no-op,
+     * возвращает {@code false}.
+     *
+     * <p>Anchor: перед {@code commands}/{@code commandInterface}/{@code help}/{@code extInfo}
+     * (templates идут ПОСЛЕ forms, но ПЕРЕД commands), иначе append at end.
+     *
+     * @param synonym ru-синоним (может быть null/пусто — тогда {@code <synonym>} не пишется)
+     * @return {@code true} если template был добавлен
+     */
+    public boolean addSpreadsheetTemplate(IFile mdoFile, String templateName, String synonym)
+            throws ToolException {
+        if (templateName == null || templateName.isEmpty()) {
+            throw new ToolException("templateName required");
+        }
+        Document doc = load(mdoFile);
+        Element root = doc.getDocumentElement();
+
+        NodeList tps = root.getElementsByTagName("templates");
+        for (int i = 0; i < tps.getLength(); i++) {
+            Element t = (Element) tps.item(i);
+            if (t.getParentNode() != root) continue;
+            if (templateName.equals(childText(t, "name"))) {
+                return false; // already present
+            }
+        }
+
+        Element t = doc.createElement("templates");
+        t.setAttribute("uuid", UUID.randomUUID().toString());
+        appendText(doc, t, "name", templateName);
+        if (synonym != null && !synonym.isEmpty()) {
+            Element syn = doc.createElement("synonym");
+            appendText(doc, syn, "key", "ru");
+            appendText(doc, syn, "value", synonym);
+            t.appendChild(syn);
+        }
+
+        Node anchor = firstChildByName(root, "commands");
+        if (anchor == null) anchor = firstChildByName(root, "commandInterface");
+        if (anchor == null) anchor = firstChildByName(root, "help");
+        if (anchor == null) anchor = firstChildByName(root, "extInfo");
+        if (anchor != null) root.insertBefore(t, anchor);
+        else                root.appendChild(t);
+
+        save(mdoFile, doc);
+        return true;
+    }
+
+    /**
      * Дописать в InformationRegister .mdo явный {@code <writeMode>Independent</writeMode>},
      * если такого тега нет.
      *

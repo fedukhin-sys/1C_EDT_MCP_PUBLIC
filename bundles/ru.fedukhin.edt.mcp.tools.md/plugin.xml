@@ -89,5 +89,11 @@
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.SetDcsSettingParameterValueTool"
             name="set_dcs_setting_parameter_value"
             description="Stage 8g: set (or add) a SettingsParameterValue in a settingsVariant of Template.dcs. Args: reportFqn, templateName?, variantName? (default 'Основной'), parameterName, value? (omitted ⇒ xsi:nil). Replace-or-add."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.CreateExternalObjectTool"
+            name="create_external_object"
+            description="Phase B: create an external object (ExternalDataProcessor/ExternalReport) in an external-object project. File-based: writes src/&lt;Folder&gt;/&lt;Name&gt;/&lt;Name&gt;.mdo (producedTypes + containedObjects skeleton) and an empty ObjectModule.bsl. Args: project, kind, name, synonym?, comment?."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddMdTemplateTool"
+            name="add_md_template"
+            description="Phase B: generate a spreadsheet print-form template (.mxlx) from a columns/rows spec and register it in the owner .mdo as &lt;templates&gt;. ownerFqn='&lt;Kind&gt;.&lt;Name&gt;' (ExternalDataProcessor/ExternalReport/DataProcessor/Report/Catalog/Document/…). rows[].cells[]: text|parameter, span/rowSpan (merge), bold, size, align(left|center|right|justify), valign(top|center|bottom), wrap. Args: project, ownerFqn, templateName, synonym?, areaName?, columns?, rows?, overwrite?."/>
    </extension>
 </plugin>
