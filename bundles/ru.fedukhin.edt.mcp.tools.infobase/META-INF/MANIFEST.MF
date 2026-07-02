@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: EDT MCP Tools — Infobases
 Bundle-SymbolicName: ru.fedukhin.edt.mcp.tools.infobase;singleton:=true
-Bundle-Version: 1.0.3.qualifier
+Bundle-Version: 1.0.2.qualifier
 Bundle-Vendor: Fedukhin
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Bundle-Activator: ru.fedukhin.edt.mcp.tools.infobase.internal.ToolsInfobaseActivator
