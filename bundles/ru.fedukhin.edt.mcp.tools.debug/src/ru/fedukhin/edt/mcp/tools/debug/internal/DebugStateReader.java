@@ -84,7 +84,10 @@ public class DebugStateReader {
             type = v.getValueTypeName();
             try {
                 value = v.getDetailString();
-            } catch (DebugException e) {
+            } catch (Exception e) {
+                // catch Exception (не DebugException): в EDT 2026.x getDetailString больше не
+                // объявляет throws DebugException — узкий catch стал бы «unreachable». Exception
+                // достижим на обеих версиях и одинаково даёт fallback.
                 value = "";
             }
             if (value == null) {
@@ -117,7 +120,8 @@ public class DebugStateReader {
     private static int safeLine(IBslStackFrame frame) {
         try {
             return frame.getLineNumber();
-        } catch (DebugException e) {
+        } catch (Exception e) {
+            // См. toVariableDto: getLineNumber в EDT 2026.x больше не throws DebugException.
             return -1;
         }
     }

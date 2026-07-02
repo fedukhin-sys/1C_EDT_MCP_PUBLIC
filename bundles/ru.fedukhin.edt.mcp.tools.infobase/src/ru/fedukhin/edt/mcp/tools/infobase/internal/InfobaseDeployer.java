@@ -1,10 +1,13 @@
 package ru.fedukhin.edt.mcp.tools.infobase.internal;
 
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseSynchronizationManager;
+import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCallback;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseSynchronizationException;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -13,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 
@@ -42,11 +46,74 @@ public class InfobaseDeployer {
             if (!sync.isConnected(project, ref)) {
                 sync.connectInfobase(project, ref, monitor);
             }
-            boolean ok = sync.updateInfobase(project, ref, new NoopUpdateCallback(), force, monitor);
-            return new DeployResult(ok, System.currentTimeMillis() - t0);
         } catch (InfobaseSynchronizationException e) {
             throw new ToolException("deploy failed: " + e.getMessage(), e);
         }
+        boolean ok = invokeUpdateInfobase(project, ref, force, monitor);
+        return new DeployResult(ok, System.currentTimeMillis() - t0);
+    }
+
+    /**
+     * Вызывает {@code IInfobaseSynchronizationManager.updateInfobase} через рефлексию.
+     *
+     * <p>Возвращаемый тип этого метода менялся между версиями 1C:EDT:
+     * {@code boolean} (dt.platform.services.core ≤ 19.x) → {@code IStatus} (core 21.0.0+, EDT 2026.x).
+     * Прямой вызов, скомпилированный против одной версии, падает на другой с
+     * {@code NoSuchMethodError} (JVM резолвит метод вместе с возвращаемым типом). Рефлексия
+     * ищет метод только по имени и типам параметров (они стабильны), поэтому один байткод
+     * работает на обеих ветках EDT. Результат интерпретируется в {@link #interpretUpdateResult}.
+     */
+    private boolean invokeUpdateInfobase(IProject project, InfobaseReference ref, boolean force,
+                                         IProgressMonitor monitor) throws ToolException {
+        IInfobaseUpdateCallback callback = NoopUpdateCallback.create();
+        try {
+            Method m = IInfobaseSynchronizationManager.class.getMethod("updateInfobase",
+                IProject.class, InfobaseReference.class, IInfobaseUpdateCallback.class,
+                boolean.class, IProgressMonitor.class);
+            Object res = m.invoke(sync, project, ref, callback, force, monitor);
+            return interpretUpdateResult(res);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof InfobaseSynchronizationException) {
+                // Старый EDT сигнализирует конфликт checked-исключением.
+                throw new ToolException("deploy failed: " + cause.getMessage(), cause);
+            }
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            if (cause instanceof Error er) {
+                throw er;
+            }
+            throw new ToolException("deploy failed: "
+                + (cause == null ? e.getMessage() : cause.getMessage()), cause);
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new ToolException("deploy failed: несовместимый EDT API updateInfobase: "
+                + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Приводит результат {@code updateInfobase} к {@code boolean ok}, поддерживая обе версии API:
+     * <ul>
+     *   <li>{@link Boolean} (старый EDT) — возвращается как есть;</li>
+     *   <li>{@link IStatus} (EDT 2026.x) — {@code ERROR} поднимается как {@link ToolException}
+     *       (иначе провал синхронизации проглатывается молча), {@code CANCEL} → {@code false},
+     *       {@code OK}/{@code INFO}/{@code WARNING} → {@code true}.</li>
+     * </ul>
+     */
+    private static boolean interpretUpdateResult(Object res) throws ToolException {
+        if (res instanceof Boolean b) {
+            return b;
+        }
+        if (res instanceof IStatus s) {
+            int sev = s.getSeverity();
+            if (sev == IStatus.ERROR) {
+                throw new ToolException("deploy failed: " + s.getMessage());
+            }
+            return sev != IStatus.CANCEL;
+        }
+        // Неизвестный тип результата, но исключения не было — считаем deploy успешным.
+        return true;
     }
 
     /**

@@ -5,7 +5,7 @@ description: Manage 1C:EDT extension/configuration projects via the EDT_MCP MCP 
 
 # EDT_MCP — пользование MCP-сервером для 1C:EDT
 
-EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий **89 инструментов** работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, главные правила работы.
+EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий **91 инструмент** работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, главные правила работы.
 
 ## TL;DR — как подключиться
 
@@ -21,7 +21,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 - **modulePath** — относительный путь от корня проекта: `src/Catalogs/X/ObjectModule.bsl`, `src/Catalogs/X/Forms/Y/Module.bsl`, `src/CommonModules/X/Module.bsl`, `src/Documents/X/RecordSetModule.bsl` и т.п.
 - **Только русский identifier set** в этом проекте (если язык конфы Russian). Имена не транслитерируются.
 
-## Полный список инструментов (89)
+## Полный список инструментов (91)
 
 Точные имена аргументов получены из `tools/list`. Если параметра нет в списке `props` — он будет отвергнут (`additionalProperties: false`). Required помечены *.
 
@@ -46,12 +46,14 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `associate_infobase` | `project*`, `infobase*`, `setDefault` |
 | `deploy_project` | `project*`, `infobase*`, `force`, `timeoutSeconds` |
 
-### Metadata (29)
+### Metadata (31)
 | Tool | Args |
 |---|---|
 | `list_md_objects` | `project*`, `kind` |
 | `get_md_object` | `project*`, `fqn*` |
 | `create_md_object` | `project*`, `kind*`, `name*`, `synonym`, `comment` |
+| `create_external_object` | `project*` (проект внешних объектов), `kind*` (`ExternalDataProcessor`/`ExternalReport`), `name*`, `synonym`, `comment` |
+| `add_md_template` | `project*`, `ownerFqn*` (`<Kind>.<Name>`), `templateName*`, `synonym`, `areaName` (default = templateName), `columns` (массив ширин), `rows` (массив строк), `overwrite` (default false) |
 | `rename_md_object` | `project*`, `fqn*`, `newName*` |
 | `set_md_property` | `project*`, `fqn*`, `property*`, `value*`, `path` |
 | `list_attributes` | `project*`, `fqn*` |
@@ -291,6 +293,37 @@ Tool сам создаёт файл если его нет, дописывает
 **Текст запроса — только по реально существующим данным.** Перед тем как писать `query` в наборе данных СКД, проверь по `.mdo` (через `list_project_files` + Read), что КАЖДАЯ таблица, реквизит, поле ТЧ и стандартный атрибут реально существуют. Не выдумывай реквизиты по аналогии и не предполагай «стандартные» имена. Частые ловушки: `ЭтоГруппа`/`Родитель` есть только у иерархических справочников — у иерархии «только элементы» поля `ЭтоГруппа` НЕТ; имя реквизита-контрагента бывает `Контрагент`/`Партнер`/`Клиент`. **`check_run` ошибки в тексте запроса СКД НЕ ловит** — «Поле не найдено» вылезет только в рантайме 1С при открытии отчёта.
 
 Назначить основную форму отчёта/справочника/документа: `set_md_property property=defaultForm value=Kind.X.Form.Y` (универсальное имя; dispatch по kind на `setDefaultObjectForm` / `setDefaultForm` / `setDefaultRecordForm` / `setDefaultListForm`).
+
+### Внешняя обработка/отчёт + печатная форма (.mxlx)
+
+Внешние обработки/отчёты живут в **отдельном проекте** типа `external-object` (nature `V8ExternalObjectsNature`), привязанном к родительской конфигурации. Объект добавляется **файлово** (у внешних объектов нет Configuration-контейнера, EDT API умеет лишь создавать новый проект с семенем) — это и делает `create_external_object`.
+
+```jsonc
+[
+  // 0. (однократно) создать проект внешних объектов под родительскую конфу
+  { "tool": "create_project", "args": { "name": "ВнешниеОбработки", "type": "external-object", "version": "8.3.27", "parentConfigurationName": "Upiter" } },
+  // 1. создать саму обработку (или ExternalReport)
+  { "tool": "create_external_object", "args": { "project": "ВнешниеОбработки", "kind": "ExternalDataProcessor", "name": "ДосудебнаяПретензия", "synonym": "Досудебная претензия" } },
+  // 2. сгенерировать макет печатной формы .mxlx (письмо: 2 колонки, параметры, объединения)
+  { "tool": "add_md_template", "args": {
+      "project": "ВнешниеОбработки",
+      "ownerFqn": "ExternalDataProcessor.ДосудебнаяПретензия",
+      "templateName": "ПФ_MXL_ДосудебнаяПретензия",
+      "synonym": "Досудебная претензия",
+      "columns": [720, 224],
+      "rows": [
+        { "cells": [ { "parameter": "ИсходящийНомер" }, { "parameter": "БлокПолучателя" } ] },
+        { "cells": [ { "text": "ДОСУДЕБНАЯ ПРЕТЕНЗИЯ", "span": 2, "bold": true, "align": "center", "wrap": false } ] },
+        { "cells": [ { "parameter": "ТелоПисьма", "span": 2 } ] },
+        { "cells": [ { "text": "С уважением,", "span": 2 } ] }
+      ] } }
+]
+```
+
+- **`create_external_object`** пишет `src/ExternalDataProcessors/<Имя>/<Имя>.mdo` (skeleton с `producedTypes/objectType` + `containedObjects`; classId = id MdClass-а: `c3831ec8-d8d5-4f93-8a22-f9bfae07327f` обработка, `e41aff26-25cf-4bb6-b6c1-3f478a75f374` отчёт) и пустой `ObjectModule.bsl`. Логику печати (`СведенияОВнешнейОбработке`, `Печать(...)`) пишешь через `write_module`.
+- **`add_md_template`** генерит `Templates/<Имя>/Template.mxlx` и регистрит `<templates>` в `.mdo`. Ячейка: `text` ИЛИ `parameter`; `span`/`rowSpan` → объединение (`<merge>`); `bold`, `size`, `align` (`left`/`center`/`right`/`justify`), `valign` (`top`/`center`/`bottom`), `wrap`. **Объединение НЕ через `<i>`** — генератор сам пишет `<merge>` (0-based `r`/`c`, `w`=span−1). `ownerFqn` поддерживает не только внешние объекты, но и `DataProcessor.X`/`Report.X`/`Catalog.X`/`Document.X`. `overwrite=false` (default) не трогает существующий макет — ручную доводку вёрстки в редакторе EDT не затрёт.
+- Сумма ширин колонок должна влезать в одну печатную страницу портрета (эмпирически ≈820 ед.; 1060 → тело уходит на 2-ю страницу). В BSL печати ставь `ТабДок.АвтоМасштаб = Истина` (НЕ `РазмерБумаги = ТипРазмераБумаги.A4` — ошибка компиляции).
+- «Деплой» к внешним объектам не применяется: валидация — `check_list_markers` (blocker:0/critical:0); сборка `.epf` — внешним инструментом (`1cv8 DESIGNER /LoadExternalDataProcessorOrReportFromFiles`).
 
 ### Subsystem (командный интерфейс)
 ```jsonc

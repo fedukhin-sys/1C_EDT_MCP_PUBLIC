@@ -101,8 +101,11 @@ public class EvaluationService {
         IBslVariable[] vars;
         try {
             vars = frame.getVariables();   // now filled with real variables
-        } catch (DebugException e) {
-            throw new ToolException("reading variables failed: " + e.getStatus().getMessage(), e);
+        } catch (Exception e) {
+            // getVariables в EDT 2026.x больше не объявляет throws DebugException, поэтому узкий
+            // catch (DebugException) стал бы «unreachable». Ловим Exception (достижим на обеих
+            // версиях), сообщение извлекаем через messageOf — для DebugException это статус.
+            throw new ToolException("reading variables failed: " + messageOf(e), e);
         }
         if (vars != null) {
             for (IBslVariable v : vars) {
@@ -190,5 +193,18 @@ public class EvaluationService {
             Thread.currentThread().interrupt();
             throw new ToolException("interrupted waiting for evaluation");
         }
+    }
+
+    /**
+     * Извлекает человекочитаемое сообщение из пойманного {@link Exception}. Для
+     * {@link DebugException} берётся сообщение его {@code IStatus} (как в остальных ветках),
+     * иначе — {@link Throwable#getMessage()}. Используется там, где catch расширен до Exception
+     * ради совместимости с версиями EDT, где метод больше не объявляет throws DebugException.
+     */
+    private static String messageOf(Exception e) {
+        if (e instanceof DebugException de && de.getStatus() != null) {
+            return de.getStatus().getMessage();
+        }
+        return e.getMessage();
     }
 }

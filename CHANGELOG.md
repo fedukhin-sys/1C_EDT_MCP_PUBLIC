@@ -2,6 +2,15 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [1.16.1] — 2026-07-02
+
+### Исправлено
+
+- **Совместимость с 1C:EDT 2026.x (dt.platform.services.core 21+/23).** После обновления EDT инструмент `deploy_project` (и, как следствие, весь цикл прогона xUnit) падал с `NoSuchMethodError` из-за изменившихся сигнатур API платформы. Все правки версионно-независимы — старые версии EDT продолжают работать:
+  - `IInfobaseSynchronizationManager.updateInfobase(...)` сменил возвращаемый тип `boolean` → `IStatus`. Вызывается через рефлексию (сигнатура рефлексии не включает возвращаемый тип, поэтому один байткод работает на обеих ветках); результат интерпретируется как `Boolean` (старый EDT) или `IStatus` (`ERROR` → ошибка deploy, `CANCEL` → неуспех, `OK`/`WARNING`/`INFO` → успех).
+  - `IInfobaseUpdateCallback.resolveInfobaseChanges(...)` получил дополнительный параметр `Set<String>`. Headless-заглушка `NoopUpdateCallback` переписана со статического `implements` на динамический `java.lang.reflect.Proxy` — он реализует интерфейс ровно так, как тот загружен в текущем рантайме, независимо от числа аргументов метода.
+  - В отладочном bundle методы `IBslValue.getDetailString()`, `IBslStackFrame.getLineNumber()`, `IBslStackFrame.getVariables()` больше не объявляют `throws DebugException` — узкие `catch (DebugException)` стали «unreachable». Расширены до `catch (Exception)` (достижимо и корректно на обеих версиях EDT).
+
 ## [1.16.0] — 2026-06-16
 
 ### Добавлено

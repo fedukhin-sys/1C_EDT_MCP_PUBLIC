@@ -6,12 +6,13 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseSynchronizationManager;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCallback;
-import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseSynchronizationException;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -26,6 +27,11 @@ import org.mockito.ArgumentCaptor;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseDeployer;
 
+/**
+ * Стабы {@code updateInfobase} заданы нетипизированным {@code doReturn/doAnswer(...).when(...)}:
+ * возвращаемый тип метода различается между версиями EDT (boolean → IStatus), и такой стиль не
+ * привязывает исходник теста к конкретному типу. Значения-статусы соответствуют EDT 2026.x.
+ */
 public class InfobaseDeployerTimeoutTest {
 
     private InfobaseDeployer deployer;
@@ -41,8 +47,8 @@ public class InfobaseDeployerTimeoutTest {
         IProject project = mock(IProject.class);
         InfobaseReference ref = mock(InfobaseReference.class);
         when(sync.isConnected(project, ref)).thenReturn(true);
-        when(sync.updateInfobase(eq(project), eq(ref), any(IInfobaseUpdateCallback.class),
-            eq(false), any(IProgressMonitor.class))).thenReturn(true);
+        doReturn(Status.OK_STATUS).when(sync).updateInfobase(
+            eq(project), eq(ref), any(IInfobaseUpdateCallback.class), eq(false), any(IProgressMonitor.class));
 
         deployer = new InfobaseDeployer(sync);
         InfobaseDeployer.DeployResult res = deployer.deployWithTimeout(project, ref, false, 30);
@@ -61,14 +67,14 @@ public class InfobaseDeployerTimeoutTest {
         AtomicReference<IProgressMonitor> capturedMonitor = new AtomicReference<>();
         CountDownLatch entered = new CountDownLatch(1);
         // Make updateInfobase block for ~3s so timeout=1 hits first.
-        when(sync.updateInfobase(eq(project), eq(ref), any(IInfobaseUpdateCallback.class),
-            eq(false), any(IProgressMonitor.class))).thenAnswer(inv -> {
+        doAnswer(inv -> {
                 IProgressMonitor monitor = inv.getArgument(4);
                 capturedMonitor.set(monitor);
                 entered.countDown();
                 Thread.sleep(3000);
-                return true;
-            });
+                return Status.OK_STATUS;
+            }).when(sync).updateInfobase(
+                eq(project), eq(ref), any(IInfobaseUpdateCallback.class), eq(false), any(IProgressMonitor.class));
 
         deployer = new InfobaseDeployer(sync);
         long t0 = System.currentTimeMillis();
@@ -91,15 +97,14 @@ public class InfobaseDeployerTimeoutTest {
     }
 
     @Test
-    public void deployWithTimeout_syncException_propagatesToolException() throws Exception {
+    public void deployWithTimeout_errorStatus_propagatesToolException() throws Exception {
         IInfobaseSynchronizationManager sync = mock(IInfobaseSynchronizationManager.class);
         IProject project = mock(IProject.class);
         InfobaseReference ref = mock(InfobaseReference.class);
         when(sync.isConnected(project, ref)).thenReturn(true);
-        when(sync.updateInfobase(eq(project), eq(ref), any(IInfobaseUpdateCallback.class),
-            eq(false), any(IProgressMonitor.class)))
-            .thenThrow(new InfobaseSynchronizationException(
-                new Status(IStatus.ERROR, "ru.fedukhin.edt.mcp.tests", "conflict X")));
+        doReturn(new Status(IStatus.ERROR, "ru.fedukhin.edt.mcp.tests", "conflict X"))
+            .when(sync).updateInfobase(
+                eq(project), eq(ref), any(IInfobaseUpdateCallback.class), eq(false), any(IProgressMonitor.class));
 
         deployer = new InfobaseDeployer(sync);
         try {
@@ -122,8 +127,8 @@ public class InfobaseDeployerTimeoutTest {
 
         ArgumentCaptor<IProgressMonitor> monitorCaptor =
             ArgumentCaptor.forClass(IProgressMonitor.class);
-        when(sync.updateInfobase(eq(project), eq(ref), any(IInfobaseUpdateCallback.class),
-            eq(false), monitorCaptor.capture())).thenReturn(true);
+        doReturn(Status.OK_STATUS).when(sync).updateInfobase(
+            eq(project), eq(ref), any(IInfobaseUpdateCallback.class), eq(false), monitorCaptor.capture());
 
         deployer = new InfobaseDeployer(sync);
         InfobaseDeployer.DeployResult r1 = deployer.deployWithTimeout(project, ref, false, 30);
