@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="ru.fedukhin.edt.mcp.core.tool">
+      <tool class="ru.fedukhin.edt.mcp.tools.privacy.di.ToolsPrivacyExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.privacy.BuildPiiCatalogTool"
+            name="build_pii_catalog"
+            description="Build the initial PII catalog (.mcp/pii-catalog.json) from the project's metadata model (name/type heuristics, fail-closed)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.privacy.di.ToolsPrivacyExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.privacy.GetPiiCatalogTool"
+            name="get_pii_catalog"
+            description="Current union PII catalog (objects/attributes) of all open projects"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.privacy.di.ToolsPrivacyExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.privacy.SetInfobasePiiFlagTool"
+            name="set_infobase_pii_flag"
+            description="Set the containsRealPersonalData flag for an infobase (clearing it declares a test DB with no real PII; the decision is logged)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.privacy.di.ToolsPrivacyExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.privacy.GetPrivacyAuditTool"
+            name="get_privacy_audit"
+            description="Anonymization audit log (metadata only, no actual PII)"/>
+   </extension>
+</plugin>

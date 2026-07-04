@@ -261,4 +261,6 @@ public class QueryEventLogTool implements IMcpTool {
         m.put("type", "array"); m.put("items", item); m.put("description", desc);
         return m;
     }
+
+    @Override public boolean returnsInfobaseData() { return true; }
 }

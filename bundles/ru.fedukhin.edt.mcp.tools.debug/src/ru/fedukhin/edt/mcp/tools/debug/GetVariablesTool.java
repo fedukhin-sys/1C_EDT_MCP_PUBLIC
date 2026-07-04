@@ -64,4 +64,6 @@ public class GetVariablesTool implements IMcpTool {
         }
         return out;
     }
+
+    @Override public boolean returnsInfobaseData() { return true; }
 }

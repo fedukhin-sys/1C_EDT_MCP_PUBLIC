@@ -11,11 +11,26 @@ import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.core.privacy.IPrivacyFilter;
 
 public class ToolSpecAdapter {
 
     private static final ILog LOG = Platform.getLog(ToolSpecAdapter.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private final IPrivacyFilter privacyFilter;
+
+    public ToolSpecAdapter(IPrivacyFilter privacyFilter) {
+        this.privacyFilter = privacyFilter;
+    }
+
+    /** Прогоняет результат через слой обезличивания, если инструмент возвращает данные ИБ. */
+    public Object applyPrivacy(IMcpTool tool, Map<String, Object> args, Object result) {
+        if (tool.returnsInfobaseData() && privacyFilter != null) {
+            return privacyFilter.redact(tool.name(), args, result);
+        }
+        return result;
+    }
 
     public SyncToolSpecification adapt(IMcpTool tool) {
         McpSchema.Tool toolMeta = McpSchema.Tool.builder()
@@ -29,7 +44,7 @@ public class ToolSpecAdapter {
             .callHandler((McpSyncServerExchange exch, McpSchema.CallToolRequest req) -> {
                 Map<String, Object> args = req.arguments();
                 try {
-                    Object result = tool.call(args);
+                    Object result = applyPrivacy(tool, args, tool.call(args));
                     String json = MAPPER.writeValueAsString(result);
                     return McpSchema.CallToolResult.builder()
                         .content(List.of(new McpSchema.TextContent(json)))

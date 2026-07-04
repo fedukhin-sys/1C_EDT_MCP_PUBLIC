@@ -24,7 +24,7 @@ public class McpServerLifecycleInstructionsTest {
     @Test
     public void buildTransport_setsInstructionsWithDeployPrecheckPolicy() throws Exception {
         IToolRegistry registry = new ToolRegistry(Collections.emptyList());
-        McpServerLifecycle lifecycle = new McpServerLifecycle(registry, new ToolSpecAdapter());
+        McpServerLifecycle lifecycle = new McpServerLifecycle(registry, new ToolSpecAdapter(null));
         lifecycle.buildTransport();
 
         // The server field is private — reflect into it like the other lifecycle test.

@@ -33,6 +33,7 @@
         <module>bundles/ru.fedukhin.edt.mcp.tools.form</module>
         <module>bundles/ru.fedukhin.edt.mcp.tools.tests</module>
         <module>bundles/ru.fedukhin.edt.mcp.tools.testrun</module>
+        <module>bundles/ru.fedukhin.edt.mcp.tools.privacy</module>
         <module>bundles/ru.fedukhin.edt.mcp.ui</module>
         <module>features/ru.fedukhin.edt.mcp.feature</module>
         <module>repositories/ru.fedukhin.edt.mcp.repository</module>

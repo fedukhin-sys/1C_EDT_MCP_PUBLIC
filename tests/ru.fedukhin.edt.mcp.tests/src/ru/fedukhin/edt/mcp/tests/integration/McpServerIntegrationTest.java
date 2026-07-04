@@ -65,7 +65,7 @@ public class McpServerIntegrationTest {
         McpPreferences prefs = new McpPreferences(prefsNode);
 
         IToolRegistry registry = new ToolRegistry(Collections.emptyList());
-        ToolSpecAdapter adapter = new ToolSpecAdapter();
+        ToolSpecAdapter adapter = new ToolSpecAdapter(null);
         McpServerLifecycle lifecycle = new McpServerLifecycle(registry, adapter);
 
         BearerAuthFilter authFilter = new BearerAuthFilter(() -> TOKEN);

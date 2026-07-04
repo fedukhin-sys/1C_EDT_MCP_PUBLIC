@@ -2,11 +2,25 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [1.17.0] — 2026-07-04
+
+### Добавлено
+
+- **Слой обезличивания персональных данных (152-ФЗ).** Централизованный fail-closed слой (`ru.fedukhin.edt.mcp.core.privacy` + новый bundle `ru.fedukhin.edt.mcp.tools.privacy`), который **перед отправкой ответа MCP-клиенту** (LLM / внешнее облако — трансграничная передача по ст. 12) псевдонимизирует или скрывает ПДн физлиц, специальные категории, биометрию и сведения о контрагентах/организациях. MCP-сервер видит реальные данные 1С только внутри процесса.
+  - **Каналы**: обезличиваются только инструменты, реально возвращающие данные информационной базы и помеченные `IMcpTool.returnsInfobaseData()` — `get_variables`, `evaluate`, `get_stack`, `query_event_log`. Остальные инструменты (метаданные, код, формы) через фильтр не проходят.
+  - **Точка внедрения** — единый `ToolSpecAdapter`: результат `tool.call()` проходит через `PrivacyRedactor` перед сериализацией.
+  - **Детектирование (3 слоя, fail-closed)**: каталог типов/объектов проекта `.mcp/pii-catalog.json` → словарь имён реквизитов/переменных (СНИЛС/Паспорт/ИНН/ОГРН/…) → content-regex по свободным строкам (email, телефон, СНИЛС, ОГРН/ИНН, паспорт).
+  - **Маскирование**: HMAC-псевдоним вида `Физлицо#a3f2` (ключ — в `SecureTokenStore`, детерминированный, **без обратной таблицы token→значение**); спец-категории и биометрия — полное сокрытие. Тип и структура ответа не меняются.
+  - **Конфигурация**: per-project каталог + per-infobase флаг `containsRealPersonalData` (дефолт `true` = fail-closed) + журнал обезличивания без самих ПДн.
+  - **4 новых инструмента**: `build_pii_catalog` (авто-посев каталога по метаданным проекта), `get_pii_catalog`, `set_infobase_pii_flag`, `get_privacy_audit`.
+  - Соответствие 152-ФЗ: ст. 3 п.9 (обезличивание без обратной таблицы), ст. 5 (минимизация), ст. 10/11 (спец. категории и биометрия — полное сокрытие), ст. 12 (обезличивание до трансграничной передачи), ст. 18.1/19 (перечень в git + журнал).
+  - Известные ограничения v1: ФИО в свободной строке с нейтральным именем переменной content-regex не ловит; авто-посев каталога охватывает справочники и документы (не регистры) — каталог редактируется вручную.
+
 ## [1.16.1] — 2026-07-02
 
 ### Исправлено
 
-- **Совместимость с 1C:EDT 2026.x (dt.platform.services.core 21+/23).** После обновления EDT инструмент `deploy_project` (и, как следствие, весь цикл прогона xUnit) падал с `NoSuchMethodError` из-за изменившихся сигнатур API платформы. Все правки версионно-независимы — старые версии EDT продолжают работать:
+- **Совместимость с 1C:EDT 2026.x (dt.platform.services.core 21+/23).** После обновления EDT инструмент `deploy_project` (и, как следствие, весь цикл прогона xUnit) падал с `NoSuchMethodError`, потому что в новой платформе изменились сигнатуры ряда API. Все правки сделаны версионно-независимыми — старые версии EDT продолжают работать:
   - `IInfobaseSynchronizationManager.updateInfobase(...)` сменил возвращаемый тип `boolean` → `IStatus`. Вызывается через рефлексию (сигнатура рефлексии не включает возвращаемый тип, поэтому один байткод работает на обеих ветках); результат интерпретируется как `Boolean` (старый EDT) или `IStatus` (`ERROR` → ошибка deploy, `CANCEL` → неуспех, `OK`/`WARNING`/`INFO` → успех).
   - `IInfobaseUpdateCallback.resolveInfobaseChanges(...)` получил дополнительный параметр `Set<String>`. Headless-заглушка `NoopUpdateCallback` переписана со статического `implements` на динамический `java.lang.reflect.Proxy` — он реализует интерфейс ровно так, как тот загружен в текущем рантайме, независимо от числа аргументов метода.
   - В отладочном bundle методы `IBslValue.getDetailString()`, `IBslStackFrame.getLineNumber()`, `IBslStackFrame.getVariables()` больше не объявляют `throws DebugException` — узкие `catch (DebugException)` стали «unreachable». Расширены до `catch (Exception)` (достижимо и корректно на обеих версиях EDT).
@@ -15,22 +29,8 @@
 
 ### Добавлено
 
-- **Внешние объекты.** Инструмент `create_external_object` создаёт `ExternalDataProcessor` / `ExternalReport` в проекте внешних объектов (nature `V8ExternalObjectsNature`). Реализация файловая (у внешних объектов нет Configuration-контейнера, а EDT API умеет создавать только новый проект с объектом-семенем): пишется `src/<Folder>/<Name>/<Name>.mdo` (skeleton `producedTypes/objectType` + `containedObjects` с `classId` соответствующего MdClass — `c3831ec8…` для обработки, `e41aff26…` для отчёта) и пустой `ObjectModule.bsl`. Args: `project, kind, name, synonym?, comment?`.
-- **Генератор макетов печатных форм.** Инструмент `add_md_template` создаёт spreadsheet-макет `.mxlx` по структурному спеку `columns`/`rows` и регистрирует его в `.mdo` владельца как `<templates>`. `ownerFqn = '<Kind>.<Name>'` (ExternalDataProcessor/ExternalReport/DataProcessor/Report/Catalog/Document/…). Ячейки поддерживают `text|parameter`, объединение через `span`/`rowSpan` (→ `<merge>`), `bold`, `size`, `align` (left/center/right/justify), `valign` (top/center/bottom), `wrap`. `<i>` на ячейках не используется, объединение — отдельными `<merge>` (0-based `r`/`c`, `w`=span−1). `overwrite=false` по умолчанию не трогает существующий `Template.mxlx`.
-
-## [Unreleased]
-
-### Добавлено
-
-- **p2 update site через GitHub Pages.** Плагин можно ставить и обновлять по URL
-  `https://fedukhin-sys.github.io/1C_EDT_MCP_PUBLIC/` (Help → Install New Software),
-  без сборки из исходников.
-- GitHub Actions workflow `.github/workflows/publish-p2.yml`: по тегу `vX.Y.Z`
-  собирает p2 на self-hosted runner (нужна установленная 1C:EDT) и публикует
-  composite-репозиторий в ветку `gh-pages` + ZIP в Release.
-- Скрипты `scripts/*.ps1` (локальная сборка, подмена пути к p2-пулу через
-  `EDT_POOL_PATH`, генерация composite, публикация) и `docs/p2-publishing.md`.
-- README: раздел «Установка из update site».
+- **Внешние объекты (Phase B).** Новый инструмент `create_external_object` создаёт `ExternalDataProcessor` / `ExternalReport` в проекте внешних объектов (nature `V8ExternalObjectsNature`). Реализация файловая (у внешних объектов нет Configuration-контейнера, а EDT API умеет создавать только новый проект с объектом-семенем): пишется `src/<Folder>/<Name>/<Name>.mdo` (skeleton с `producedTypes/objectType` + `containedObjects` с `classId` соответствующего MdClass — `c3831ec8…` для обработки, `e41aff26…` для отчёта) и пустой `ObjectModule.bsl`. Args: `project, kind, name, synonym?, comment?`.
+- **Генератор макетов печатных форм (Phase B).** Новый инструмент `add_md_template` создаёт spreadsheet-макет `.mxlx` по структурному спеку `columns`/`rows` и регистрирует его в `.mdo` владельца как `<templates>`. `ownerFqn = '<Kind>.<Name>'` (ExternalDataProcessor/ExternalReport/DataProcessor/Report/Catalog/Document/…). Ячейки поддерживают `text|parameter`, объединение через `span`/`rowSpan` (→ `<merge>`), `bold`, `size`, `align` (left/center/right/justify), `valign` (top/center/bottom), `wrap`. Генератор — Java-порт проверенного прототипа (вёрстка подтверждена PDF-рендером в Phase A); `<i>` на ячейках не используется, объединение задаётся отдельными `<merge>` (0-based `r`/`c`, `w`=span−1). `overwrite=false` по умолчанию не трогает существующий `Template.mxlx`.
 
 ## [1.15.5] — 2026-05-31
 

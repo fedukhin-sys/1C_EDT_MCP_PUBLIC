@@ -48,7 +48,7 @@ public class McpHttpServiceConnectorTest {
         McpPreferences prefs = new McpPreferences(node);
 
         IToolRegistry registry = new ToolRegistry(Collections.emptyList());
-        McpServerLifecycle lifecycle = new McpServerLifecycle(registry, new ToolSpecAdapter());
+        McpServerLifecycle lifecycle = new McpServerLifecycle(registry, new ToolSpecAdapter(null));
         svc = new McpHttpService(lifecycle, new BearerAuthFilter(() -> "t"), prefs);
         svc.start();
 

@@ -22,7 +22,7 @@ public class McpServerLifecycleKeepAliveTest {
     @Test
     public void buildTransport_enablesSseKeepAlive() throws Exception {
         IToolRegistry registry = new ToolRegistry(Collections.emptyList());
-        McpServerLifecycle lifecycle = new McpServerLifecycle(registry, new ToolSpecAdapter());
+        McpServerLifecycle lifecycle = new McpServerLifecycle(registry, new ToolSpecAdapter(null));
 
         HttpServletSseServerTransportProvider transport = lifecycle.buildTransport();
 

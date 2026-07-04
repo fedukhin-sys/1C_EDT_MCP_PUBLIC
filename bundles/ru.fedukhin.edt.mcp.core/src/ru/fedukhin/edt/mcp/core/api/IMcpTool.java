@@ -22,4 +22,10 @@ public interface IMcpTool {
 
     /** Invoke the tool. Returns any JSON-serializable value (Map, List, primitives, null). */
     Object call(Map<String, Object> args) throws ToolException;
+
+    /**
+     * true, если результат инструмента может содержать реальные данные ИБ (ПДн/контрагенты).
+     * Такие результаты проходят централизованный слой обезличивания в ToolSpecAdapter.
+     */
+    default boolean returnsInfobaseData() { return false; }
 }

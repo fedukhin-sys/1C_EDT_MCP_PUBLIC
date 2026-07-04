@@ -53,4 +53,6 @@ public class GetStackTool implements IMcpTool {
         }
         return out;
     }
+
+    @Override public boolean returnsInfobaseData() { return true; }
 }
