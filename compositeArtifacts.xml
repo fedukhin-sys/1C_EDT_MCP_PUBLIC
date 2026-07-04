@@ -2,7 +2,7 @@
 <?compositeArtifactRepository version='1.0.0'?>
 <repository name='EDT MCP - p2 (composite)' type='org.eclipse.equinox.internal.p2.artifact.repository.CompositeArtifactRepository' version='1.0.0'>
   <properties size='1'>
-    <property name='p2.timestamp' value='1783196924630'/>
+    <property name='p2.timestamp' value='1783197328739'/>
   </properties>
   <children size='5'>
     <child location='releases/1.15.5'/>
