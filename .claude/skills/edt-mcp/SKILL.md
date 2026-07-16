@@ -5,7 +5,7 @@ description: Manage 1C:EDT extension/configuration projects via the EDT_MCP MCP 
 
 # EDT_MCP — пользование MCP-сервером для 1C:EDT
 
-EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий **91 инструмент** работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, главные правила работы.
+EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий **95 инструментов** работы с проектами 1С:Предприятие через HTTP+SSE. Этот скилл — практический справочник: реальные имена параметров, рецепты для типовых задач, главные правила работы.
 
 ## TL;DR — как подключиться
 
@@ -21,7 +21,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 - **modulePath** — относительный путь от корня проекта: `src/Catalogs/X/ObjectModule.bsl`, `src/Catalogs/X/Forms/Y/Module.bsl`, `src/CommonModules/X/Module.bsl`, `src/Documents/X/RecordSetModule.bsl` и т.п.
 - **Только русский identifier set** в этом проекте (если язык конфы Russian). Имена не транслитерируются.
 
-## Полный список инструментов (91)
+## Полный список инструментов (95)
 
 Точные имена аргументов получены из `tools/list`. Если параметра нет в списке `props` — он будет отвергнут (`additionalProperties: false`). Required помечены *.
 
@@ -35,7 +35,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `list_project_files` | `name*`, `glob` |
 | `open_project` | `name*` |
 | `close_project` | `name*` |
-| `create_project` | `name*`, `type*` (`configuration`/`extension`/`external-object`), `version*`, `parentConfigurationName` (для extension/external-object) |
+| `create_project` | `name*`, `type*` (`configuration`/`extension`/`external-object`), `version*`, `parentConfigurationName` (для extension/external-object), `namePrefix` (префикс имён объектов расширения — закрывает warning «Имя объекта должно содержать префикс») |
 
 ### Infobase + deploy (5)
 | Tool | Args |
@@ -61,7 +61,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `rename_attribute` | `project*`, `fqn*`, `oldName*`, `newName*`, `role` |
 | `borrow_md_object` | `project*`, `fqn*` |
 | `borrow_form` | `project*`, `parentFqn*` (parent MdObject FQN), `formName*` |
-| `borrow_form_pictures` | `project*`, `parentFqn*` (**обязательно Form-FQN**: `Document.X.Form.Y` или `CommonForm.Y` — **не родитель**) |
+| `borrow_form_pictures` | `project*`, `formFqn*` (**обязательно Form-FQN**: `Document.X.Form.Y` или `CommonForm.Y` — **не родитель**; `parentFqn` — deprecated-алиас) |
 | `add_tabular_section` | `project*`, `ownerFqn*`, `name*` |
 | `add_tabular_section_attribute` | `project*`, `tsFqn*` (`Catalog.X.TabularSection.Y`), `name*`, `type*` |
 | `add_extension_method_override` | `project*`, `modulePath*`, `source*` (полный текст процедуры с аннотацией `&Перед/&После/&ИзменениеИКонтроль`) |
@@ -85,7 +85,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | Tool | Args |
 |---|---|
 | `get_event_log_path` | `name` или `uuid` (oneOf*), `srvinfoDir`, `clusterPort` (для SERVER ИБ) |
-| `query_event_log` | `name`/`uuid`/`logDir` (один из), `from`, `to`, `severity[]`, `user[]`, `userUuid[]`, `application[]`, `event[]`, `eventContains`, `commentContains`, `metadataContains`, `limit` (≤10000), `srvinfoDir`, `clusterPort` |
+| `query_event_log` | `name`/`uuid`/`logDir` (один из), `from`, `to`, `severity[]`, `user[]`, `userUuid[]`, `application[]`, `event[]`, `session[]`, `eventContains`, `commentContains`, `metadataContains`, `limit` (≤10000), `offset`, `order` (`date_asc`/`date_desc`), `srvinfoDir`, `clusterPort` |
 
 ### BSL модули (5)
 | Tool | Args |
@@ -102,11 +102,11 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `list_forms` | `project*`, `parentFqn` |
 | `get_form` | `project*`, `fqn*` |
 | `get_form_item` | `project*`, `fqn*`, `itemPath*` |
-| `create_form` | `project*`, `parentFqn*`, `name*`, `formType` (`ItemForm`/`Form`/…). Создаёт `Form.form`, пустой `Module.bsl`, `<commandInterface>` и проставляет форму основной у owner'а (kind-specific) |
+| `create_form` | `project*`, `parentFqn*`, `name*`, `formType` (`MANAGED`/`ORDINARY`, default `MANAGED`). Parent-kind'ы: Catalog, Document, DataProcessor, Report, InformationRegister, AccumulationRegister. Создаёт `Form.form`, пустой `Module.bsl`, `<commandInterface>` и проставляет форму основной у owner'а (kind-specific) |
 | `add_form_attribute` | `project*`, `formFqn*`, `name*`, `type*`, `title`, `main` |
 | `add_form_command` | `project*`, `formFqn*`, `name*`, `title`, `handlerName` |
 | `add_form_field` | `project*`, `formFqn*`, `name*`, `dataPath*`, `parentPath`, `title` |
-| `add_form_group` | `project*`, `formFqn*`, `name*`, `groupType*` (`Pages`/`Page`/`Group`/…), `parentPath`, `title` |
+| `add_form_group` | `project*`, `formFqn*`, `name*`, `groupType*` (`Pages`/`Page`/`UsualGroup` — закрытый список), `parentPath`, `title` |
 | `add_form_button` | `project*`, `formFqn*`, `name*`, `commandName*`, `parentPath`, `title` |
 | `add_form_table` | `project*`, `formFqn*`, `name*`, `dataPath*`, `parentPath`, `title` |
 | `set_form_handler` | `project*`, `formFqn*`, `event*`, `handlerName*`, `itemPath`. Прописывает связку в `Form.form` и дописывает в `Module.bsl` stub-процедуру с правильной аннотацией и стандартной сигнатурой по event'у (идемпотент по имени процедуры). Возвращает `stubAdded` (boolean) |
@@ -118,6 +118,16 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
 | `check_describe` | `checkId*` |
 | `check_run` | `project*`, `path`, `checkIds`, `waitSeconds`, `clearFirst` |
 | `check_list_markers` | `project*`, `path`, `severity`, `checkId`, `source` |
+
+### Privacy — обезличивание ПДн 152-ФЗ (4)
+| Tool | Args |
+|---|---|
+| `build_pii_catalog` | `project*` — авто-посев каталога `.mcp/pii-catalog.json` по метаданным проекта |
+| `get_pii_catalog` | — |
+| `set_infobase_pii_flag` | `infobase*`, `containsRealPersonalData*` (default для всех ИБ = `true`, fail-closed) |
+| `get_privacy_audit` | `limit` — журнал фактов обезличивания (без самих ПДн) |
+
+Обезличивание применяется автоматически к инструментам, возвращающим данные ИБ (`get_variables`, `evaluate`, `get_stack`, `query_event_log`): ПДн физлиц → HMAC-псевдонимы `Физлицо#…`, спец-категории/биометрия — полное сокрытие. Пока ИБ явно не помечена `containsRealPersonalData=false`, данные маскируются.
 
 ### xUnit (8)
 | Tool | Args |
@@ -189,7 +199,7 @@ EDT_MCP — это MCP-плагин для 1C:EDT, экспортирующий 
   { "tool": "borrow_md_object", "args": { "project": "X", "fqn": "Catalog.Партнеры" } },
   { "tool": "borrow_md_object", "args": { "project": "X", "fqn": "Document.ЗаказКлиента" } },
   { "tool": "borrow_form", "args": { "project": "X", "parentFqn": "Document.ЗаказКлиента", "formName": "ФормаДокумента" } },
-  { "tool": "borrow_form_pictures", "args": { "project": "X", "parentFqn": "Document.ЗаказКлиента.Form.ФормаДокумента" } }
+  { "tool": "borrow_form_pictures", "args": { "project": "X", "formFqn": "Document.ЗаказКлиента.Form.ФормаДокумента" } }
 ]
 ```
 **Внимание:** `borrow_form_pictures` принимает **FQN формы** (`Document.X.Form.Y`), не родителя. Без `borrow_form_pictures` валидатор EDT ругается «Picture mismatch» на заимствованной форме.
@@ -213,7 +223,7 @@ Tool сам создаёт файл если его нет, дописывает
 ### Форма элемента с группами и таблицей
 ```jsonc
 [
-  { "tool": "create_form", "args": { "project": "X", "parentFqn": "Catalog.ТестСправочник", "name": "ФормаЭлемента", "formType": "ItemForm" } },
+  { "tool": "create_form", "args": { "project": "X", "parentFqn": "Catalog.ТестСправочник", "name": "ФормаЭлемента" } },
   { "tool": "add_form_group", "args": { "project": "X", "formFqn": "Catalog.ТестСправочник.Form.ФормаЭлемента", "name": "Страницы", "groupType": "Pages" } },
   { "tool": "add_form_group", "args": { "project": "X", "formFqn": "...", "name": "Реквизиты", "groupType": "Page", "parentPath": "Страницы" } },
   { "tool": "add_form_field", "args": { "project": "X", "formFqn": "...", "name": "ПолеНаименование", "dataPath": "Объект.Наименование", "parentPath": "Страницы/Реквизиты" } },
@@ -225,14 +235,15 @@ Tool сам создаёт файл если его нет, дописывает
 ### Обработчик формы + код в Module.bsl
 ```jsonc
 [
-  // 1. Tool привязывает имя метода в Form.form, но НЕ создаёт Module.bsl и НЕ пишет stub.
+  // 1. Tool привязывает имя метода в Form.form И САМ создаёт Module.bsl (если его нет)
+  //    с stub-процедурой: правильная аннотация + стандартная сигнатура по event'у.
+  //    Возвращает stubAdded (boolean). Идемпотентен по имени процедуры.
   { "tool": "set_form_handler", "args": {
     "project": "X",
     "formFqn": "Catalog.X.Form.ФормаЭлемента",
     "event": "OnCreateAtServer",
     "handlerName": "ПриСозданииНаСервере" } },
-  // 2. Создай пустой Module.bsl вручную (через FS — write_module не создаёт новых файлов!)
-  // 3. Запиши тело:
+  // 2. Замени тело stub'а реальным кодом (write_module тоже умеет создавать файлы и папки):
   { "tool": "write_module", "args": {
     "project": "X",
     "path": "src/Catalogs/X/Forms/ФормаЭлемента/Module.bsl",
@@ -301,7 +312,7 @@ Tool сам создаёт файл если его нет, дописывает
 ```jsonc
 [
   // 0. (однократно) создать проект внешних объектов под родительскую конфу
-  { "tool": "create_project", "args": { "name": "ВнешниеОбработки", "type": "external-object", "version": "8.3.27", "parentConfigurationName": "Upiter" } },
+  { "tool": "create_project", "args": { "name": "ВнешниеОбработки", "type": "external-object", "version": "8.3.27", "parentConfigurationName": "МояКонфигурация" } },
   // 1. создать саму обработку (или ExternalReport)
   { "tool": "create_external_object", "args": { "project": "ВнешниеОбработки", "kind": "ExternalDataProcessor", "name": "ДосудебнаяПретензия", "synonym": "Досудебная претензия" } },
   // 2. сгенерировать макет печатной формы .mxlx (письмо: 2 колонки, параметры, объединения)
@@ -323,7 +334,7 @@ Tool сам создаёт файл если его нет, дописывает
 - **`create_external_object`** пишет `src/ExternalDataProcessors/<Имя>/<Имя>.mdo` (skeleton с `producedTypes/objectType` + `containedObjects`; classId = id MdClass-а: `c3831ec8-d8d5-4f93-8a22-f9bfae07327f` обработка, `e41aff26-25cf-4bb6-b6c1-3f478a75f374` отчёт) и пустой `ObjectModule.bsl`. Логику печати (`СведенияОВнешнейОбработке`, `Печать(...)`) пишешь через `write_module`.
 - **`add_md_template`** генерит `Templates/<Имя>/Template.mxlx` и регистрит `<templates>` в `.mdo`. Ячейка: `text` ИЛИ `parameter`; `span`/`rowSpan` → объединение (`<merge>`); `bold`, `size`, `align` (`left`/`center`/`right`/`justify`), `valign` (`top`/`center`/`bottom`), `wrap`. **Объединение НЕ через `<i>`** — генератор сам пишет `<merge>` (0-based `r`/`c`, `w`=span−1). `ownerFqn` поддерживает не только внешние объекты, но и `DataProcessor.X`/`Report.X`/`Catalog.X`/`Document.X`. `overwrite=false` (default) не трогает существующий макет — ручную доводку вёрстки в редакторе EDT не затрёт.
 - Сумма ширин колонок должна влезать в одну печатную страницу портрета (эмпирически ≈820 ед.; 1060 → тело уходит на 2-ю страницу). В BSL печати ставь `ТабДок.АвтоМасштаб = Истина` (НЕ `РазмерБумаги = ТипРазмераБумаги.A4` — ошибка компиляции).
-- «Деплой» к внешним объектам не применяется: валидация — `check_list_markers` (blocker:0/critical:0); сборка `.epf` — внешним инструментом (`1cv8 DESIGNER /LoadExternalDataProcessorOrReportFromFiles`).
+- «Деплой» к внешним объектам не применяется: валидация — `check_list_markers` (blocker:0/critical:0); сборка `.epf` — внешним инструментом (`1cedtcli export` в XML конфигуратора → `1cv8 DESIGNER /LoadExternalDataProcessorOrReportFromFiles … /DumpExternalDataProcessorOrReportToFile`). **⚠ Сборка `.epf` синтаксис НЕ проверяет** — ни 1cedtcli, ни 1cv8 не компилируют модуль, битый BSL молча уедет в файл. `check_list_markers` ДО сборки — единственный барьер, он обязателен. Грабли: кириллические пути для 1cedtcli лечатся junction'ом; фоновый конфигуратор EDT может держать служебную ИБ.
 
 ### Subsystem (командный интерфейс)
 ```jsonc
@@ -370,7 +381,7 @@ Tool сам создаёт файл если его нет, дописывает
 
 ## Smoke harness
 
-Минимальный JS-клиент для smoke-тестов (есть готовый в `E:\Claude\mcp-smoke.js` на target-машине; ниже — общий вариант).
+Минимальный JS-клиент для smoke-тестов (ниже — общий вариант; сохрани локально, например `mcp-smoke.js`).
 
 ```js
 'use strict';
@@ -447,6 +458,10 @@ node "C:\path\to\mcp-smoke.js" $tok "C:\path\to\steps.json"
 
 `steps.json` — массив `{ label, tool, args, expectError?, expectContains? }`. PowerShell ест внутренние кавычки в JSON-литералах — **всегда** используй внешний `.json` файл, не передавай JSON через CLI.
 
+## Грабли BSL/1С из боевых задач
+
+Полный список проверенных ловушек — **[references/1c-gotchas.md](references/1c-gotchas.md)**: зарезервированные слова (`И`, `Знач`), отсутствующие матфункции (Abs/Знак), цепочки от конструктора, `&ИзменениеИКонтроль` (запрет любых правок в теле), XDTO-порядок узлов Form.form, `\b` vs кириллица в regex, вёрстка `.mxlx`/`merge`, АвтоМасштаб/МасштабПечати, headless .epf (защита от опасных действий, `-RedirectStandardError`), операционка xUnit/MCP-сессий. Читать перед написанием BSL и ручной правкой `.mdo`/`.form`/`.mxlx`.
+
 ## Доводка объектов до стандартов 1С (наработки прогона)
 
 MCP-инструменты создают **минимальные** объекты — для чистого прохода `check_run` их `.mdo`/`.bsl` приходится дополнять вручную. Что именно дописывалось:
@@ -479,23 +494,34 @@ MCP-инструменты создают **минимальные** объек�
 
 ## Главные правила работы
 
-1. **Перед `deploy_project`** — обязательно `check_list_markers`, фиксь только BLOCKER (см. категоризацию выше).
-2. **После любой мутации** через MCP — на критичных шагах ориентируйся на содержимое `.mdo` на диске: BM-модель обновляется асинхронно, дисковая запись — синхронная и достоверная.
-3. **EDT BM async**: после `create_project`/`open_project` сразу `list_md_objects` может вернуть `namespace inactive`. Опрашивай с интервалом 5-10s до 90 секунд.
-4. **1cv8 процессы**: deploy запускает 1cv8 DESIGNER который захватывает infobase. Между двумя deploys убедись что предыдущий 1cv8 завершён (`Get-Process 1cv8 | Stop-Process -Force`). Авторизуй убийство процессов у пользователя заранее.
-5. **Кодировка**: EDT-файлы (`.mdo`, `.bsl`, `.form`) **только UTF-8 без BOM**. В PowerShell `Set-Content -Encoding utf8` пишет **с BOM** и double-encoding'ом, кириллица превращается в `Р`-иероглифы. Используй `[System.IO.File]::WriteAllText(path, content, [System.Text.UTF8Encoding]::new($false))` или MCP-`write_module`.
-6. **CRLF vs LF**: `.env`, `.bsl` пиши с LF. На Windows `Set-Content` без `-NoNewline` ставит CRLF, что иногда ломает парсеры.
-7. **Расширение метода (override)** — сигнатура процедуры **1:1** с базовой (имена параметров тоже). Иначе валидатор EDT отвергнет.
-8. **Объекты регистра**: для AccumulationRegister/InformationRegister `add_attribute` обязательно указать `role: "Dimension"` или `role: "Resource"`. Без role — создастся `Attribute`, что для регистра бессмысленно.
-9. **Inactive после кражи 1cv8**: если 1cv8 DESIGNER крашится посредине, EDT BM остаётся в неконсистентном состоянии. Помогает `close_project` + `open_project` + опрос BM.
-10. **Расположение конфы** — для extension `parentConfigurationName` обязателен (имя родительской конфигурации). Если родителя не указать — extension не привяжется и deploy будет жаловаться на UUID-маппинг.
-11. **Текст запроса — только по фактическим метаданным.** Перед написанием любого запроса (наборы данных СКД, `add_dcs_data_set_query`, `set_dcs_query_text`, запросы в BSL) сверь по `.mdo`, что все таблицы, реквизиты и поля ТЧ существуют — НЕ выдумывай реквизиты «по аналогии» и не угадывай «стандартные» имена. `check_run` ошибки запроса СКД не ловит — «Поле не найдено» всплывёт только в рантайме 1С.
+0. **ОСНОВНУЮ КОНФИГУРАЦИЮ РАБОЧИХ БАЗ НИКОГДА НЕ МЕНЯЕМ** (Dandy, Upiter, ЕСС и любые клиентские конфигурации). Любой код, объекты, тест-раннеры, диагностика — ТОЛЬКО через расширение (extension-проект с `parentConfigurationName`) или внешнюю обработку (external-object). `install_test_runner`/`create_test_module`/`create_md_object`/`write_module` в проект-конфигурацию — запрещены; `deploy_project` проекта-конфигурации — запрещён без явного разрешения пользователя. Причина: конфигурации на замке поддержки — инкрементальная загрузка падает («редактирование объекта метаданных Configuration запрещено»), EDT молча переходит на ПОЛНУЮ загрузку (десятки минут–часы) и снимает базу с поддержки.
+1. **Новое расширение → предупреди пользователя снять «Защиту от опасных действий».** При первом запуске/подключении свежего расширения платформа 1С блокирует его защитой от опасных действий (интерактивный вопрос в клиенте / отказ загрузки). Headless-запуски (тест-раннер, run_client) при этом молча виснут или падают. Перед первым запуском после `deploy_project` нового extension-проекта попроси пользователя снять защиту (Конфигуратор → расширения → снять флаг «Защита от опасных действий», или через профиль безопасности), и только после его подтверждения продолжай.
+2. **Перед `deploy_project`** — обязательно `check_list_markers`, фиксь только BLOCKER (см. категоризацию выше).
+3. **После любой мутации** через MCP — на критичных шагах ориентируйся на содержимое `.mdo` на диске: BM-модель обновляется асинхронно, дисковая запись — синхронная и достоверная.
+4. **EDT BM async**: после `create_project`/`open_project` сразу `list_md_objects` может вернуть `namespace inactive`. Опрашивай с интервалом 5-10s до 90 секунд.
+5. **1cv8 процессы**: deploy запускает 1cv8 DESIGNER который захватывает infobase. Между двумя deploys убедись что предыдущий 1cv8 завершён (`Get-Process 1cv8 | Stop-Process -Force`). Авторизуй убийство процессов у пользователя заранее.
+6. **Кодировка**: EDT-файлы (`.mdo`, `.bsl`, `.form`) **только UTF-8 без BOM**. В PowerShell `Set-Content -Encoding utf8` пишет **с BOM** и double-encoding'ом, кириллица превращается в `Р`-иероглифы. Используй `[System.IO.File]::WriteAllText(path, content, [System.Text.UTF8Encoding]::new($false))` или MCP-`write_module`.
+7. **CRLF vs LF**: `.env`, `.bsl` пиши с LF. На Windows `Set-Content` без `-NoNewline` ставит CRLF, что иногда ломает парсеры.
+8. **Расширение метода (override)** — сигнатура процедуры **1:1** с базовой (имена параметров тоже). Иначе валидатор EDT отвергнет.
+9. **Объекты регистра**: для AccumulationRegister/InformationRegister `add_attribute` обязательно указать `role: "Dimension"` или `role: "Resource"`. Без role — создастся `Attribute`, что для регистра бессмысленно.
+10. **Inactive после кражи 1cv8**: если 1cv8 DESIGNER крашится посредине, EDT BM остаётся в неконсистентном состоянии. Помогает `close_project` + `open_project` + опрос BM.
+11. **Расположение конфы** — для extension `parentConfigurationName` обязателен (имя родительской конфигурации). Если родителя не указать — extension не привяжется и deploy будет жаловаться на UUID-маппинг.
+12. **Текст запроса — только по фактическим метаданным.** Перед написанием любого запроса (наборы данных СКД, `add_dcs_data_set_query`, `set_dcs_query_text`, запросы в BSL) сверь по `.mdo`, что все таблицы, реквизиты и поля ТЧ существуют — НЕ выдумывай реквизиты «по аналогии» и не угадывай «стандартные» имена. `check_run` ошибки запроса СКД не ловит — «Поле не найдено» всплывёт только в рантайме 1С.
 
-## Что НЕ работает / не покрыто
+## Что НЕ работает / не покрыто (по состоянию на v1.17.0)
 
+План закрытия — `docs/superpowers/plans/2026-07-16-mcp-global-audit-fixes.md` в репо EDT_MCP; после релиза 1.18.0 сверь этот раздел заново.
+
+- **`deploy_project` сломан на EDT 2026.1**: падает с `ClassCastException: InfobaseConflictResolutionResult cannot be cast to InfobaseConflictResolution`, `force` не помогает (причина — dual-version баг callback'а, фикс в плане). **Обход**: `1cedtcli export` в XML конфигуратора → `1cv8 DESIGNER /LoadCfg`/`/LoadConfigFromFiles -Extension`. Грабли обхода: фоновый конфигуратор EDT держит базу (закрой/убей перед 1cv8); для баз с пользователями нужны `/N /P`.
+- **Табличные части не читаются**: `list_attributes` и `get_md_object` возвращают только top-level `attributes`/`dimensions`/`resources` — состав ТЧ и её реквизиты в выдачу не попадают (при том что `add_tabular_section`/`add_tabular_section_attribute` их пишут). Workaround: читать `.mdo` с диска (`list_project_files` + Read, теги `<tabularSections>`).
+- **Перечисления**: `get_md_object`/`list_attributes` для `Enum.X` возвращают пусто (значения не читаются), инструмента добавления значений нет — `create_md_object kind=Enum` создаёт пустое перечисление. Workaround: значения читать/дописывать прямо в `.mdo` (теги `<enumValues>`).
+- **Сборки `.epf` инструментом нет** — только внешний пайплайн 1cedtcli+1cv8, и он **не проверяет синтаксис** (см. рецепт внешних обработок).
+- **xUnit run_tests/run_test_method не передают `/N /P`** — на ИБ с пользователями запуск падает/виснет; нужна OS-аутентификация или база без пользователей. Также требуют предварительного `install_test_runner` на проекте.
+- **`check_list_markers path` не фильтрует** — это этикетка, маркеры приходят по всему проекту; фильтруй `severity`/`checkId` и сам сопоставляй с файлами.
+- **`query_event_log order=date_desc` с `limit`** меньше числа совпадений возвращает самые СТАРЫЕ записи (баг окна выборки) — для «последних N событий» задавай узкий период `from`/`to`.
 - **Деплой может зависнуть** при «грязной» BM-сериализации. Если deploy висит больше 5-10 минут — отмени, кильни 1cv8, перезапусти.
-- **xUnit run_tests/run_test_method** — требуют предварительного `install_test_runner` на проекте.
 - **debug_client + breakpoints** — рабочая цепочка, но требует тёплый infobase (deploy успешен, конфа актуальна). Если не получается attach — проверь `deploy_project` сначала.
+- **Extension attributes на adopted Document + form binding** — см. «Известное ограничение» выше.
 
 ## Памятки
 

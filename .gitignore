@@ -21,8 +21,7 @@ bin/
 .claude/cache/
 
 # Локальные docs с креденшалами и рабочие артефакты
-docs/Логин-пароль ЕСС.txt
-docs/финальные тесты план.txt
+docs/*.txt
 docs/*.mxl
 docs/*.pdf
 

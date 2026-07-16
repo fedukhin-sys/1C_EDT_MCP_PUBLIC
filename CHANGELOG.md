@@ -2,6 +2,16 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [Unreleased]
+
+### Изменено
+
+- **Скиллы Claude Code (`.claude/skills`) актуализированы по итогам аудита кода 2026-07-16** (код плагина не менялся, версия остаётся 1.17.0):
+  - `edt-mcp/SKILL.md`: счётчик инструментов 91 → 95, добавлена секция Privacy (4 инструмента обезличивания 152-ФЗ); исправлены неверные значения параметров (`create_form.formType` = `MANAGED`/`ORDINARY`, `add_form_group.groupType` = `Pages`/`Page`/`UsualGroup`, канонический `formFqn` у `borrow_form_pictures`); переписан рецепт «Обработчик формы» (`set_form_handler` сам создаёт Module.bsl со stub'ом); дополнены параметры `query_event_log` (`session`/`offset`/`order`) и `create_project` (`namePrefix`); раздел «Что НЕ работает» отражает актуальные ограничения v1.17.0 (деплой на EDT 2026.1, чтение табличных частей/перечислений, сборка .epf без синтакс-контроля и др.).
+  - Новый `edt-mcp/references/1c-gotchas.md` — проверенные грабли BSL/1С (зарезервированные слова, XDTO-порядок узлов форм, вёрстка .mxlx, headless-работа с .epf).
+  - `edt-skd/SKILL.md`: уточнён default `templateName` (`ОсновнаяСхема`), +7 практических граблей СКД (dataSetLink, навигационные поля, функциональные опции и др.).
+- `.gitignore`: приватные локальные документы покрыты обобщённым паттерном `docs/*.txt`.
+
 ## [1.17.0] — 2026-07-04
 
 ### Добавлено
