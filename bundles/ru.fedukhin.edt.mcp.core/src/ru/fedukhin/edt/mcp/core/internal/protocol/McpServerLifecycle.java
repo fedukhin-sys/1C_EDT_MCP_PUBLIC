@@ -47,7 +47,10 @@ public class McpServerLifecycle {
         // Pass jsonMapper explicitly — the SDK default goes through ServiceLoader
         // (META-INF/services) and OSGi DS for the mcp-json-jackson2 bundle, which
         // isn't reliably activated in the headless test runtime.
-        ObjectMapper objectMapper = new ObjectMapper();
+        // JsonSchemaExtras: mapper дописывает anyOf/oneOf к JsonSchema-record в tools/list;
+        // реестр чистится перед пересборкой набора инструментов, чтобы не копить инстансы.
+        JsonSchemaExtras.clear();
+        ObjectMapper objectMapper = JsonSchemaExtras.createMapper();
         McpJsonMapper jsonMapper = new JacksonJsonMapper(objectMapper);
         JsonSchemaValidator validator = new NoopJsonSchemaValidator(objectMapper);
         transport = HttpServletSseServerTransportProvider.builder()

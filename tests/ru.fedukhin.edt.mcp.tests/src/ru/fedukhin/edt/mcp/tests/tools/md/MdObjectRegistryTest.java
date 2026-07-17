@@ -14,9 +14,12 @@ public class MdObjectRegistryTest {
         for (String name : new String[]{
                 "Catalog", "Document", "InformationRegister", "AccumulationRegister",
                 "Constant", "Enum", "CommonModule", "Role", "Subsystem",
-                "DataProcessor", "Report"}) {
+                "DataProcessor", "Report",
+                // «вторая волна» (1.20.0): валидны минимальным .mdo, артефакты не нужны
+                "BusinessProcess", "Task", "ChartOfAccounts", "ChartOfCalculationTypes",
+                "ChartOfCharacteristicTypes", "ExchangePlan", "DocumentJournal"}) {
             assertNotNull("missing kind: " + name, r.get(name));
-            assertTrue("исторически создаваемый kind обязан остаться creatable: " + name,
+            assertTrue("создаваемый kind обязан быть creatable: " + name,
                     r.get(name).creatable());
         }
     }
@@ -35,16 +38,13 @@ public class MdObjectRegistryTest {
         }
     }
 
-    /** Заимствовать можно всё, а создавать с нуля — только проверенное подмножество. */
+    /** Не-creatable остались только kind'ы, требующие артефактов, которых create не делает. */
     @Test
     public void kindsRequiringCompanionArtifactsAreNotCreatable() {
         MdObjectRegistry r = new MdObjectRegistry();
-        for (String name : new String[]{
-                "BusinessProcess", "Task", "ChartOfAccounts", "ChartOfCalculationTypes",
-                "ChartOfCharacteristicTypes", "ExchangePlan", "DocumentJournal",
-                "CommonForm", "CommonPicture"}) {
+        for (String name : new String[]{"CommonForm", "CommonPicture"}) {
             assertNotNull("missing kind: " + name, r.get(name));
-            assertFalse("kind не проверен для create_md_object и обязан отбиваться: " + name,
+            assertFalse("kind без сопутствующих артефактов бессмыслен и обязан отбиваться: " + name,
                     r.get(name).creatable());
         }
     }

@@ -104,13 +104,12 @@ public class ToolSpecAdapter {
     }
 
     /**
-     * ⚠ Ограничение MCP SDK (mcp-core 1.1.2): {@code McpSchema.JsonSchema} — record с фиксированным
-     * набором полей (type/properties/required/additionalProperties/$defs/definitions), полей
-     * {@code anyOf}/{@code oneOf} у него нет. Вторая перегрузка {@code Tool.Builder.inputSchema
-     * (McpJsonMapper, String)} тоже сводится к этому record через {@code McpSchema.parseSchema},
-     * поэтому сырым JSON их протащить нельзя. Следствие: схемы, где обязателен один из нескольких
-     * аргументов (query_event_log, get_event_log_path — name|uuid|logDir), публикуются без этой
-     * альтернативы, и требование приходится дублировать словами в {@code description}.
+     * MCP SDK (mcp-core 1.1.2): {@code McpSchema.JsonSchema} — record с фиксированным набором
+     * полей (type/properties/required/additionalProperties/$defs/definitions); ключи вроде
+     * {@code anyOf}/{@code oneOf} он не несёт, а вторая перегрузка {@code Tool.Builder.inputSchema
+     * (McpJsonMapper, String)} сводится к тому же record через {@code McpSchema.parseSchema}.
+     * Остальные ключи Map-схемы поэтому уходят в {@link JsonSchemaExtras} и дописываются к JSON
+     * на сериализации tools/list (наш ObjectMapper, см. {@code McpServerLifecycle}).
      */
     @SuppressWarnings("unchecked")
     private static McpSchema.JsonSchema toJsonSchema(Map<String, Object> schema) {
@@ -124,10 +123,15 @@ public class ToolSpecAdapter {
         Boolean additionalProperties = (addProps instanceof Boolean) ? (Boolean) addProps : null;
         Map<String, Object> defs = (Map<String, Object>) schema.get("$defs");
         Map<String, Object> definitions = (Map<String, Object>) schema.get("definitions");
-        if (schema.containsKey("anyOf") || schema.containsKey("oneOf")) {
-            LOG.log(Status.warning("inputSchema declares anyOf/oneOf, which MCP SDK's JsonSchema "
-                + "cannot carry — the alternative must be spelled out in the tool description"));
+        McpSchema.JsonSchema js =
+            new McpSchema.JsonSchema(type, properties, required, additionalProperties, defs, definitions);
+        Map<String, Object> extras = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : schema.entrySet()) {
+            if (!JsonSchemaExtras.RECORD_FIELDS.contains(e.getKey())) {
+                extras.put(e.getKey(), e.getValue());
+            }
         }
-        return new McpSchema.JsonSchema(type, properties, required, additionalProperties, defs, definitions);
+        JsonSchemaExtras.register(js, extras);
+        return js;
     }
 }

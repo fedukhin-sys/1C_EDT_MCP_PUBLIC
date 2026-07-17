@@ -30,8 +30,8 @@ public class GetEventLogPathTool implements IMcpTool {
 
     @Override public String name() { return "get_event_log_path"; }
     @Override public String description() {
-        // Требование «ровно один из name/uuid» объявлено в схеме через oneOf, но MCP SDK его
-        // не публикует (см. ToolSpecAdapter.toJsonSchema) — поэтому дублируем словами.
+        // Требование «ровно один из name/uuid» объявлено в схеме через oneOf (публикуется
+        // через JsonSchemaExtras); словами дублируем для клиентов, не читающих oneOf.
         return "Get path to the 1Cv8Log directory and partition list for an infobase. "
              + "Requires exactly one of: name or uuid.";
     }

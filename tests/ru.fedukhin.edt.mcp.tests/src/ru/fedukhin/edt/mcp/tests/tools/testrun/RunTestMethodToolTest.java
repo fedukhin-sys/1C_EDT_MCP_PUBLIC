@@ -11,20 +11,23 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
 import ru.fedukhin.edt.mcp.tools.testrun.RunTestMethodTool;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerLauncher;
 
 public class RunTestMethodToolTest {
 
+    private static RunTestMethodTool newTool() {
+        return new RunTestMethodTool(
+            mock(TestRunnerLauncher.class), mock(InfobaseRegistry.class), mock(RuntimeCli.class),
+            mock(TestRunnerInstaller.ModuleScaffolder.class));
+    }
+
     @Test public void name_isRunTestMethod() {
-        RunTestMethodTool tool = new RunTestMethodTool(
-            mock(TestRunnerLauncher.class), mock(InfobaseRegistry.class), mock(RuntimeCli.class));
-        assertEquals("run_test_method", tool.name());
+        assertEquals("run_test_method", newTool().name());
     }
 
     @Test public void schema_requiresAllOfProjectInfobaseModuleMethod() {
-        RunTestMethodTool tool = new RunTestMethodTool(
-            mock(TestRunnerLauncher.class), mock(InfobaseRegistry.class), mock(RuntimeCli.class));
-        Map<String, Object> schema = tool.inputSchema();
+        Map<String, Object> schema = newTool().inputSchema();
         java.util.List<?> required = (java.util.List<?>) schema.get("required");
         java.util.Set<?> requiredSet = new java.util.HashSet<>(required);
         assertEquals(new java.util.HashSet<>(java.util.List.of(
@@ -32,12 +35,10 @@ public class RunTestMethodToolTest {
     }
 
     @Test public void call_missingMethodName_throws() {
-        RunTestMethodTool tool = new RunTestMethodTool(
-            mock(TestRunnerLauncher.class), mock(InfobaseRegistry.class), mock(RuntimeCli.class));
         Map<String, Object> args = new HashMap<>();
         args.put("project", "Demo"); args.put("infobase", "DemoIB"); args.put("moduleFqn", "CommonModule.X");
         try {
-            tool.call(args);
+            newTool().call(args);
             fail("expected ToolException");
         } catch (ToolException e) { /* ok */ }
     }

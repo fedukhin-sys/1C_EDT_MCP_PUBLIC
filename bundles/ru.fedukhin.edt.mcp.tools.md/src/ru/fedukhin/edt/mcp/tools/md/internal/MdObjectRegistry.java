@@ -15,8 +15,8 @@ import java.util.Map;
  * мертвы — их отбивало на {@code registry.get(kind) == null} ещё до folder-маппинга.
  *
  * <p>{@code creatable} отделяет «можно создать с нуля» от «можно прочитать и заимствовать»:
- * EMF-фабрика создаст любой из них, но осмысленного объекта без сопутствующих артефактов не
- * выйдет, а непроверенные на живом EDT пути записи лучше отбивать явной ошибкой.
+ * не-creatable остались только kind'ы, которым нужны сопутствующие артефакты, которые
+ * {@code create_md_object} не создаёт (CommonForm — Form.form, CommonPicture — файл картинки).
  *
  * <p>Configuration root в реестр НЕ входит — он не редактируется через {@code create_md_object},
  * и lookup идёт по литералу "Configuration" в {@code MdObjectLocator}.
@@ -71,35 +71,38 @@ public final class MdObjectRegistry {
                 new MdObjectKind("Report", "getReports", "Reports",
                         false, true, "ObjectModule.bsl", false, true));
 
-        // Заимствуемые, но не создаваемые (creatable=false) — см. javadoc класса.
+        // Data-kinds «второй волны» — creatable с 1.20.0: EMF-фабрика + BM-сериализация дают
+        // валидный минимальный .mdo (дефолты EMF-модели совпадают с умолчаниями Designer),
+        // сопутствующие артефакты им не нужны. Проверяются live-smoke'ом на каждом релизе.
         // У этих есть getAttributes()/getTabularSections(), поэтому add_attribute и
-        // add_tabular_section на заимствованном объекте работают.
+        // add_tabular_section работают и на созданном, и на заимствованном объекте.
         m.put("BusinessProcess",
                 new MdObjectKind("BusinessProcess", "getBusinessProcesses", "BusinessProcesses",
-                        true, true, "ObjectModule.bsl", false, false));
+                        true, true, "ObjectModule.bsl", false, true));
         m.put("Task",
                 new MdObjectKind("Task", "getTasks", "Tasks",
-                        true, true, "ObjectModule.bsl", false, false));
+                        true, true, "ObjectModule.bsl", false, true));
         m.put("ChartOfAccounts",
                 new MdObjectKind("ChartOfAccounts", "getChartsOfAccounts", "ChartsOfAccounts",
-                        true, true, "ObjectModule.bsl", false, false));
+                        true, true, "ObjectModule.bsl", false, true));
         m.put("ChartOfCalculationTypes",
                 new MdObjectKind("ChartOfCalculationTypes", "getChartsOfCalculationTypes",
                         "ChartsOfCalculationTypes",
-                        true, true, "ObjectModule.bsl", false, false));
+                        true, true, "ObjectModule.bsl", false, true));
         m.put("ChartOfCharacteristicTypes",
                 new MdObjectKind("ChartOfCharacteristicTypes", "getChartsOfCharacteristicTypes",
                         "ChartsOfCharacteristicTypes",
-                        true, true, "ObjectModule.bsl", false, false));
+                        true, true, "ObjectModule.bsl", false, true));
         m.put("ExchangePlan",
                 new MdObjectKind("ExchangePlan", "getExchangePlans", "ExchangePlans",
-                        true, true, "ObjectModule.bsl", false, false));
+                        true, true, "ObjectModule.bsl", false, true));
         // DocumentJournal несёт графы и колонки, а не реквизиты.
         m.put("DocumentJournal",
                 new MdObjectKind("DocumentJournal", "getDocumentJournals", "DocumentJournals",
-                        false, false, null, false, false));
-        // CommonForm без Form.form и CommonPicture без файла картинки бессмысленны,
-        // а create_md_object сопутствующие артефакты не создаёт.
+                        false, false, null, false, true));
+        // Заимствуемые, но не создаваемые (creatable=false): CommonForm без Form.form и
+        // CommonPicture без файла картинки бессмысленны, а create_md_object сопутствующие
+        // артефакты не создаёт.
         m.put("CommonForm",
                 new MdObjectKind("CommonForm", "getCommonForms", "CommonForms",
                         false, true, "Module.bsl", false, false));

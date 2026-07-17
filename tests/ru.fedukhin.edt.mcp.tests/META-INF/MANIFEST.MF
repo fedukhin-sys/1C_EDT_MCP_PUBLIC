@@ -39,5 +39,7 @@ Require-Bundle: org.junit;bundle-version="4.13.0",
  com._1c.g5.v8.dt.debug.model,
  com._1c.g5.v8.dt.form.model
 Import-Package: com.fasterxml.jackson.databind;version="[2.20,3)",
+ com.fasterxml.jackson.databind.module;version="[2.20,3)",
  com.fasterxml.jackson.databind.node;version="[2.20,3)",
+ com.fasterxml.jackson.databind.ser;version="[2.20,3)",
  com.fasterxml.jackson.core;version="[2.20,3)"

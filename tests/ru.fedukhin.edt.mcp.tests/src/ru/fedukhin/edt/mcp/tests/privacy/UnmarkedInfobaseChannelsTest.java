@@ -27,9 +27,9 @@ public class UnmarkedInfobaseChannelsTest {
 
     @Test public void testRunAndSetVariableDeclareCapability() {
         assertTrue("run_tests не помечен returnsInfobaseData",
-            new RunTestsTool(null, null, null).returnsInfobaseData());
+            new RunTestsTool(null, null, null, null).returnsInfobaseData());
         assertTrue("run_test_method не помечен returnsInfobaseData",
-            new RunTestMethodTool(null, null, null).returnsInfobaseData());
+            new RunTestMethodTool(null, null, null, null).returnsInfobaseData());
         assertTrue("set_variable не помечен returnsInfobaseData",
             new SetVariableTool(null, null).returnsInfobaseData());
     }

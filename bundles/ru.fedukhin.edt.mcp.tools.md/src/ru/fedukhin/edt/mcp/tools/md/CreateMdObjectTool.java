@@ -68,7 +68,12 @@ public final class CreateMdObjectTool implements IMcpTool {
     }
 
     @Override public String name()        { return "create_md_object"; }
-    @Override public String description() { return "Create a new top-level MdObject in a project"; }
+    @Override public String description() {
+        return "Create a new top-level MdObject in a project. All data kinds are supported "
+             + "(Catalog, Document, registers, Enum, Task, BusinessProcess, ChartOf*, "
+             + "ExchangePlan, DocumentJournal, ...); CommonForm and CommonPicture cannot be "
+             + "created from scratch — they need companion artifacts, use borrow_md_object.";
+    }
 
     @Override
     public Map<String, Object> inputSchema() {
@@ -101,8 +106,9 @@ public final class CreateMdObjectTool implements IMcpTool {
         }
 
         // Реестр знает и те kind'ы, что доступны только для чтения и заимствования: EMF-фабрика
-        // создаст любой, но объект выйдет битым (CommonForm без Form.form) либо путь не проверялся
-        // на живом EDT. Отбиваем до мутации BM — иначе в конфигурацию попадёт мусор.
+        // создаст любой, но объект выйдет битым без сопутствующих артефактов (CommonForm без
+        // Form.form, CommonPicture без картинки). Отбиваем до мутации BM — иначе в конфигурацию
+        // попадёт мусор.
         MdObjectKind requested = registry.get(kind);
         if (requested != null && !requested.creatable()) {
             throw new ToolException("kind '" + kind + "' cannot be created from scratch; "

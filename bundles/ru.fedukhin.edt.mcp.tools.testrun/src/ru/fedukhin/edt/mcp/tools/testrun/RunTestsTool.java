@@ -16,6 +16,7 @@ import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestResult;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunResult;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerLauncher;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestSelectorEncoder;
 
@@ -28,18 +29,21 @@ public class RunTestsTool implements IMcpTool {
     private final TestRunnerLauncher launcher;
     private final InfobaseRegistry infobaseRegistry;
     private final RuntimeCli runtimeCli;
+    private final TestRunnerInstaller.ModuleScaffolder scaffolder;
 
     @Inject
     public RunTestsTool(TestRunnerLauncher launcher, InfobaseRegistry infobaseRegistry,
-                        RuntimeCli runtimeCli) {
+                        RuntimeCli runtimeCli, TestRunnerInstaller.ModuleScaffolder scaffolder) {
         this.launcher = launcher;
         this.infobaseRegistry = infobaseRegistry;
         this.runtimeCli = runtimeCli;
+        this.scaffolder = scaffolder;
     }
 
     @Override public String name() { return "run_tests"; }
     @Override public String description() {
         return "Run xUnit tests in module (or all modules) against a deployed infobase. "
+             + "Requires install_test_runner scaffolding in the project (checked up front). "
              + "Pass user/password if the infobase has users; without them 1cv8 relies on OS "
              + "authentication and otherwise blocks on a login dialog until the timeout.";
     }
@@ -79,6 +83,7 @@ public class RunTestsTool implements IMcpTool {
         if (!iproject.exists() || !iproject.isOpen()) {
             throw new ToolException("project '" + projectName + "' not open");
         }
+        requireRunnerInstalled(scaffolder, iproject, projectName);
         InfobaseReference ref = infobaseRegistry.findByName(infobaseName).orElseThrow(() ->
             new ToolException("infobase '" + infobaseName + "' not found"));
         String exe = runtimeCli.resolveExecutableForInfobase(ref);
@@ -93,6 +98,23 @@ public class RunTestsTool implements IMcpTool {
         TestRunResult res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(),
             selector, timeoutSeconds, user, password);
         return toMap(res);
+    }
+
+    /**
+     * Fail-fast: без модулей раннера 1cv8 ENTERPRISE стартует, селектор никто не читает,
+     * клиент висит окном до таймаута (минуты) — вместо этого сразу говорим, чего не хватает.
+     * Наличие модулей в проекте не гарантирует, что раннер задеплоен в ИБ, — но отсекает
+     * основной случай «забыли install_test_runner».
+     */
+    public static void requireRunnerInstalled(TestRunnerInstaller.ModuleScaffolder scaffolder,
+                                              IProject project, String projectName) throws ToolException {
+        boolean present =
+            scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.CLIENT_MODULE)
+            && scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.SERVER_MODULE);
+        if (!present) {
+            throw new ToolException("xUnit test runner is not installed in project '" + projectName
+                + "': run install_test_runner, deploy_project the project, then retry");
+        }
     }
 
     private static int parseTimeout(Map<String, Object> args) throws ToolException {

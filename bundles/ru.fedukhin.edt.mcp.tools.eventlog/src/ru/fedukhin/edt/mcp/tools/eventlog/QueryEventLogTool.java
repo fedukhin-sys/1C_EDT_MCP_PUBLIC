@@ -37,8 +37,8 @@ public class QueryEventLogTool implements IMcpTool {
 
     @Override public String name() { return "query_event_log"; }
     @Override public String description() {
-        // Требование «один из name/uuid/logDir» объявлено в схеме через anyOf, но MCP SDK его
-        // не публикует (см. ToolSpecAdapter.toJsonSchema) — поэтому дублируем словами.
+        // Требование «один из name/uuid/logDir» объявлено в схеме через anyOf (публикуется
+        // через JsonSchemaExtras); словами дублируем для клиентов, не читающих anyOf.
         return "Query the 1C event log (.lgf/.lgp) with filters: date range, user, event, severity, "
              + "comment, metadata. Requires exactly one of: name, uuid, or logDir.";
     }

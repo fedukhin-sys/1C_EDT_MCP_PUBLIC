@@ -14,6 +14,7 @@ import ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseTool;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunResult;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerLauncher;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestSelectorEncoder;
 
@@ -26,18 +27,21 @@ public class RunTestMethodTool implements IMcpTool {
     private final TestRunnerLauncher launcher;
     private final InfobaseRegistry infobaseRegistry;
     private final RuntimeCli runtimeCli;
+    private final TestRunnerInstaller.ModuleScaffolder scaffolder;
 
     @Inject
     public RunTestMethodTool(TestRunnerLauncher launcher, InfobaseRegistry infobaseRegistry,
-                              RuntimeCli runtimeCli) {
+                              RuntimeCli runtimeCli, TestRunnerInstaller.ModuleScaffolder scaffolder) {
         this.launcher = launcher;
         this.infobaseRegistry = infobaseRegistry;
         this.runtimeCli = runtimeCli;
+        this.scaffolder = scaffolder;
     }
 
     @Override public String name() { return "run_test_method"; }
     @Override public String description() {
         return "Run a single xUnit test method against a deployed infobase. "
+             + "Requires install_test_runner scaffolding in the project (checked up front). "
              + "Pass user/password if the infobase has users; without them 1cv8 relies on OS "
              + "authentication and otherwise blocks on a login dialog until the timeout.";
     }
@@ -80,6 +84,7 @@ public class RunTestMethodTool implements IMcpTool {
         if (!iproject.exists() || !iproject.isOpen()) {
             throw new ToolException("project '" + projectName + "' not open");
         }
+        RunTestsTool.requireRunnerInstalled(scaffolder, iproject, projectName);
         InfobaseReference ref = infobaseRegistry.findByName(infobaseName).orElseThrow(() ->
             new ToolException("infobase '" + infobaseName + "' not found"));
         String exe = runtimeCli.resolveExecutableForInfobase(ref);

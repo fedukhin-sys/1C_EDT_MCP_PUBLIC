@@ -2,11 +2,23 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
-## [Не выпущено]
+## [1.20.0] — 2026-07-17
+
+Устранение исправимых пунктов из списка «Что НЕ работает» скилла: два ограничения
+сняты, одно поведение сделано fail-fast.
+
+### Добавлено
+
+- **`create_md_object` создаёт «вторую волну» kind'ов:** `Task`, `BusinessProcess`, `ChartOfAccounts`, `ChartOfCalculationTypes`, `ChartOfCharacteristicTypes`, `ExchangePlan`, `DocumentJournal` переведены в creatable — EMF-фабрика и BM-сериализация дают валидный минимальный `.mdo`, сопутствующие артефакты этим kind'ам не нужны. Не-creatable остались только `CommonForm` (нужен `Form.form`) и `CommonPicture` (нужен файл картинки) — для них по-прежнему `borrow_md_object`.
+- **`anyOf`/`oneOf` публикуются в схемах инструментов.** Record `McpSchema.JsonSchema` MCP SDK не несёт этих ключей, и «обязателен один из name/uuid/logDir» у `query_event_log`/`get_event_log_path` был виден клиенту только словами в description. Теперь недостающие ключи Map-схемы дописываются при сериализации tools/list (`JsonSchemaExtras`: реестр extras + кастомный Jackson-сериализатор в нашем ObjectMapper).
+
+### Исправлено
+
+- **`run_tests`/`run_test_method` без установленного раннера падают сразу с подсказкой.** Раньше 1cv8 ENTERPRISE стартовал, селектор никто не читал, и клиент висел до таймаута (минуты); теперь наличие модулей раннера в проекте проверяется до запуска, ошибка называет `install_test_runner` и `deploy_project`.
 
 ### Документация
 
-- Скилл `edt-mcp` актуализирован до v1.19.2: `build_external_object` описан по новой схеме (без `serviceInfobase`/`platformVersion`, сборка штатным экспорт-сервисом EDT, нужна ассоциация проекта с ИБ), у `run_tests`/`run_test_method` задокументированы `user`/`password`, раздел «Что НЕ работает» сверен с кодом.
+- Скилл `edt-mcp` актуализирован: `build_external_object` описан по новой схеме (без `serviceInfobase`/`platformVersion`, сборка штатным экспорт-сервисом EDT, нужна ассоциация проекта с ИБ), у `run_tests`/`run_test_method` задокументированы `user`/`password`, раздел «Что НЕ работает» пересобран — оставшиеся пункты помечены как ограничения платформы 1С/EDT.
 
 ## [1.19.2] — 2026-07-17
 
