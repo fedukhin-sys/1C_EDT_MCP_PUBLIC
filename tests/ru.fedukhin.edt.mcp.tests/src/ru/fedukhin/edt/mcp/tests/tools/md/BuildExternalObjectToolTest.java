@@ -212,6 +212,43 @@ public class BuildExternalObjectToolTest {
         }
     }
 
+    /**
+     * Первое обращение к ИБ в свежем сеансе EDT переводит её в connected и падает
+     * IllegalArgumentException «already connected»; повтор проходит. Инструмент обязан
+     * ретраить этот транзиентный отказ, а не отдавать его наружу (live-smoke 2026-07-17).
+     */
+    @Test
+    public void alreadyConnected_isRetriedOnce_thenSucceeds() throws Exception {
+        BuildExternalObjectTool tool = toolFor(List.of(), false);
+        doThrow(new IllegalArgumentException("Infobase Dandy 030526 is already connected"))
+            .doAnswer(inv -> {
+                Path target = inv.getArgument(2);
+                Files.createDirectories(target.getParent());
+                Files.writeString(target, "epf-bytes");
+                return null;
+            }).when(dumper).dump(any(), any(), any(), any());
+
+        Map<String, Object> result = call(tool);
+        assertEquals(outFile.toString(), result.get("epfPath"));
+        verify(dumper, org.mockito.Mockito.times(2)).dump(any(), any(), any(), any());
+    }
+
+    /** Если и повтор упал «already connected» — честная ошибка с оригинальным текстом EDT. */
+    @Test
+    public void alreadyConnected_persistent_reportsHonestError() throws Exception {
+        BuildExternalObjectTool tool = toolFor(List.of(), false);
+        doThrow(new IllegalArgumentException("Infobase Dandy 030526 is already connected"))
+            .when(dumper).dump(any(), any(), any(), any());
+
+        try {
+            call(tool);
+            fail("устойчивый already connected обязан быть ошибкой");
+        } catch (ToolException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("already connected"));
+            assertTrue(expected.getMessage(), expected.getMessage().contains("занята"));
+        }
+    }
+
     /** Сервис вернулся без ошибки, файла нет — верим диску, а не отсутствию исключения. */
     @Test
     public void silentSuccessWithoutFile_isReported() throws Exception {

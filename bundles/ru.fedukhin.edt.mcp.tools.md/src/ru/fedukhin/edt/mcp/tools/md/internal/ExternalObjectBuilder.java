@@ -107,14 +107,39 @@ public class ExternalObjectBuilder {
         return new BuildOutcome(req.outFile(), durationMs, warnings);
     }
 
+    /** Пауза перед повтором после транзиентного «already connected». */
+    private static final long ALREADY_CONNECTED_RETRY_DELAY_MS = 1_000L;
+
     /**
-     * Прогон {@link IExternalObjectDumper#dump} с ограничением по времени.
+     * Прогон {@link IExternalObjectDumper#dump} с ограничением по времени и одним повтором
+     * при транзиентном «already connected».
+     *
+     * <p>Первое обращение к ИБ проекта в свежем сеансе EDT переводит её в connected и при этом
+     * падает {@code IllegalArgumentException "Infobase … is already connected"} (checkArgument в
+     * стратегии синхронизации). Повторный вызов уже использует готовое подключение и проходит —
+     * live-smoke 2026-07-17 это подтвердил. Поэтому такой отказ один раз ретраим, а не выдаём
+     * наружу как ошибку сборки.
+     */
+    private void dump(BuildRequest req, EObject object) throws ToolException {
+        Throwable cause = runDumpOnce(req, object);
+        if (cause == null) return;
+        if (isAlreadyConnected(cause)) {
+            sleepQuietly(ALREADY_CONNECTED_RETRY_DELAY_MS);
+            cause = runDumpOnce(req, object);
+            if (cause == null) return;
+        }
+        throw toToolException(cause);
+    }
+
+    /**
+     * Одна попытка выгрузки в отдельном потоке. Возвращает {@code null} при успехе или причину
+     * отказа сервиса; таймаут и прерывание — не отказ сервиса, они бросаются напрямую.
      *
      * <p>Сервис синхронный и на занятой ИБ умеет ждать сколько угодно, поэтому крутим его в
      * отдельном потоке: по таймауту отменяем {@link IProgressMonitor} — единственный способ
      * попросить EDT остановиться (платформу он гасит сам).
      */
-    private void dump(BuildRequest req, EObject object) throws ToolException {
+    private Throwable runDumpOnce(BuildRequest req, EObject object) throws ToolException {
         IProgressMonitor monitor = new NullProgressMonitor();
         ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "edt-mcp-epf-dump");
@@ -128,6 +153,7 @@ public class ExternalObjectBuilder {
             });
             try {
                 task.get(req.timeoutSeconds(), TimeUnit.SECONDS);
+                return null;
             } catch (TimeoutException e) {
                 monitor.setCanceled(true);
                 throw new ToolException("выгрузка .epf: timeout after " + req.timeoutSeconds()
@@ -137,16 +163,28 @@ public class ExternalObjectBuilder {
                 Thread.currentThread().interrupt();
                 throw new ToolException("сборка .epf прервана", e);
             } catch (ExecutionException e) {
-                throw toToolException(e.getCause());
+                return e.getCause();
             }
         } finally {
             pool.shutdownNow();
         }
     }
 
+    /** Транзиентный отказ «ИБ уже подключена» — checkArgument в стратегии синхронизации EDT. */
+    private static boolean isAlreadyConnected(Throwable cause) {
+        return cause instanceof IllegalArgumentException
+            && cause.getMessage() != null
+            && cause.getMessage().toLowerCase(java.util.Locale.ROOT).contains("already connected");
+    }
+
+    private static void sleepQuietly(long ms) {
+        try { Thread.sleep(ms); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
     /**
-     * CoreException от EDT — единственная диагностика провала, а её типовая причина
-     * (у проекта нет ИБ, в которую платформа загрузила бы объект) без подсказки необъяснима.
+     * Причина отказа сервиса → {@link ToolException} с actionable-подсказкой. Оригинальное
+     * сообщение сохраняется всегда: EDT кладёт в него настоящую причину, домысливать её нельзя.
      */
     private static ToolException toToolException(Throwable cause) {
         if (cause instanceof CoreException e) {
@@ -154,10 +192,13 @@ public class ExternalObjectBuilder {
                 + "; если причина в отсутствии информационной базы у проекта — свяжите проект с ИБ "
                 + "(associate_infobase) или создайте её (create_infobase)", e);
         }
+        if (isAlreadyConnected(cause)) {
+            return new ToolException("ИБ проекта занята (EDT: " + cause.getMessage()
+                + "); повтор не помог — закройте сеансы этой ИБ и повторите сборку", cause);
+        }
         if (cause instanceof IllegalArgumentException e) {
-            // Сервис требует проект вида external-object; иначе — падает именно так.
-            return new ToolException("проект не является проектом внешних отчётов и обработок: "
-                + e.getMessage(), e);
+            return new ToolException("EDT отклонил сборку внешнего объекта: " + e.getMessage()
+                + " (типичная причина — проект не является проектом внешних отчётов и обработок)", e);
         }
         if (cause instanceof RuntimeException e) throw e;
         return new ToolException("сборка .epf не удалась: " + cause, cause);
