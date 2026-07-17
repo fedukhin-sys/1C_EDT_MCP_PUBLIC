@@ -71,4 +71,34 @@ public class BuildPrecheckTest {
         assertEquals("Ожидается имя переменной", v.blockers().get(0).message());
         assertEquals(2, v.warnings().size());
     }
+
+    /**
+     * Live-smoke 2026-07-17: сборка рабочей обработки отклонялась из-за deprecation и SSL-стиля.
+     * EDT кладёт эти замечания в severity=error с checkId=BslEditor — так же, как настоящие
+     * compile-ошибки, — но 1cv8 они не ломают. С прежним триажем («любой BslEditor+error —
+     * блокер») инструмент не собрал бы ни одну типовую обработку: «Метод устарел» есть в любой.
+     */
+    @Test
+    public void bslEditorErrors_thatDoNotBreakCompilation_areWarningsNotBlockers() {
+        BuildPrecheck.Verdict v = BuildPrecheck.of(List.of(
+            marker("error", "BslEditor", "Метод устарел"),
+            marker("error", "BslEditor", "Описание экспортируемой функции должно содержать блок \"Возвращаемое значение\""),
+            marker("error", "BslEditor", "Отсутствует включение безопасного режима перед вызовом метода \"Выполнить\""),
+            marker("error", "BslEditor", "Тип 'ЗаписьJSON' неопределен [Web-клиент]"),
+            marker("error", "BslEditor", "Возвращается недекларируемое свойство: \"Вид, Версия\""),
+            marker("error", "BslEditor", "Цикл содержит выполнение запроса")));
+
+        assertEquals("ни одно из этих замечаний не мешает 1cv8 загрузить модуль",
+            0, v.blockers().size());
+        assertEquals(6, v.warnings().size());
+    }
+
+    /** Незнакомое сообщение от BslEditor считаем компиляционным — fail-closed. */
+    @Test
+    public void unknownBslEditorError_isTreatedAsBlocker() {
+        BuildPrecheck.Verdict v = BuildPrecheck.of(List.of(
+            marker("error", "BslEditor", "Совершенно новая диагностика платформы")));
+
+        assertEquals(1, v.blockers().size());
+    }
 }

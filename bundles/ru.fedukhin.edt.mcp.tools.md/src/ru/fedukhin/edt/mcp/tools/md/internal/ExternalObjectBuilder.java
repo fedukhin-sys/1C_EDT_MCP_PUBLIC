@@ -202,19 +202,47 @@ public class ExternalObjectBuilder {
         Path byName = exportDir.resolve(objectName + ".xml");
         if (Files.isRegularFile(byName)) return byName;
 
-        List<Path> candidates;
-        try (Stream<Path> top = Files.list(exportDir)) {
-            candidates = top.filter(Files::isRegularFile)
-                            .filter(p -> p.getFileName().toString().endsWith(".xml"))
-                            .sorted()
-                            .toList();
+        // Раскладку выгрузки задаёт сам EDT, и она не обязана быть плоской: live-smoke
+        // 2026-07-17 показал, что на верхнем уровне .xml может не быть вовсе. Поэтому ищем
+        // <Имя>.xml на любой глубине, начиная с самых верхних — и лишь потом сдаёмся.
+        List<Path> byNameDeep;
+        List<Path> anyXml;
+        try (Stream<Path> walk = Files.walk(exportDir)) {
+            List<Path> allXml = walk.filter(Files::isRegularFile)
+                                    .filter(p -> p.getFileName().toString().endsWith(".xml"))
+                                    .sorted(java.util.Comparator.comparingInt(Path::getNameCount)
+                                                                .thenComparing(Path::toString))
+                                    .toList();
+            byNameDeep = allXml.stream()
+                               .filter(p -> p.getFileName().toString().equals(objectName + ".xml"))
+                               .toList();
+            anyXml = allXml;
         } catch (IOException e) {
             throw new ToolException("не удалось прочитать каталог выгрузки " + exportDir
                 + ": " + e.getMessage(), e);
         }
-        if (candidates.size() == 1) return candidates.get(0);
-        throw new ToolException("в выгрузке " + exportDir + " не найден корневой '" + objectName
-            + ".xml'; верхнеуровневые .xml: " + candidates);
+        if (!byNameDeep.isEmpty()) return byNameDeep.get(0);
+        if (anyXml.size() == 1)    return anyXml.get(0);
+
+        // Каталог временный и будет удалён, поэтому единственный шанс понять, что выгрузил EDT, —
+        // перечислить содержимое прямо в сообщении.
+        throw new ToolException("в выгрузке " + exportDir + " не найден '" + objectName
+            + ".xml'; найденные .xml: " + anyXml + "; содержимое каталога: " + describe(exportDir));
+    }
+
+    /** Плоский список содержимого каталога — для диагностики неожиданной раскладки выгрузки. */
+    private static String describe(Path dir) {
+        try (Stream<Path> walk = Files.walk(dir, 3)) {
+            List<String> entries = walk.filter(p -> !p.equals(dir))
+                                       .map(p -> dir.relativize(p).toString()
+                                                 + (Files.isDirectory(p) ? "/" : ""))
+                                       .sorted()
+                                       .limit(40)
+                                       .toList();
+            return entries.isEmpty() ? "<пусто>" : entries.toString();
+        } catch (IOException e) {
+            return "<не прочитано: " + e.getMessage() + ">";
+        }
     }
 
     /** Хвост лога DESIGNER — единственный источник диагностики при провале. */
