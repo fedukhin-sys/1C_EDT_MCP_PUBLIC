@@ -2,9 +2,9 @@
 <?compositeMetadataRepository version='1.0.0'?>
 <repository name='EDT MCP - p2 (composite)' type='org.eclipse.equinox.internal.p2.metadata.repository.CompositeMetadataRepository' version='1.0.0'>
   <properties size='1'>
-    <property name='p2.timestamp' value='1784314553442'/>
+    <property name='p2.timestamp' value='1784321144012'/>
   </properties>
-  <children size='10'>
+  <children size='11'>
     <child location='releases/1.15.5'/>
     <child location='releases/1.15.6'/>
     <child location='releases/1.16.0'/>
@@ -15,5 +15,6 @@
     <child location='releases/1.19.0'/>
     <child location='releases/1.19.1'/>
     <child location='releases/1.19.2'/>
+    <child location='releases/1.20.0'/>
   </children>
 </repository>
