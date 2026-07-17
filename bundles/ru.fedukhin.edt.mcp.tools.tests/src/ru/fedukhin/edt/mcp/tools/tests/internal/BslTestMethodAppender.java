@@ -16,7 +16,15 @@ public class BslTestMethodAppender {
     public static final class AppendResult {
         public final String newText;
         public final boolean alreadyExisted;
-        public AppendResult(String t, boolean e) { this.newText = t; this.alreadyExisted = e; }
+        /**
+         * Тест реально зарегистрирован в {@code ИсполняемыеСценарии}/{@code ExecutableScenarios}.
+         * {@code false}, если в модуле нет этой процедуры (регистрировать негде) — тогда метод
+         * в модуле есть, но раннер xUnitFor1C его не запустит.
+         */
+        public final boolean registered;
+        public AppendResult(String t, boolean e, boolean r) {
+            this.newText = t; this.alreadyExisted = e; this.registered = r;
+        }
     }
 
     public AppendResult append(String moduleText, String methodName, Language lang, String userBody) {
@@ -25,7 +33,9 @@ public class BslTestMethodAppender {
         // Check method already exists
         Pattern methodExists = Pattern.compile("(?im)^\\s*(Процедура|Procedure)\\s+" + Pattern.quote(fqn) + "\\s*\\(");
         if (methodExists.matcher(moduleText).find()) {
-            return new AppendResult(moduleText, true);
+            // Идемпотентный повтор: метод есть — но регистрация могла и отсутствовать
+            // (например, метод дописан прошлым вызовом в модуль без ИсполняемыеСценарии).
+            return new AppendResult(moduleText, true, isRegistered(moduleText, fqn));
         }
 
         // Add ДобавитьТест/AddTest to ExecutableScenarios body — insert right before
@@ -36,7 +46,8 @@ public class BslTestMethodAppender {
         Pattern endProc = (lang == Language.RU) ? RU_END_PROC : EN_END_PROC;
         Matcher m = endProc.matcher(moduleText);
         String afterRegister;
-        if (m.find()) {
+        boolean registered = m.find();
+        if (registered) {
             String registerLine = (lang == Language.RU)
                 ? "\tЮнитТесты.ДобавитьТест(\"" + fqn + "\");\r\n"
                 : "\tUnitTests.AddTest(\"" + fqn + "\");\r\n";
@@ -48,6 +59,12 @@ public class BslTestMethodAppender {
         // Append method body at the end
         String methodBody = XUnitTemplates.methodBody(methodName, lang, userBody);
         String separator = afterRegister.endsWith("\r\n") ? "\r\n" : "\r\n\r\n";
-        return new AppendResult(afterRegister + separator + methodBody, false);
+        return new AppendResult(afterRegister + separator + methodBody, false, registered);
+    }
+
+    /** Есть ли в модуле строка регистрации {@code ДобавитьТест("fqn")} / {@code AddTest("fqn")}. */
+    private static boolean isRegistered(String moduleText, String fqn) {
+        return Pattern.compile("(?i)(ДобавитьТест|AddTest)\\s*\\(\\s*\"" + Pattern.quote(fqn) + "\"")
+                .matcher(moduleText).find();
     }
 }

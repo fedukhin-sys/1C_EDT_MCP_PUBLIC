@@ -30,7 +30,10 @@ public class GetEventLogPathTool implements IMcpTool {
 
     @Override public String name() { return "get_event_log_path"; }
     @Override public String description() {
-        return "Get path to the 1Cv8Log directory and partition list for an infobase";
+        // Требование «ровно один из name/uuid» объявлено в схеме через oneOf, но MCP SDK его
+        // не публикует (см. ToolSpecAdapter.toJsonSchema) — поэтому дублируем словами.
+        return "Get path to the 1Cv8Log directory and partition list for an infobase. "
+             + "Requires exactly one of: name or uuid.";
     }
 
     @Override public Map<String, Object> inputSchema() {

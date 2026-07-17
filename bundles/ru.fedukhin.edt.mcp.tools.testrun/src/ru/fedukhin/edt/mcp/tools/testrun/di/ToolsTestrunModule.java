@@ -9,9 +9,6 @@ import com._1c.g5.v8.dt.platform.services.core.runtimes.environments.IResolvable
 import com._1c.g5.v8.dt.platform.services.core.runtimes.execution.IRuntimeComponentManager;
 import com._1c.g5.wiring.AbstractServiceAwareModule;
 import com.google.inject.Singleton;
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
 import org.eclipse.core.runtime.Plugin;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
@@ -25,6 +22,7 @@ import ru.fedukhin.edt.mcp.tools.testrun.InstallTestRunnerTool;
 import ru.fedukhin.edt.mcp.tools.testrun.RunTestMethodTool;
 import ru.fedukhin.edt.mcp.tools.testrun.RunTestsTool;
 import ru.fedukhin.edt.mcp.tools.testrun.UninstallTestRunnerTool;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.DefaultProcessRunner;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.IdeManagedAppModuleEditor;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.IdeModuleScaffolder;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller;
@@ -68,8 +66,9 @@ public final class ToolsTestrunModule extends AbstractServiceAwareModule {
         bind(TestRunnerInstaller.class).in(Singleton.class);
         bind(TestRunnerLauncher.class).in(Singleton.class);
 
-        // ProcessRunner default impl: real ProcessBuilder-based runner.
+        // ProcessRunner default impl: real ProcessBuilder-based runner with an honest timeout.
         bind(ProcessRunner.class).toInstance(new DefaultProcessRunner());
+
 
         // Real scaffolder + editor implementations (Task 9).
         bind(ModuleScaffolder.class).to(IdeModuleScaffolder.class).in(Singleton.class);
@@ -80,24 +79,5 @@ public final class ToolsTestrunModule extends AbstractServiceAwareModule {
         bind(UninstallTestRunnerTool.class);
         bind(RunTestsTool.class);
         bind(RunTestMethodTool.class);
-    }
-
-    /** Default ProcessRunner — launches via ProcessBuilder, captures stdout/stderr. */
-    static final class DefaultProcessRunner implements ProcessRunner {
-        @Override public RunOutcome run(List<String> command, Map<String, String> env,
-                                         int timeoutSeconds) throws Exception {
-            ProcessBuilder pb = new ProcessBuilder(command);
-            if (env != null && !env.isEmpty()) pb.environment().putAll(env);
-            pb.redirectErrorStream(false);
-            Process p = pb.start();
-            String stdout = readAll(p.getInputStream());
-            String stderr = readAll(p.getErrorStream());
-            int exit = p.waitFor();
-            return new RunOutcome(exit, stdout, stderr);
-        }
-        private static String readAll(java.io.InputStream in) throws IOException {
-            byte[] data = in.readAllBytes();
-            return new String(data, java.nio.charset.StandardCharsets.UTF_8);
-        }
     }
 }

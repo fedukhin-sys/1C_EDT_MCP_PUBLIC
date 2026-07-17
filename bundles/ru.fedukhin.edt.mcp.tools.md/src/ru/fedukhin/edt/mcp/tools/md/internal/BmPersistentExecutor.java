@@ -54,10 +54,16 @@ public class BmPersistentExecutor {
                          IBmSingleNamespaceTask<T> task) {
         IBmNamespace ns = bmModelManager.getBmNamespace(project);
         IBmPlatformGlobalEditingContext ctx = bmModelManager.getGlobalEditingContext();
-        return ctx.execute(description, null, null,
+        T result = ctx.execute(description, null, null,
                 (IBmPlatformTask<T>) (IBmPlatformTransaction ptxn) -> {
                     IBmTransaction nsTxn = ptxn.getNamespaceBoundTransaction(ns);
                     return task.execute(nsTxn);
                 });
+        // ctx.execute возвращается ДО того, как .mdo записан: сериализация асинхронна.
+        // Ждём здесь, в единственной точке мутаций, — иначе каждый инструмент обязан помнить
+        // про это сам, а rename_*/set_md_property не помнили, и немедленное чтение с диска
+        // после них отдавало прежнее имя/значение (класс гонок BUG-03).
+        BmSyncWaiter.awaitModel(bmModelManager, project);
+        return result;
     }
 }

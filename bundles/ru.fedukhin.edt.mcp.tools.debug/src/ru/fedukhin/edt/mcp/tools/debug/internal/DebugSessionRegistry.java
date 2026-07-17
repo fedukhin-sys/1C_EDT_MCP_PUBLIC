@@ -42,14 +42,19 @@ public class DebugSessionRegistry {
     }
 
     /**
-     * Returns the live sessions; prunes terminated ones from the map as a side effect,
-     * calling {@link DebugSession#dispose()} on each so its debug-event listener is
-     * deregistered (otherwise sessions terminated by EDT leak their listener).
+     * Returns the live sessions; prunes terminated ones from the map as a side effect.
+     *
+     * <p>Уборка симметрична {@code stop_debug}: {@link DebugSession#dispose()} снимает
+     * слушателя событий, {@link DebugSession#terminate()} — отпускает target/launch,
+     * убирает launch из {@code ILaunchManager} и снимает catch-all breakpoint. Одного
+     * {@code dispose()} мало: сессия, завершённая самим EDT (пользователь закрыл клиент),
+     * иначе оставляет launch в менеджере и breakpoint в workspace.
      */
     public List<DebugSession> list() {
         sessions.values().removeIf(session -> {
             if (session.isTerminated()) {
                 session.dispose();
+                session.terminate();
                 return true;
             }
             return false;

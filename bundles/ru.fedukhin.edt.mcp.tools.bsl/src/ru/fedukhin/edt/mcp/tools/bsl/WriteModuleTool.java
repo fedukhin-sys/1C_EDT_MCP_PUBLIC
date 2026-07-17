@@ -2,6 +2,8 @@ package ru.fedukhin.edt.mcp.tools.bsl;
 
 import jakarta.inject.Inject;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
@@ -45,7 +47,17 @@ public class WriteModuleTool implements IMcpTool {
     }
 
     @Override public String name() { return "write_module"; }
-    @Override public String description() { return "Write BSL module content (optionally validated by Xtext before write)"; }
+    /**
+     * Описание намеренно не обещает синтаксическую проверку: {@code validate=true} гоняет
+     * {@code BslAstReader.validate} — regex-баланс Процедура/КонецПроцедуры, не Xtext-парсер.
+     * Поле результата {@code validated} остаётся в контракте, но означает лишь «структурная
+     * проверка выполнена».
+     */
+    @Override public String description() {
+        return "Write BSL module content. validate=true (default) runs a structural balance check only "
+             + "(Процедура/КонецПроцедуры, Функция/КонецФункции, no nested methods) — NOT a syntax check: "
+             + "broken expressions pass. For real validation run check_list_markers / check_run on the project.";
+    }
 
     @Override public Map<String, Object> inputSchema() {
         Map<String, Object> projectProp = new LinkedHashMap<>(); projectProp.put("type", "string");
@@ -113,7 +125,7 @@ public class WriteModuleTool implements IMcpTool {
             }
         }
 
-        byte[] bytes = content.getBytes(charset);
+        byte[] bytes = encode(content, charset, creating ? false : hadBom(file, charset));
         try {
             workspace.run((IWorkspaceRunnable) monitor -> {
                 if (creating) {
@@ -138,6 +150,41 @@ public class WriteModuleTool implements IMcpTool {
     }
 
     /** Creates any missing parent folders of {@code file}, outermost-first. */
+    /**
+     * Был ли BOM у файла до перезаписи.
+     *
+     * <p>read_module снимает BOM с {@code content}, поэтому круг read→edit→write без этой
+     * проверки молча лишил бы модуль BOM'а, которым 1С предваряет .bsl. Решение принимается
+     * по факту на диске, а не по тому, что прислал клиент: перезапись не должна менять форму
+     * файла, которую он не просил менять.
+     */
+    private static boolean hadBom(IFile file, Charset charset) {
+        if (!StandardCharsets.UTF_8.equals(charset)) return false;
+        try (InputStream in = file.getContents()) {
+            if (in == null) return false;
+            byte[] head = in.readNBytes(3);
+            return head.length == 3
+                && (head[0] & 0xFF) == 0xEF && (head[1] & 0xFF) == 0xBB && (head[2] & 0xFF) == 0xBF;
+        } catch (IOException | CoreException e) {
+            return false;   // не смогли прочитать — не выдумываем BOM
+        }
+    }
+
+    /** Кодирует content, при необходимости возвращая BOM и не допуская его удвоения. */
+    private static byte[] encode(String content, Charset charset, boolean withBom) {
+        String body = (!content.isEmpty() && content.charAt(0) == BOM_CHAR)
+                ? content.substring(1) : content;
+        byte[] bytes = body.getBytes(charset);
+        if (!withBom) return bytes;
+        byte[] out = new byte[3 + bytes.length];
+        out[0] = (byte) 0xEF; out[1] = (byte) 0xBB; out[2] = (byte) 0xBF;
+        System.arraycopy(bytes, 0, out, 3, bytes.length);
+        return out;
+    }
+
+    /** U+FEFF — см. {@code ReadModuleTool.BOM}; числом, т.к. сам символ невидим. */
+    private static final char BOM_CHAR = (char) 0xFEFF;
+
     private static void createParentFolders(IFile file, IProgressMonitor monitor) throws CoreException {
         Deque<IFolder> missing = new ArrayDeque<>();
         for (IContainer c = file.getParent(); c instanceof IFolder folder && !c.exists(); c = c.getParent()) {

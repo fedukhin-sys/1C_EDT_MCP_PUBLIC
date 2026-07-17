@@ -139,6 +139,40 @@ public class GetFormToolTest {
         assertEquals(0, ((List<?>) result.get("commands")).size());
     }
 
+    /**
+     * Наивная плюрализация {@code kind + "s"} давала «BusinessProcesss» и «ChartOfAccountss» —
+     * get_form на этих kind'ах не находил Form.form. Папка должна браться из единого реестра.
+     */
+    @Test
+    public void businessProcessForm_pathDerivation() throws Exception {
+        IProject project = mockProjectWithForm(
+                "src/BusinessProcesses/Согласование/Forms/ФормаЭлемента/Form.form", EMPTY_FORM_XML);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("Demo")).thenReturn(project);
+
+        GetFormTool tool = new GetFormTool(() -> root, new FormFileReader());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) tool.call(
+                Map.of("project", "Demo", "fqn", "BusinessProcess.Согласование.Form.ФормаЭлемента"));
+
+        assertEquals("ФормаЭлемента", result.get("name"));
+    }
+
+    @Test
+    public void chartOfAccountsForm_pathDerivation() throws Exception {
+        IProject project = mockProjectWithForm(
+                "src/ChartsOfAccounts/Основной/Forms/ФормаСписка/Form.form", EMPTY_FORM_XML);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("Demo")).thenReturn(project);
+
+        GetFormTool tool = new GetFormTool(() -> root, new FormFileReader());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) tool.call(
+                Map.of("project", "Demo", "fqn", "ChartOfAccounts.Основной.Form.ФормаСписка"));
+
+        assertEquals("ФормаСписка", result.get("name"));
+    }
+
     @Test(expected = ToolException.class)
     public void malformedFqn_throwsToolException() throws Exception {
         IWorkspaceRoot root = mock(IWorkspaceRoot.class);

@@ -28,4 +28,18 @@ public interface IMcpTool {
      * Такие результаты проходят централизованный слой обезличивания в ToolSpecAdapter.
      */
     default boolean returnsInfobaseData() { return false; }
+
+    /**
+     * Ключ инфобазы, к которой относится результат, для проверки флага
+     * {@code containsRealPersonalData} слоем обезличивания.
+     *
+     * <p>Переопределять только тем инструментам, у которых инфобаза — честный,
+     * объявленный в {@link #inputSchema()} аргумент (например {@code query_event_log}).
+     * Дефолт {@code null} означает «инфобаза неизвестна» → fail-closed, флаг не
+     * проверяется и результат обезличивается всегда. Именно поэтому ключ берётся
+     * у инструмента, а не из сырых {@code args}: иначе клиент дописывает в аргументы
+     * debug-инструмента посторонний {@code name} «безопасной» базы и отключает
+     * обезличивание данных совсем другой базы.
+     */
+    default String privacyInfobaseKey(Map<String, Object> args) { return null; }
 }

@@ -8,6 +8,7 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
+import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.dialogs.PreferencesUtil;
 import org.eclipse.ui.menus.WorkbenchWindowControlContribution;
@@ -71,8 +72,10 @@ public class McpStatusBarItem extends WorkbenchWindowControlContribution {
     private Color red()   { return Display.getDefault().getSystemColor(SWT.COLOR_DARK_RED); }
 
     private void openPrefs() {
+        // См. McpStatusBarControl.openPrefs: активного окна может не быть — это NPE в UI-потоке.
+        IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
         PreferencesUtil.createPreferenceDialogOn(
-            PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(),
+            window != null ? window.getShell() : null,
             "ru.fedukhin.edt.mcp.ui.preferences.McpPreferencePage", null, null).open();
     }
 

@@ -24,30 +24,29 @@ public final class PrivacyRedactor implements IPrivacyFilter {
     }
 
     @Override
-    public Object redact(String toolName, Map<String, Object> args, Object result) {
-        String infobaseKey = infobaseKey(args);
+    public Object redact(String toolName, String infobaseKey, Object result) {
         // per-infobase флаг: если база явно объявлена без реальных ПДн — не трогаем
         if (infobaseKey != null && !flags.containsRealPersonalData(infobaseKey)) {
             return result;
         }
         PiiCatalog cat = catalogSupplier.get();
-        int[] counter = {0};
+        Tally tally = new Tally();
         Object out = switch (toolName) {
-            case "get_variables" -> redactVarList(result, cat, counter);
-            case "evaluate" -> redactEvaluate(result, cat, counter);
-            case "query_event_log" -> redactEventLog(result, cat, counter);
-            default -> deepRegex(result, counter); // get_stack и любые прочие — только regex-сеть
+            case "get_variables" -> redactVarList(result, cat, tally);
+            case "evaluate" -> redactEvaluate(result, cat, tally);
+            case "query_event_log" -> redactEventLog(result, cat, tally);
+            default -> deepRegex(result, tally); // get_stack и любые прочие — только regex-сеть
         };
-        if (counter[0] > 0) {
+        if (tally.count() > 0) {
             audit.record(toolName, infobaseKey == null ? "-" : infobaseKey,
-                         Sensitivity.PERSONAL, toolName, counter[0]);
+                         tally.maxSensitivity(), toolName, tally.count());
         }
         return out;
     }
 
     // ---- get_variables: List<{name,type,value}> ----
     @SuppressWarnings("unchecked")
-    private Object redactVarList(Object result, PiiCatalog cat, int[] c) {
+    private Object redactVarList(Object result, PiiCatalog cat, Tally c) {
         if (!(result instanceof List<?> list)) return deepRegex(result, c);
         for (Object o : list) {
             if (o instanceof Map) redactValueField((Map<String, Object>) o, cat, c);
@@ -57,7 +56,7 @@ public final class PrivacyRedactor implements IPrivacyFilter {
 
     // ---- evaluate: {ok,value,type} ----
     @SuppressWarnings("unchecked")
-    private Object redactEvaluate(Object result, PiiCatalog cat, int[] c) {
+    private Object redactEvaluate(Object result, PiiCatalog cat, Tally c) {
         if (result instanceof Map<?, ?> m) {
             if (Boolean.TRUE.equals(m.get("ok"))) {
                 redactValueField((Map<String, Object>) m, cat, c);
@@ -68,8 +67,34 @@ public final class PrivacyRedactor implements IPrivacyFilter {
         return result;
     }
 
+    /**
+     * Счётчик фактов обезличивания вместе с самой строгой встреченной категорией.
+     *
+     * <p>Раньше в журнал всегда писалось {@code PERSONAL}, из-за чего запись о сокрытии
+     * спец-категории или биометрии выглядела как обычная псевдонимизация ФИО — журнал
+     * обезличивания врал о том, что именно скрывалось.
+     */
+    private static final class Tally {
+        private int count;
+        private Sensitivity max = Sensitivity.NONE;
+
+        /** @param s категория; {@code NONE} — сработала только content-regex-сеть */
+        void hit(Sensitivity s) {
+            count++;
+            // ordinal растёт от NONE к SPECIAL — см. javadoc Sensitivity.
+            if (s.ordinal() > max.ordinal()) max = s;
+        }
+
+        int count() { return count; }
+
+        /** Самая строгая категория; если сработал только regex — считаем ПДн (fail-closed). */
+        Sensitivity maxSensitivity() {
+            return max == Sensitivity.NONE ? Sensitivity.PERSONAL : max;
+        }
+    }
+
     /** Обезличивает поле "value" по соседнему "type"/"name". */
-    private void redactValueField(Map<String, Object> m, PiiCatalog cat, int[] c) {
+    private void redactValueField(Map<String, Object> m, PiiCatalog cat, Tally c) {
         Object valObj = m.get("value");
         if (!(valObj instanceof String value) || value.isEmpty()) return;
         String type = m.get("type") instanceof String t ? t : null;
@@ -78,10 +103,10 @@ public final class PrivacyRedactor implements IPrivacyFilter {
         Sensitivity s = classify(type, name, cat);
         if (s.isSensitive()) {
             m.put("value", pseudo.token(s, value));
-            c[0]++;
+            c.hit(s);
         } else {
             String masked = ContentPatterns.maskInline(value);
-            if (!masked.equals(value)) { m.put("value", masked); c[0]++; }
+            if (!masked.equals(value)) { m.put("value", masked); c.hit(Sensitivity.NONE); }
         }
     }
 
@@ -100,7 +125,7 @@ public final class PrivacyRedactor implements IPrivacyFilter {
 
     // ---- query_event_log: {..., events:[{user,comment,metadata,dataPresentation,data:{type,value}, ...}]} ----
     @SuppressWarnings("unchecked")
-    private Object redactEventLog(Object result, PiiCatalog cat, int[] c) {
+    private Object redactEventLog(Object result, PiiCatalog cat, Tally c) {
         if (!(result instanceof Map<?, ?> map)) return deepRegex(result, c);
         Object events = ((Map<String, Object>) map).get("events");
         if (events instanceof List<?> list) {
@@ -109,41 +134,50 @@ public final class PrivacyRedactor implements IPrivacyFilter {
                 Map<String, Object> ev = (Map<String, Object>) o;
                 // user — всегда физлицо
                 if (ev.get("user") instanceof String u && !u.isEmpty()) {
-                    ev.put("user", pseudo.token(Sensitivity.PERSONAL, u)); c[0]++;
+                    ev.put("user", pseudo.token(Sensitivity.PERSONAL, u)); c.hit(Sensitivity.PERSONAL);
                 }
                 // dataPresentation / data.value — по объекту metadata
                 Sensitivity meta = ev.get("metadata") instanceof String md
                         ? cat.forObject(md) : Sensitivity.NONE;
                 if (meta.isSensitive()) {
                     if (ev.get("dataPresentation") instanceof String dp && !dp.isEmpty()) {
-                        ev.put("dataPresentation", pseudo.token(meta, dp)); c[0]++;
+                        ev.put("dataPresentation", pseudo.token(meta, dp)); c.hit(meta);
                     }
                     if (ev.get("data") instanceof Map dm && dm.get("value") instanceof String dv) {
-                        dm.put("value", pseudo.token(meta, dv)); c[0]++;
+                        dm.put("value", pseudo.token(meta, dv)); c.hit(meta);
                     }
                 }
-                // comment / computer / прочие строки — regex-сеть
+                // comment / computer / event / server и прочие строки — regex-сеть
                 maskStringField(ev, "comment", c);
                 maskStringField(ev, "computer", c);
-                if (!meta.isSensitive()) maskStringField(ev, "dataPresentation", c);
+                maskStringField(ev, "event", c);
+                maskStringField(ev, "server", c);
+                if (!meta.isSensitive()) {
+                    maskStringField(ev, "dataPresentation", c);
+                    // объекта нет в каталоге, но в data.value лежат представления ссылок,
+                    // ФИО и телефоны из ЖР — fail-closed прогоняем regex-сеть
+                    if (ev.get("data") instanceof Map<?, ?> dm) {
+                        maskStringField((Map<String, Object>) dm, "value", c);
+                    }
+                }
             }
         }
         return result;
     }
 
-    private void maskStringField(Map<String, Object> m, String key, int[] c) {
+    private void maskStringField(Map<String, Object> m, String key, Tally c) {
         if (m.get(key) instanceof String s && !s.isEmpty()) {
             String masked = ContentPatterns.maskInline(s);
-            if (!masked.equals(s)) { m.put(key, masked); c[0]++; }
+            if (!masked.equals(s)) { m.put(key, masked); c.hit(Sensitivity.NONE); }
         }
     }
 
     // ---- fail-closed рекурсивная regex-сеть для любых форм ----
     @SuppressWarnings("unchecked")
-    private Object deepRegex(Object node, int[] c) {
+    private Object deepRegex(Object node, Tally c) {
         if (node instanceof String s) {
             String masked = ContentPatterns.maskInline(s);
-            if (!masked.equals(s)) c[0]++;
+            if (!masked.equals(s)) c.hit(Sensitivity.NONE);
             return masked;
         }
         if (node instanceof List<?> list) {
@@ -157,15 +191,5 @@ public final class PrivacyRedactor implements IPrivacyFilter {
             return copy;
         }
         return node;
-    }
-
-    /** Ключ инфобазы из args (name/uuid). null → неизвестна → fail-closed (обрабатываем). */
-    private static String infobaseKey(Map<String, Object> args) {
-        if (args == null) return null;
-        Object name = args.get("name");
-        if (name instanceof String s && !s.isBlank()) return s;
-        Object uuid = args.get("uuid");
-        if (uuid instanceof String s && !s.isBlank()) return s;
-        return null;
     }
 }

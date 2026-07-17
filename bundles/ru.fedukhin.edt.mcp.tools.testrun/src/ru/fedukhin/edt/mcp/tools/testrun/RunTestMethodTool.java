@@ -36,13 +36,19 @@ public class RunTestMethodTool implements IMcpTool {
     }
 
     @Override public String name() { return "run_test_method"; }
-    @Override public String description() { return "Run a single xUnit test method against a deployed infobase"; }
+    @Override public String description() {
+        return "Run a single xUnit test method against a deployed infobase. "
+             + "Pass user/password if the infobase has users; without them 1cv8 relies on OS "
+             + "authentication and otherwise blocks on a login dialog until the timeout.";
+    }
 
     @Override public Map<String, Object> inputSchema() {
         Map<String, Object> proj = new LinkedHashMap<>(); proj.put("type", "string");
         Map<String, Object> ib = new LinkedHashMap<>(); ib.put("type", "string");
         Map<String, Object> mod = new LinkedHashMap<>(); mod.put("type", "string");
         Map<String, Object> mtd = new LinkedHashMap<>(); mtd.put("type", "string");
+        Map<String, Object> user = new LinkedHashMap<>(); user.put("type", "string");
+        Map<String, Object> password = new LinkedHashMap<>(); password.put("type", "string");
         Map<String, Object> timeout = new LinkedHashMap<>();
         timeout.put("type", "integer"); timeout.put("minimum", MIN_TIMEOUT_SECONDS); timeout.put("maximum", MAX_TIMEOUT_SECONDS);
         Map<String, Object> properties = new LinkedHashMap<>();
@@ -50,6 +56,8 @@ public class RunTestMethodTool implements IMcpTool {
         properties.put("infobase", ib);
         properties.put("moduleFqn", mod);
         properties.put("methodName", mtd);
+        properties.put("user", user);
+        properties.put("password", password);
         properties.put("timeoutSeconds", timeout);
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -64,6 +72,8 @@ public class RunTestMethodTool implements IMcpTool {
         String infobaseName = CreateInfobaseTool.stringArg(args, "infobase");
         String moduleFqn = CreateInfobaseTool.stringArg(args, "moduleFqn");
         String methodName = CreateInfobaseTool.stringArg(args, "methodName");
+        String user = (args != null && args.get("user") instanceof String us) ? us : null;
+        String password = (args != null && args.get("password") instanceof String ps) ? ps : null;
         int timeoutSeconds = parseTimeout(args);
 
         IProject iproject = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
@@ -81,7 +91,8 @@ public class RunTestMethodTool implements IMcpTool {
         String selector = TestSelectorEncoder.encodeMethod(moduleFqn, methodName, resultFile.toString());
         // .asConnectionString() даёт формат File="..." / Srvr="...";Ref="...";
         // .toString() даёт Java-дефолт (FileConnectionStringImpl@HASH) — мусор для cmdline.
-        TestRunResult res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(), selector, timeoutSeconds);
+        TestRunResult res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(),
+            selector, timeoutSeconds, user, password);
         return RunTestsTool.toMap(res);
     }
 
@@ -97,4 +108,7 @@ public class RunTestMethodTool implements IMcpTool {
         }
         return v;
     }
+
+    /** Assert-сообщения xUnit формируются в 1С и содержат реальные значения базы. */
+    @Override public boolean returnsInfobaseData() { return true; }
 }

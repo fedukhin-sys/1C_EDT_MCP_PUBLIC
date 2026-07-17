@@ -31,4 +31,28 @@ public class ContentPatternsTest {
     @Test public void spacedPassportLabeled() {
         assertTrue(ContentPatterns.maskInline("паспорт 12 34 567890").contains("[скрыто:паспорт]"));
     }
+
+    /** CLAUDE.md заявлял охват «БИК/р/с», а паттернов на них не было вовсе. */
+    @Test public void masksBankAccountAndBik() {
+        String masked = ContentPatterns.maskInline("р/с 40702810900000012345, БИК 044525225");
+        assertFalse(masked.contains("40702810900000012345"));
+        assertTrue(masked.contains("[скрыто:счёт]"));
+        assertFalse(masked.contains("044525225"));
+        assertTrue(masked.contains("[скрыто:бик]"));
+    }
+
+    @Test public void masksCardNumber() {
+        assertFalse(ContentPatterns.maskInline("карта 4276380012345678").contains("4276380012345678"));
+        assertTrue(ContentPatterns.maskInline("карта 4276 3800 1234 5678").contains("[скрыто:карта]"));
+    }
+
+    /** СНИЛС без разделителей — 11 цифр. */
+    @Test public void masksSnilsWithoutSeparators() {
+        assertFalse(ContentPatterns.maskInline("СНИЛС 11223344595").contains("11223344595"));
+    }
+
+    /** 8XXXXXXXXXX — тоже 11 цифр, но это телефон: метка обязана быть телефонной. */
+    @Test public void plainPhone_isLabelledAsPhone_notSnils() {
+        assertTrue(ContentPatterns.maskInline("тел 89161234567").contains("[скрыто:телефон]"));
+    }
 }

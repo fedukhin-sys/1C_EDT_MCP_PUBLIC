@@ -5,20 +5,29 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Immutable реестр 11 поддерживаемых v1-типов редактируемых MdObject:
- * Catalog, Document, InformationRegister, AccumulationRegister (с attributes/dimensions/resources);
- * Constant, Enum, CommonModule, Role, Subsystem, DataProcessor, Report (без editable attributes).
+ * Immutable реестр поддерживаемых типов MdObject — единая точка правды по kind'ам.
  *
- * Configuration root в реестр НЕ входит — он не редактируется через create_md_object, и
- * lookup идёт по литералу "Configuration" в {@code MdObjectLocator}.
+ * <p>Реестр покрывает <em>все</em> kind'ы, которые умеет заимствовать {@link MdObjectBorrower}.
+ * Раньше он знал только 11 из них, и это был корень целого класса багов: заимствованные
+ * планы счетов и видов расчёта, Task, BusinessProcess, ExchangePlan, DocumentJournal, CommonForm
+ * и CommonPicture были невидимы для {@code list_md_objects} (итерация идёт по реестру) и
+ * недоступны {@code get_md_object} («unknown kind»), а в {@code add_attribute} пять kind'ов были
+ * мертвы — их отбивало на {@code registry.get(kind) == null} ещё до folder-маппинга.
  *
- * Точка единственности по kind-у — tools НЕ содержат switch по name.
+ * <p>{@code creatable} отделяет «можно создать с нуля» от «можно прочитать и заимствовать»:
+ * EMF-фабрика создаст любой из них, но осмысленного объекта без сопутствующих артефактов не
+ * выйдет, а непроверенные на живом EDT пути записи лучше отбивать явной ошибкой.
+ *
+ * <p>Configuration root в реестр НЕ входит — он не редактируется через {@code create_md_object},
+ * и lookup идёт по литералу "Configuration" в {@code MdObjectLocator}.
  */
 public final class MdObjectRegistry {
 
-    private final Map<String, MdObjectKind> kinds;
+    private static final Map<String, MdObjectKind> KINDS = buildKinds();
 
-    public MdObjectRegistry() {
+    private final Map<String, MdObjectKind> kinds = KINDS;
+
+    private static Map<String, MdObjectKind> buildKinds() {
         Map<String, MdObjectKind> m = new LinkedHashMap<>();
         // С attributes. modulePath для data-kinds — это «дефолтный» .bsl-модуль,
         // в который вешаются event handlers (ObjectModule.bsl у Catalog/Document/DataProcessor/Report,
@@ -27,41 +36,77 @@ public final class MdObjectRegistry {
         // знала, куда писать (например, через add_extension_method_override).
         m.put("Catalog",
                 new MdObjectKind("Catalog", "getCatalogs", "Catalogs",
-                        true, true, "ObjectModule.bsl", false));
+                        true, true, "ObjectModule.bsl", false, true));
         m.put("Document",
                 new MdObjectKind("Document", "getDocuments", "Documents",
-                        true, true, "ObjectModule.bsl", false));
+                        true, true, "ObjectModule.bsl", false, true));
         m.put("InformationRegister",
                 new MdObjectKind("InformationRegister", "getInformationRegisters", "InformationRegisters",
-                        true, true, "RecordSetModule.bsl", false));
+                        true, true, "RecordSetModule.bsl", false, true));
         m.put("AccumulationRegister",
                 new MdObjectKind("AccumulationRegister", "getAccumulationRegisters", "AccumulationRegisters",
-                        true, true, "RecordSetModule.bsl", false));
+                        true, true, "RecordSetModule.bsl", false, true));
         // Без attributes
         m.put("Constant",
                 new MdObjectKind("Constant", "getConstants", "Constants",
-                        false, false, null, false));
+                        false, false, null, false, true));
         m.put("Enum",
                 new MdObjectKind("Enum", "getEnums", "Enums",
-                        false, false, null, false));
+                        false, false, null, false, true));
         // CommonModule — модуль = вся суть объекта; пустой Module.bsl создаётся
         // физически (без него EDT не распознаёт модуль).
         m.put("CommonModule",
                 new MdObjectKind("CommonModule", "getCommonModules", "CommonModules",
-                        false, true, "Module.bsl", true));
+                        false, true, "Module.bsl", true, true));
         m.put("Role",
                 new MdObjectKind("Role", "getRoles", "Roles",
-                        false, false, null, false));
+                        false, false, null, false, true));
         m.put("Subsystem",
                 new MdObjectKind("Subsystem", "getSubsystems", "Subsystems",
-                        false, false, null, false));
+                        false, false, null, false, true));
         m.put("DataProcessor",
                 new MdObjectKind("DataProcessor", "getDataProcessors", "DataProcessors",
-                        false, true, "ObjectModule.bsl", false));
+                        false, true, "ObjectModule.bsl", false, true));
         m.put("Report",
                 new MdObjectKind("Report", "getReports", "Reports",
-                        false, true, "ObjectModule.bsl", false));
-        this.kinds = java.util.Collections.unmodifiableMap(m);
+                        false, true, "ObjectModule.bsl", false, true));
+
+        // Заимствуемые, но не создаваемые (creatable=false) — см. javadoc класса.
+        // У этих есть getAttributes()/getTabularSections(), поэтому add_attribute и
+        // add_tabular_section на заимствованном объекте работают.
+        m.put("BusinessProcess",
+                new MdObjectKind("BusinessProcess", "getBusinessProcesses", "BusinessProcesses",
+                        true, true, "ObjectModule.bsl", false, false));
+        m.put("Task",
+                new MdObjectKind("Task", "getTasks", "Tasks",
+                        true, true, "ObjectModule.bsl", false, false));
+        m.put("ChartOfAccounts",
+                new MdObjectKind("ChartOfAccounts", "getChartsOfAccounts", "ChartsOfAccounts",
+                        true, true, "ObjectModule.bsl", false, false));
+        m.put("ChartOfCalculationTypes",
+                new MdObjectKind("ChartOfCalculationTypes", "getChartsOfCalculationTypes",
+                        "ChartsOfCalculationTypes",
+                        true, true, "ObjectModule.bsl", false, false));
+        m.put("ChartOfCharacteristicTypes",
+                new MdObjectKind("ChartOfCharacteristicTypes", "getChartsOfCharacteristicTypes",
+                        "ChartsOfCharacteristicTypes",
+                        true, true, "ObjectModule.bsl", false, false));
+        m.put("ExchangePlan",
+                new MdObjectKind("ExchangePlan", "getExchangePlans", "ExchangePlans",
+                        true, true, "ObjectModule.bsl", false, false));
+        // DocumentJournal несёт графы и колонки, а не реквизиты.
+        m.put("DocumentJournal",
+                new MdObjectKind("DocumentJournal", "getDocumentJournals", "DocumentJournals",
+                        false, false, null, false, false));
+        // CommonForm без Form.form и CommonPicture без файла картинки бессмысленны,
+        // а create_md_object сопутствующие артефакты не создаёт.
+        m.put("CommonForm",
+                new MdObjectKind("CommonForm", "getCommonForms", "CommonForms",
+                        false, true, "Module.bsl", false, false));
+        m.put("CommonPicture",
+                new MdObjectKind("CommonPicture", "getCommonPictures", "CommonPictures",
+                        false, false, null, false, false));
+        return java.util.Collections.unmodifiableMap(m);
     }
 
     public MdObjectKind get(String name) {
@@ -70,5 +115,23 @@ public final class MdObjectRegistry {
 
     public Collection<MdObjectKind> allKinds() {
         return kinds.values();
+    }
+
+    /**
+     * Имя папки в {@code src/} для kind'а — единая точка правды для всех инструментов.
+     *
+     * <p>Раньше маппинг был скопирован в каждый инструмент (add_attribute, add_tabular_section,
+     * add_md_template, list_attributes, borrow_form, get_form, …), и копии разъезжались: это и
+     * было корнем находки Task 6. Отдельно отличился {@code GetFormTool.pluralize} с наивным
+     * {@code kind + "s"} — он давал несуществующие «BusinessProcesss» и «ChartOfAccountss».
+     *
+     * <p>Статический метод (а не только инстанс-{@link #get}) — чтобы им могли пользоваться
+     * инструменты без инъекции реестра, не заводя новую копию карты.
+     *
+     * @return имя папки либо {@code null}, если kind неизвестен или не материализуется в src/
+     */
+    public static String folderName(String kind) {
+        MdObjectKind k = KINDS.get(kind);
+        return k == null ? null : k.folderName();
     }
 }

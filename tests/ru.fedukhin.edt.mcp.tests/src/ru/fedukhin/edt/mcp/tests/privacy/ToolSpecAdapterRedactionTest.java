@@ -16,7 +16,7 @@ public class ToolSpecAdapterRedactionTest {
         boolean called = false;
 
         @Override
-        public Object redact(String toolName, Map<String, Object> args, Object result) {
+        public Object redact(String toolName, String infobaseKey, Object result) {
             called = true;
             return "REDACTED";
         }

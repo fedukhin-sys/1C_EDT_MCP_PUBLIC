@@ -16,8 +16,12 @@ import com._1c.g5.v8.bm.core.IBmTransaction;
 import com._1c.g5.v8.bm.integration.IBmSingleNamespaceTask;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IConfigurationProvider;
+import com._1c.g5.v8.dt.metadata.mdclass.BusinessProcess;
+import com._1c.g5.v8.dt.metadata.mdclass.BusinessProcessForm;
 import com._1c.g5.v8.dt.metadata.mdclass.Catalog;
 import com._1c.g5.v8.dt.metadata.mdclass.CatalogForm;
+import com._1c.g5.v8.dt.metadata.mdclass.ChartOfAccounts;
+import com._1c.g5.v8.dt.metadata.mdclass.ChartOfAccountsForm;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.form.ListFormsTool;
@@ -131,6 +135,54 @@ public class ListFormsToolTest {
         assertEquals(1, forms.size());
         assertEquals("ItemForm",                    forms.get(0).get("name"));
         assertEquals("Catalog.Products.Form.ItemForm", forms.get(0).get("fqn"));
+    }
+
+    /**
+     * list_forms без parentFqn обходил только 6 контейнеров + CommonForms, поэтому формы
+     * бизнес-процессов, задач, планов счетов/видов расчёта/характеристик, планов обмена и
+     * перечислений в выдачу не попадали вовсе.
+     */
+    @Test
+    public void listAll_includesBusinessProcessAndChartOfAccountsForms() throws Exception {
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        IProject project = projectMock("Demo", root);
+
+        IBmModelManager bm = mock(IBmModelManager.class);
+        IConfigurationProvider cfgP = mock(IConfigurationProvider.class);
+        IBmTransaction txn = mock(IBmTransaction.class);
+
+        BusinessProcessForm bpForm = mock(BusinessProcessForm.class);
+        when(bpForm.getName()).thenReturn("ФормаЭлемента");
+        BusinessProcess bp = mock(BusinessProcess.class);
+        when(bp.getName()).thenReturn("Согласование");
+        when(bp.getForms()).thenReturn(new BasicEList<>(List.of(bpForm)));
+
+        ChartOfAccountsForm coaForm = mock(ChartOfAccountsForm.class);
+        when(coaForm.getName()).thenReturn("ФормаСписка");
+        ChartOfAccounts coa = mock(ChartOfAccounts.class);
+        when(coa.getName()).thenReturn("Основной");
+        when(coa.getForms()).thenReturn(new BasicEList<>(List.of(coaForm)));
+
+        Configuration cfg = mock(Configuration.class, withSettings().extraInterfaces(IBmObject.class));
+        when(cfg.getBusinessProcesses()).thenReturn(new BasicEList<>(List.of(bp)));
+        when(cfg.getChartsOfAccounts()).thenReturn(new BasicEList<>(List.of(coa)));
+        when(txn.getTopObjectByFqn("Configuration")).thenReturn((IBmObject) cfg);
+
+        captureAndRunTask(bm, project, txn);
+
+        ListFormsTool tool = new ListFormsTool(
+                () -> root, bm, cfgP, new MdObjectLocator(), new FormRegistry());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) tool.call(Map.of("project", "Demo"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> forms = (List<Map<String, Object>>) result.get("forms");
+
+        List<Object> fqns = forms.stream().map(f -> f.get("fqn")).toList();
+        assertTrue("формы бизнес-процессов обязаны перечисляться, получено: " + fqns,
+                fqns.contains("BusinessProcess.Согласование.Form.ФормаЭлемента"));
+        assertTrue("формы планов счетов обязаны перечисляться, получено: " + fqns,
+                fqns.contains("ChartOfAccounts.Основной.Form.ФормаСписка"));
     }
 
     // -----------------------------------------------------------------------

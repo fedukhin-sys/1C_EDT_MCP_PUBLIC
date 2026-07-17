@@ -101,7 +101,19 @@ public class DebugClientTool implements IMcpTool {
             }
         }
 
-        DebugLaunchResult result = launcher.launch(infobase, clientType, user, password);
+        DebugLaunchResult result;
+        try {
+            result = launcher.launch(infobase, clientType, user, password);
+        } catch (ToolException | RuntimeException e) {
+            // Breakpoint глобальный (живёт в workspace breakpoint manager), а снимает его
+            // DebugSession.terminate() — но при провале запуска сессия не создаётся вовсе.
+            // Без этой уборки catch-all остаётся висеть и ловит исключения в чужих,
+            // не-MCP сеансах отладки.
+            if (installedBp != null) {
+                exceptionBreakpoints.remove(installedBp);
+            }
+            throw e;
+        }
 
         UUID debugSessionId = UUID.randomUUID();
         UUID clientSessionId = UUID.randomUUID();

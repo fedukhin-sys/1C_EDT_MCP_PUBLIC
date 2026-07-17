@@ -12,9 +12,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.emf.ecore.EObject;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
@@ -30,6 +33,9 @@ import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
  * <p>Resolves Configuration root via Spike 8 two-path strategy
  * (literal FQN "Configuration" → IConfigurationProvider fallback).
  * Uses {@code executeReadOnlyTask} for a read-only BM transaction.
+ *
+ * <p>Проекты внешних объектов Configuration root не имеют вовсе — они перечисляются файловым
+ * сканом {@code src/ExternalDataProcessors|ExternalReports}.
  */
 public final class ListMdObjectsTool implements IMcpTool {
 
@@ -82,6 +88,12 @@ public final class ListMdObjectsTool implements IMcpTool {
             throw new ToolException("project '" + projectName + "' not found or not open");
         }
 
+        // Проекты внешних объектов не имеют Configuration root — BM-маршрут на них падал
+        // с «cannot resolve Configuration root». Перечисляем их файловым сканом.
+        if (isExternalObjectProject(project)) {
+            return Map.of("objects", scanExternalObjects(project, filterKind));
+        }
+
         List<Map<String, Object>> entries = new ArrayList<>();
         Throwable[] err = new Throwable[1];
 
@@ -126,6 +138,52 @@ public final class ListMdObjectsTool implements IMcpTool {
     /**
      * Spike 8: Path 1 (literal "Configuration") + Path 2 (IConfigurationProvider fallback).
      */
+    /** kind внешнего объекта → папка в {@code src/}. */
+    private static final Map<String, String> EXTERNAL_KIND_FOLDER = Map.of(
+            "ExternalDataProcessor", "ExternalDataProcessors",
+            "ExternalReport",        "ExternalReports");
+
+    /**
+     * Проект внешних объектов узнаётся по папкам {@code src/ExternalDataProcessors|ExternalReports}:
+     * в конфигурации и расширении их не бывает, а Configuration root — наоборот, есть только там.
+     */
+    private static boolean isExternalObjectProject(IProject project) {
+        return EXTERNAL_KIND_FOLDER.values().stream()
+                .map(folder -> project.getFolder("src/" + folder))
+                .anyMatch(folder -> folder != null && folder.exists());
+    }
+
+    /**
+     * Перечисляет внешние объекты по файлам: {@code src/<Folder>/<Name>/<Name>.mdo}.
+     */
+    private static List<Map<String, Object>> scanExternalObjects(IProject project, String filterKind)
+            throws ToolException {
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (Map.Entry<String, String> kindFolder : EXTERNAL_KIND_FOLDER.entrySet()) {
+            String kind = kindFolder.getKey();
+            if (filterKind != null && !filterKind.equals(kind)) continue;
+            IFolder folder = project.getFolder("src/" + kindFolder.getValue());
+            if (folder == null || !folder.exists()) continue;
+            IResource[] members;
+            try {
+                members = folder.members();
+            } catch (CoreException e) {
+                throw new ToolException("cannot read " + folder.getFullPath() + ": " + e.getMessage(), e);
+            }
+            for (IResource member : members) {
+                if (!(member instanceof IFolder objectFolder)) continue;
+                String name = objectFolder.getName();
+                if (!objectFolder.getFile(name + ".mdo").exists()) continue;
+                Map<String, Object> e = new LinkedHashMap<>();
+                e.put("kind", kind);
+                e.put("name", name);
+                e.put("fqn",  kind + "." + name);
+                entries.add(e);
+            }
+        }
+        return entries;
+    }
+
     private Configuration resolveConfiguration(IBmTransaction txn, IProject project)
             throws ToolException {
         IBmObject byLiteral = txn.getTopObjectByFqn("Configuration");

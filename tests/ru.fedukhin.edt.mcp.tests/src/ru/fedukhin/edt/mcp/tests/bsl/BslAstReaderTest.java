@@ -48,6 +48,40 @@ public class BslAstReaderTest {
         assertFalse(methods.get(1).export());
     }
 
+    /**
+     * Буква Ё/ё лежит вне диапазона [А-Яа-я] в Unicode, поэтому методы с ней просто не
+     * находились: ни list_module_methods, ни get_method их не видели.
+     */
+    @Test
+    public void listMethods_findsNamesWithYo() throws Exception {
+        String content = "Процедура ПриёмТовара() Экспорт\nКонецПроцедуры\n"
+                       + "Функция УчётЗатрат(п)\n  Возврат п;\nКонецФункции\n";
+        IFile file = mockFile("/P/src/M.bsl", content);
+
+        List<MethodInfo> methods = new BslAstReader().listMethods(file);
+
+        assertEquals(2, methods.size());
+        assertEquals("ПриёмТовара", methods.get(0).name());
+        assertTrue(methods.get(0).export());
+        assertEquals("УчётЗатрат", methods.get(1).name());
+    }
+
+    /**
+     * Флаг export определялся по {@code \)\s*(Экспорт|Export)?}: {@code \s} проглатывает перевод
+     * строки, поэтому слово «Экспортировать» в начале следующей строки помечало метод экспортным.
+     */
+    @Test
+    public void listMethods_wordStartingWithExport_onNextLine_isNotExport() throws Exception {
+        String content = "Процедура Обычная()\n  ЭкспортироватьДанные();\nКонецПроцедуры\n";
+        IFile file = mockFile("/P/src/M.bsl", content);
+
+        List<MethodInfo> methods = new BslAstReader().listMethods(file);
+
+        assertEquals(1, methods.size());
+        assertFalse("метод не экспортный — «ЭкспортироватьДанные()» это вызов в теле",
+            methods.get(0).export());
+    }
+
     @Test
     public void listMethods_findsEnglishKeywords() throws Exception {
         String content = "Procedure Foo() Export\nEndProcedure\n"

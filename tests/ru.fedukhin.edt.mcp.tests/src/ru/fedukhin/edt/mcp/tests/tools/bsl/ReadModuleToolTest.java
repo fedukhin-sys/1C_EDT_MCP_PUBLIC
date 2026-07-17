@@ -45,6 +45,64 @@ public class ReadModuleToolTest {
         assertEquals(4, result.get("lineCount"));
     }
 
+    /**
+     * 1С пишет .bsl с BOM. Читая файл как UTF-8, BOM приезжает первым символом контента
+     * (U+FEFF) — он ломает всё, что сравнивает или парсит первую строку модуля.
+     */
+    @Test
+    public void call_utf8Bom_isStrippedFromContent() throws Exception {
+        String content = "Процедура Foo()\nКонецПроцедуры\n";
+        byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] body = content.getBytes(StandardCharsets.UTF_8);
+        byte[] withBom = new byte[bom.length + body.length];
+        System.arraycopy(bom, 0, withBom, 0, bom.length);
+        System.arraycopy(body, 0, withBom, bom.length, body.length);
+
+        IFile file = mock(IFile.class);
+        when(file.exists()).thenReturn(true);
+        when(file.getCharset()).thenReturn("UTF-8");
+        when(file.getContents()).thenReturn(new ByteArrayInputStream(withBom));
+
+        IProject project = mock(IProject.class);
+        when(project.exists()).thenReturn(true);
+        when(project.getFile("src/CommonModules/Foo/Module.bsl")).thenReturn(file);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("P")).thenReturn(project);
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("project", "P");
+        args.put("path", "src/CommonModules/Foo/Module.bsl");
+        Map<String, Object> result = new ReadModuleTool(() -> root).call(args);
+
+        assertEquals(content, result.get("content"));
+        assertEquals("BOM должен быть отмечен отдельным полем, а не приезжать в content",
+                Boolean.TRUE, result.get("hasBom"));
+    }
+
+    @Test
+    public void call_noBom_hasBomIsFalse() throws Exception {
+        String content = "Процедура Foo()\nКонецПроцедуры\n";
+        IFile file = mock(IFile.class);
+        when(file.exists()).thenReturn(true);
+        when(file.getCharset()).thenReturn("UTF-8");
+        when(file.getContents()).thenReturn(
+                new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)));
+
+        IProject project = mock(IProject.class);
+        when(project.exists()).thenReturn(true);
+        when(project.getFile("src/CommonModules/Foo/Module.bsl")).thenReturn(file);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("P")).thenReturn(project);
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("project", "P");
+        args.put("path", "src/CommonModules/Foo/Module.bsl");
+        Map<String, Object> result = new ReadModuleTool(() -> root).call(args);
+
+        assertEquals(content, result.get("content"));
+        assertEquals(Boolean.FALSE, result.get("hasBom"));
+    }
+
     @Test
     public void call_missingProjectThrows() throws Exception {
         IProject project = mock(IProject.class);

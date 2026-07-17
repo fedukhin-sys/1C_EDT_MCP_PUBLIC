@@ -80,4 +80,7 @@ public class SetVariableTool implements IMcpTool {
         }
         return out;
     }
+
+    /** Поле error приходит от debug-движка и содержит фрагменты значений базы. */
+    @Override public boolean returnsInfobaseData() { return true; }
 }

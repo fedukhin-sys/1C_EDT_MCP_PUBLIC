@@ -12,13 +12,16 @@ import static org.mockito.Mockito.when;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.eclipse.debug.core.ILaunch;
+import org.eclipse.debug.core.model.IBreakpoint;
 import org.junit.Test;
 import com._1c.g5.v8.dt.debug.core.model.IRuntimeDebugClientTarget;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.debug.DebugClientTool;
+import ru.fedukhin.edt.mcp.tools.debug.internal.DebugEventSource;
 import ru.fedukhin.edt.mcp.tools.debug.internal.DebugLaunchResult;
 import ru.fedukhin.edt.mcp.tools.debug.internal.DebugLauncher;
 import ru.fedukhin.edt.mcp.tools.debug.internal.DebugSessionRegistry;
+import ru.fedukhin.edt.mcp.tools.debug.internal.ExceptionBreakpointService;
 
 public class DebugClientToolTest {
 
@@ -112,5 +115,32 @@ public class DebugClientToolTest {
         } catch (ToolException e) {
             assertTrue(e.getMessage().contains("not found"));
         }
+    }
+
+    @Test
+    public void call_launcherThrows_removesInstalledExceptionBreakpoint() throws Exception {
+        // catch-all breakpoint ставится ДО запуска клиента (чтобы debug-server подхватил его
+        // при attach). Если запуск упал, breakpoint остаётся в workspace breakpoint manager:
+        // он глобальный, и следующий обычный (не-MCP) сеанс отладки начнёт останавливаться
+        // на каждом исключении BSL. Снимать его на неуспешном пути — обязанность инструмента,
+        // так как DebugSession (который чистит его в terminate()) в этом случае не создаётся.
+        ExceptionBreakpointService bpService = mock(ExceptionBreakpointService.class);
+        IBreakpoint bp = mock(IBreakpoint.class);
+        when(bpService.installCatchAll()).thenReturn(bp);
+        DebugClientTool toolWithBp = new DebugClientTool(
+                launcher, registry, mock(DebugEventSource.class), bpService);
+        when(launcher.launch(any(), any(), any(), any()))
+                .thenThrow(new ToolException("dbgs boom"));
+
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("infobase", "DemoIB");
+        try {
+            toolWithBp.call(args);
+            fail("expected ToolException");
+        } catch (ToolException expected) {
+            // ожидаемо
+        }
+
+        org.mockito.Mockito.verify(bpService).remove(bp);
     }
 }

@@ -20,10 +20,16 @@ import java.lang.reflect.Proxy;
  * <p>Поведение headless-режима:
  * <ul>
  *   <li>{@code onConfirm} → {@code true}: принять изменения структуры ИБ без вопросов;</li>
- *   <li>{@code resolveInfobaseChanges} → {@link InfobaseConflictResolutionResult#IGNORED}:
- *       за пользователя конфликты не решаем — реальные расхождения должен поднять
- *       сам конвейер синхронизации EDT (исключением или ERROR-статусом).</li>
+ *   <li>{@code resolveInfobaseChanges} (core 21+) и {@code onInfobaseChanges} (core ≤19) →
+ *       {@link InfobaseConflictResolutionResult#IGNORED}: за пользователя конфликты не решаем —
+ *       реальные расхождения должен поднять сам конвейер синхронизации EDT (исключением или
+ *       ERROR-статусом).</li>
  * </ul>
+ *
+ * <p>Различается не только имя метода, но и тип результата: до core 21 включительно это enum
+ * {@link InfobaseConflictResolutionResult}, начиная с core 22 (EDT 2026.x) — класс-обёртка
+ * {@code InfobaseConflictResolution}. Поэтому результат строится по фактическому
+ * {@code method.getReturnType()} — см. {@link #conflictResolutionFor}.
  */
 public final class NoopUpdateCallback {
 
@@ -38,8 +44,9 @@ public final class NoopUpdateCallback {
                 switch (method.getName()) {
                     case "onConfirm":
                         return Boolean.TRUE;
-                    case "resolveInfobaseChanges":
-                        return InfobaseConflictResolutionResult.IGNORED;
+                    case "onInfobaseChanges":       // core ≤19: enum
+                    case "resolveInfobaseChanges":  // core 21: enum; core 22+ (EDT 2026.x): wrapper
+                        return conflictResolutionFor(method.getReturnType());
                     case "toString":
                         return "NoopUpdateCallback(proxy)";
                     case "hashCode":
@@ -55,5 +62,24 @@ public final class NoopUpdateCallback {
                         return null;
                 }
             });
+    }
+
+    /**
+     * Строит результат разрешения конфликтов под тот контракт, который объявлен в текущем рантайме.
+     *
+     * <p>Compile-time ссылка остаётся только на {@link InfobaseConflictResolutionResult} — этот enum
+     * есть во всех поддерживаемых версиях (core 18–23). Wrapper-класс {@code InfobaseConflictResolution}
+     * появился только в core 22, поэтому создаётся рефлексией по фактическому типу возврата.
+     *
+     * @param returnType фактический тип возврата метода интерфейса в текущем рантайме
+     * @return либо сам enum {@code IGNORED} (core ≤21), либо обёртка над ним (core 22+)
+     */
+    private static Object conflictResolutionFor(Class<?> returnType) throws ReflectiveOperationException {
+        if (returnType.isInstance(InfobaseConflictResolutionResult.IGNORED)) {
+            return InfobaseConflictResolutionResult.IGNORED;
+        }
+        // core 22+: public InfobaseConflictResolution(InfobaseConflictResolutionResult)
+        return returnType.getConstructor(InfobaseConflictResolutionResult.class)
+            .newInstance(InfobaseConflictResolutionResult.IGNORED);
     }
 }

@@ -10,6 +10,7 @@ import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
+import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.dialogs.PreferencesUtil;
 import ru.fedukhin.edt.mcp.core.state.IServerStateBus;
@@ -111,8 +112,12 @@ public class McpStatusBarControl {
     private static Color red()   { return Display.getDefault().getSystemColor(SWT.COLOR_DARK_RED); }
 
     private static void openPrefs() {
+        // Активного окна может не быть (окно закрывается / клик пришёл раньше готовности
+        // workbench'а) — тогда getActiveWorkbenchWindow() отдаёт null и это NPE в UI-потоке.
+        // Диалог с shell=null Eclipse откроет по активному shell'у сам.
+        IWorkbenchWindow window = PlatformUI.getWorkbench().getActiveWorkbenchWindow();
         PreferencesUtil.createPreferenceDialogOn(
-                PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell(),
+                window != null ? window.getShell() : null,
                 "ru.fedukhin.edt.mcp.ui.preferences.McpPreferencePage",
                 null, null).open();
     }

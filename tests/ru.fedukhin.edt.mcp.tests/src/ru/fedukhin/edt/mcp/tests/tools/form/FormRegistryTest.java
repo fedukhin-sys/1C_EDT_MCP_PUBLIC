@@ -6,15 +6,23 @@ import ru.fedukhin.edt.mcp.tools.form.internal.FormRegistry;
 
 public class FormRegistryTest {
 
+    /**
+     * Формы есть не только у шести «основных» контейнеров: раньше реестр знал именно их, и
+     * list_forms молча не показывал формы бизнес-процессов, задач, планов счетов/видов
+     * расчёта/характеристик, планов обмена, перечислений и журналов документов, а с parentFqn
+     * отбивал их как «не поддерживает формы».
+     */
     @Test
-    public void supportedKindsContainsSix() {
+    public void supportedKindsCoverEveryFormBearingKind() {
         FormRegistry r = new FormRegistry();
-        assertEquals(6, r.supportedKinds().size());
         for (String kind : new String[]{
-                "Catalog", "Document", "InformationRegister",
-                "AccumulationRegister", "DataProcessor", "Report"}) {
+                "Catalog", "Document", "InformationRegister", "AccumulationRegister",
+                "DataProcessor", "Report", "BusinessProcess", "Task",
+                "ChartOfAccounts", "ChartOfCalculationTypes", "ChartOfCharacteristicTypes",
+                "ExchangePlan", "Enum", "DocumentJournal"}) {
             assertTrue("missing kind: " + kind, r.supportedKinds().contains(kind));
         }
+        assertEquals(14, r.supportedKinds().size());
     }
 
     @Test

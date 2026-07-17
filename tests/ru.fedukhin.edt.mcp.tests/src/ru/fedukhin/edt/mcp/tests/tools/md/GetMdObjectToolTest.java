@@ -44,6 +44,38 @@ public class GetMdObjectToolTest {
                 new TypeStringFormatter());
     }
 
+    /**
+     * Если BM-задача не отработала (например, движок не выполнил read-only task), result[0]
+     * оставался null и инструмент молча возвращал null вместо объекта — клиент получал
+     * пустой ответ без объяснения. Должна быть внятная ошибка.
+     */
+    @Test
+    public void bmTaskDidNotRun_throwsToolExceptionInsteadOfReturningNull() throws Exception {
+        IProject project = mock(IProject.class);
+        when(project.exists()).thenReturn(true);
+        when(project.isOpen()).thenReturn(true);
+        when(project.getName()).thenReturn("Demo");
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("Demo")).thenReturn(project);
+
+        // executeReadOnlyTask — void-мок: задачу не выполняет, result[0] остаётся null.
+        IBmModelManager bm = mock(IBmModelManager.class);
+        GetMdObjectTool tool = new GetMdObjectTool(() -> root, bm,
+                mock(IConfigurationProvider.class),
+                mock(IV8ProjectManager.class),
+                new MdObjectLocator(),
+                new MdObjectRegistry(),
+                new TypeStringFormatter());
+
+        try {
+            Object res = tool.call(Map.of("project", "Demo", "fqn", "Catalog.Goods"));
+            fail("ожидался ToolException, вернулось: " + res);
+        } catch (ToolException e) {
+            assertTrue("сообщение должно называть fqn, было: " + e.getMessage(),
+                    e.getMessage().contains("Catalog.Goods"));
+        }
+    }
+
     @Test
     public void happyPath_catalogWithOneAttribute() throws Exception {
         // Setup project

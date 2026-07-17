@@ -27,8 +27,14 @@ public final class EventLogReader {
         public final long matchedTotal;
         public final long scanned;
         public final boolean truncated;
+        /** Хотя бы одна партиция оборвалась посреди записи (штатно для активной партиции). */
+        public final boolean partial;
         public Page(List<EventRecord> r, long total, long scanned, boolean truncated) {
-            this.records = r; this.matchedTotal = total; this.scanned = scanned; this.truncated = truncated;
+            this(r, total, scanned, truncated, false);
+        }
+        public Page(List<EventRecord> r, long total, long scanned, boolean truncated, boolean partial) {
+            this.records = r; this.matchedTotal = total; this.scanned = scanned;
+            this.truncated = truncated; this.partial = partial;
         }
     }
 
@@ -64,31 +70,49 @@ public final class EventLogReader {
         long stopMatchedAt = (long) q.offset + (long) q.limit;
         long scanned = 0;
         boolean truncated = false;
+        boolean partial = false;
 
         for (Path part : partitions) {
+            // Для descending окно нельзя применять на лету: порядок сканирования — по возрастанию
+            // даты внутри партиции, а нужны самые новые записи. Поэтому по партиции держим хвост
+            // длиной не больше offset+limit — этого всегда достаточно, а память не растёт с логом.
+            java.util.Deque<EventRecord> partitionTail = q.descending ? new java.util.ArrayDeque<>() : null;
             try {
-                long here = lgp.stream(part, q.asPredicate(), ev -> {
+                LgpParser.StreamOutcome outcome = lgp.stream(part, q.asPredicate(), ev -> {
                     long ord = matchedCounter[0]++;
-                    if (ord >= q.offset && ord < stopMatchedAt) {
+                    if (q.descending) {
+                        partitionTail.addLast(ev);
+                        if (partitionTail.size() > stopMatchedAt) {
+                            partitionTail.removeFirst();
+                        }
+                    } else if (ord >= q.offset && ord < stopMatchedAt) {
                         matches.add(ev);
                     }
                     return true;
                 });
-                scanned += here;
+                scanned += outcome.total();
+                partial |= outcome.partial();
             } catch (IOException e) {
                 throw new ToolException("failed to read " + part + ": " + e.getMessage(), e);
+            }
+            if (partitionTail != null) {
+                matches.addAll(partitionTail);
             }
             if (scanned > totalScanCap) {
                 truncated = true;
                 break;
             }
         }
+        List<EventRecord> page = matches;
         if (q.descending) {
-            // Records are appended in file/scan order (ascending dates). When user
-            // asked for descending order, reverse the matched page so newest comes first.
-            Collections.reverse(matches);
+            // Партиции перечислены newest-first, а записи внутри них — oldest-first, поэтому
+            // сортируем собранное по самой дате: так порядок верен и при перекрытии партиций.
+            matches.sort(Comparator.comparingLong((EventRecord r) -> r.dateRaw).reversed());
+            int from = Math.min(q.offset, matches.size());
+            int to   = (int) Math.min((long) from + q.limit, matches.size());
+            page = new ArrayList<>(matches.subList(from, to));
         }
-        return new Page(matches, matchedCounter[0], scanned, truncated);
+        return new Page(page, matchedCounter[0], scanned, truncated, partial);
     }
 
     public static List<Path> listPartitionsInRange(Path logDir, long fromRaw, long toRaw, boolean descending) throws ToolException {

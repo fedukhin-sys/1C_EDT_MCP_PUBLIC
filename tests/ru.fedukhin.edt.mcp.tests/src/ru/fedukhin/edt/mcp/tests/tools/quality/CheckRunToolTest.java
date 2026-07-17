@@ -49,7 +49,7 @@ public class CheckRunToolTest {
                 new CheckRunResult.SeveritySummary(0, 0, 0, 1, 0),
                 Set.of());
         CheckRunner runner = mock(CheckRunner.class);
-        when(runner.run(eq(project), any(), eq(Set.of()), eq(60), eq(true))).thenReturn(res);
+        when(runner.run(eq(project), any(), eq(null), eq(Set.of()), eq(60), eq(true))).thenReturn(res);
 
         CheckRunTool tool = new CheckRunTool(() -> root, runner);
         @SuppressWarnings("unchecked")
@@ -78,7 +78,7 @@ public class CheckRunToolTest {
         CheckRunner runner = mock(CheckRunner.class);
         CheckRunResult res = new CheckRunResult(true, 60, List.of(),
                 new CheckRunResult.SeveritySummary(0, 0, 0, 0, 0), Set.of());
-        when(runner.run(any(), any(), any(), anyInt(), anyBoolean())).thenReturn(res);
+        when(runner.run(any(), any(), any(), any(), anyInt(), anyBoolean())).thenReturn(res);
 
         CheckRunTool tool = new CheckRunTool(() -> root, runner);
         @SuppressWarnings("unchecked")
@@ -87,5 +87,9 @@ public class CheckRunToolTest {
                 "path",    "src/CommonModules/Foo/Module.bsl"));
 
         assertEquals("file", result.get("scope"));
+        // path уходит и в scope валидации, и в фильтр маркеров
+        org.mockito.Mockito.verify(runner).run(eq(project),
+                eq(List.of("/Demo/src/CommonModules/Foo/Module.bsl")),
+                eq("src/CommonModules/Foo/Module.bsl"), any(), anyInt(), anyBoolean());
     }
 }

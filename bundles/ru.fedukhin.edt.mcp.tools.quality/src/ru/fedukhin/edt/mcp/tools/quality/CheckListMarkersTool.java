@@ -38,7 +38,8 @@ public class CheckListMarkersTool implements IMcpTool {
 
     @Override public String description() {
         return "List existing check markers without re-running validation; optional filters: "
-             + "path / severity / checkId / source";
+             + "path (project-relative prefix, e.g. src/CommonModules/Foo/Module.bsl) / "
+             + "severity / checkId / source";
     }
 
     @Override public Map<String, Object> inputSchema() {

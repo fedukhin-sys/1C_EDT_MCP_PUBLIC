@@ -15,6 +15,8 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseReferenceExcept
 import com._1c.g5.v8.dt.platform.services.model.FileConnectionString;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import com._1c.g5.v8.dt.platform.services.model.Section;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -22,6 +24,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.Assume;
 import org.junit.Test;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
@@ -84,6 +87,39 @@ public class InfobaseRegistryTest {
 
         verify(mgr).delete(ref);
         assertFalse("dir must be removed", Files.exists(tmp));
+    }
+
+    /**
+     * {@code File::delete} возвращает false вместо исключения: если файл ИБ занят (открыт клиент
+     * 1С), каталог остаётся на диске, а инструмент рапортует успех. Ошибка должна быть видимой.
+     */
+    @Test
+    public void delete_fileLocked_throwsToolExceptionNamingLeftovers() throws Exception {
+        Assume.assumeTrue("блокировка открытого файла — поведение Windows",
+            System.getProperty("os.name", "").startsWith("Windows"));
+
+        IInfobaseManager mgr = mock(IInfobaseManager.class);
+        InfobaseReference ref = mock(InfobaseReference.class);
+        FileConnectionString cs = mock(FileConnectionString.class);
+        Path tmp = Files.createTempDirectory("ib-delete-locked");
+        Path locked = tmp.resolve("1Cv8.1CD");
+        Files.createFile(locked);
+        when(cs.getFile()).thenReturn(tmp.toString());
+        when(ref.getConnectionString()).thenReturn(cs);
+
+        InfobaseRegistry r = new InfobaseRegistry(mgr, mock(RuntimeCli.class));
+        // Именно java.io: NIO-каналы на Windows открывают файл с FILE_SHARE_DELETE,
+        // и такой «занятый» файл всё равно удалится — блокировку даёт только FileOutputStream.
+        try (OutputStream hold = new FileOutputStream(locked.toFile())) {
+            r.delete(ref, true);
+            fail("expected ToolException — занятый файл не удалился");
+        } catch (ToolException e) {
+            assertTrue("сообщение должно называть неудалённый файл, было: " + e.getMessage(),
+                e.getMessage().contains("1Cv8.1CD"));
+        } finally {
+            Files.deleteIfExists(locked);
+            Files.deleteIfExists(tmp);
+        }
     }
 
     @Test

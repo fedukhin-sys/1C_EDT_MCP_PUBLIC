@@ -29,9 +29,13 @@ import ru.fedukhin.edt.mcp.tools.tests.internal.XUnitTemplates.Language;
  * {@code add_test_method} — добавляет тестовый метод в существующий xUnitFor1C модуль.
  *
  * <p>Args: {@code { project, moduleFqn, methodName, body? }}
- * <p>Result: {@code { moduleFqn, methodName, fqn, registered, alreadyExisted }}
+ * <p>Result: {@code { moduleFqn, methodName, fqn, registered, alreadyExisted, warning? }}
  *
  * <p>Идемпотентен: если метод уже существует, возвращает {@code alreadyExisted=true} без изменений.
+ *
+ * <p>{@code registered} — факт вставки строки регистрации в {@code ИсполняемыеСценарии}, а не
+ * «метод дописан»: без этой процедуры регистрировать негде, и раннер xUnitFor1C тест не увидит.
+ * В таком случае к результату добавляется {@code warning}.
  */
 public final class AddTestMethodTool implements IMcpTool {
 
@@ -108,8 +112,16 @@ public final class AddTestMethodTool implements IMcpTool {
         out.put("moduleFqn",    moduleFqn);
         out.put("methodName",   methodName);
         out.put("fqn",          fqn);
-        out.put("registered",   true);
+        out.put("registered",   result.registered);
         out.put("alreadyExisted", result.alreadyExisted);
+        if (!result.registered) {
+            // Метод в модуле есть, но раннер о нём не узнает — молчаливое
+            // registered:true раньше выглядело как успешно добавленный тест,
+            // который затем «не запускался» без всяких следов причины.
+            out.put("warning", "метод добавлен, но не зарегистрирован: в модуле нет процедуры "
+                    + (language == Language.RU ? "ИсполняемыеСценарии" : "ExecutableScenarios")
+                    + " — xUnitFor1C не запустит этот тест");
+        }
         return out;
     }
 

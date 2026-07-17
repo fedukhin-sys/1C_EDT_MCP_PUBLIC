@@ -4,10 +4,10 @@
    <extension point="ru.fedukhin.edt.mcp.core.tool">
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.ListMdObjectsTool"
             name="list_md_objects"
-            description="List MdObjects in a project, optionally filtered by kind"/>
+            description="List MdObjects in a project, optionally filtered by kind. External-object projects are listed by file scan of src/ExternalDataProcessors|ExternalReports."/>
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.GetMdObjectTool"
             name="get_md_object"
-            description="Get details of a single MdObject by FQN"/>
+            description="Get details of a single MdObject by FQN, including its tabularSections with their columns and — for an Enum — its values"/>
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.CreateMdObjectTool"
             name="create_md_object"
             description="Create a new top-level MdObject in a project"/>
@@ -19,7 +19,7 @@
             description="Set a property on an MdObject or its attribute"/>
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.ListAttributesTool"
             name="list_attributes"
-            description="List attributes/dimensions/resources of an MdObject"/>
+            description="List top-level attributes/dimensions/resources of an MdObject, its tabularSections with their columns, and — for an Enum — its values"/>
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddAttributeTool"
             name="add_attribute"
             description="Add an attribute/dimension/resource to an MdObject"/>
@@ -38,6 +38,9 @@
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddTabularSectionAttributeTool"
             name="add_tabular_section_attribute"
             description="Add a column (attribute) to an existing TabularSection. tsFqn = 'Kind.Owner.TabularSection.Name'."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddEnumValueTool"
+            name="add_enum_value"
+            description="Add a value to an Enum. fqn = 'Enum.Name'. Existing values are readable via list_attributes/get_md_object."/>
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddExtensionMethodOverrideTool"
             name="add_extension_method_override"
             description="Append a BSL procedure (with &amp;ИзменениеИКонтроль/&amp;Перед/&amp;После/&amp;Вместо annotation) to an extension module. Creates file + parent folders if missing."/>
@@ -92,6 +95,9 @@
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.CreateExternalObjectTool"
             name="create_external_object"
             description="Phase B: create an external object (ExternalDataProcessor/ExternalReport) in an external-object project. File-based: writes src/&lt;Folder&gt;/&lt;Name&gt;/&lt;Name&gt;.mdo (producedTypes + containedObjects skeleton) and an empty ObjectModule.bsl. Args: project, kind, name, synonym?, comment?."/>
+      <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.BuildExternalObjectTool"
+            name="build_external_object"
+            description="Build an external object into an .epf/.erf: EDT project &#8594; Designer XML (internal export service) &#8594; 1cv8 DESIGNER /LoadExternalDataProcessorOrReportFromFiles. Refuses to build while the project has BSL compile errors (same markers as check_list_markers) — neither step validates BSL syntax. Args: project, fqn ('ExternalDataProcessor.X'|'ExternalReport.X'), outPath, serviceInfobase ('/F&lt;path&gt;' or '/S&lt;server&gt;\&lt;base&gt;', must be free), platformVersion?, timeoutSeconds?."/>
       <tool class="ru.fedukhin.edt.mcp.tools.md.di.ToolsMdExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.md.AddMdTemplateTool"
             name="add_md_template"
             description="Phase B: generate a spreadsheet print-form template (.mxlx) from a columns/rows spec and register it in the owner .mdo as &lt;templates&gt;. ownerFqn='&lt;Kind&gt;.&lt;Name&gt;' (ExternalDataProcessor/ExternalReport/DataProcessor/Report/Catalog/Document/…). rows[].cells[]: text|parameter, span/rowSpan (merge), bold, size, align(left|center|right|justify), valign(top|center|bottom), wrap. Args: project, ownerFqn, templateName, synonym?, areaName?, columns?, rows?, overwrite?."/>

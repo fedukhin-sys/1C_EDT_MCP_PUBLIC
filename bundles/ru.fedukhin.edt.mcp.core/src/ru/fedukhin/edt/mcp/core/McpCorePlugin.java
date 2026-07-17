@@ -8,6 +8,7 @@ import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Plugin;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.preferences.IEclipsePreferences.IPreferenceChangeListener;
 import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.osgi.framework.BundleContext;
 import ru.fedukhin.edt.mcp.core.internal.di.McpHttpModule;
@@ -26,6 +27,7 @@ public class McpCorePlugin extends Plugin {
 
     private Injector injector;
     private InjectorAwareServiceRegistrator services;
+    private IPreferenceChangeListener portListener;
 
     public static McpCorePlugin getPlugin() { return instance; }
     public Injector getInjector() { return injector; }
@@ -42,11 +44,12 @@ public class McpCorePlugin extends Plugin {
             services.service(IServerStateBus.class).registerInjected();
             log.log(Status.info("McpCorePlugin.start() — IServerStateBus registered"));
 
-            InstanceScope.INSTANCE.getNode(ID).addPreferenceChangeListener(evt -> {
+            portListener = evt -> {
                 if (McpPreferences.KEY_PORT.equals(evt.getKey())) {
                     restart();
                 }
-            });
+            };
+            InstanceScope.INSTANCE.getNode(ID).addPreferenceChangeListener(portListener);
 
             ServiceInitialization.schedule(this::maybeAutoStart);
             log.log(Status.info("McpCorePlugin.start() — scheduled maybeAutoStart"));
@@ -99,6 +102,12 @@ public class McpCorePlugin extends Plugin {
 
     @Override public void stop(BundleContext context) throws Exception {
         try {
+            // Слушатель переживает бандл: при reinstall осиротевший listener дёргает restart()
+            // на мёртвом инжекторе.
+            if (portListener != null) {
+                InstanceScope.INSTANCE.getNode(ID).removePreferenceChangeListener(portListener);
+                portListener = null;
+            }
             if (injector != null) {
                 injector.getInstance(McpHttpService.class).stop();
             }

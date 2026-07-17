@@ -1,10 +1,12 @@
 package ru.fedukhin.edt.mcp.tests.tools.infobase;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com._1c.g5.v8.dt.platform.IRuntime;
@@ -91,6 +93,67 @@ public class CreateInfobaseToolTest {
         args.put("name", "Demo"); args.put("type", "FILE"); args.put("location", "C:/IB/Demo");
         args.put("version", "8.3.99");
         new CreateInfobaseTool(r, mgr, rr).call(args);
+    }
+
+    /**
+     * Границы {@code timeoutSeconds} объявлены в inputSchema, но schema-валидация на стороне
+     * сервера noop — проверять обязан код инструмента (иначе timeout=0 уходит в CLI как есть).
+     */
+    @Test
+    public void call_timeoutSecondsOutOfRange_throwsToolException() throws Exception {
+        Map<String, Object> args = new HashMap<>();
+        args.put("name", "Demo"); args.put("type", "FILE"); args.put("location", "C:/IB/Demo");
+        args.put("version", "8.3.24");
+        args.put("timeoutSeconds", 0);
+        try {
+            new CreateInfobaseTool(mock(InfobaseRegistry.class), mock(IInfobaseManager.class),
+                mock(IRuntimeRegistry.class)).call(args);
+            fail("expected ToolException");
+        } catch (ToolException e) {
+            assertTrue("ожидалось сообщение про timeoutSeconds, было: " + e.getMessage(),
+                e.getMessage().contains("timeoutSeconds"));
+        }
+    }
+
+    @Test
+    public void call_timeoutSecondsNotANumber_throwsToolException() throws Exception {
+        Map<String, Object> args = new HashMap<>();
+        args.put("name", "Demo"); args.put("type", "FILE"); args.put("location", "C:/IB/Demo");
+        args.put("version", "8.3.24");
+        args.put("timeoutSeconds", "быстро");
+        try {
+            new CreateInfobaseTool(mock(InfobaseRegistry.class), mock(IInfobaseManager.class),
+                mock(IRuntimeRegistry.class)).call(args);
+            fail("expected ToolException");
+        } catch (ToolException e) {
+            assertTrue("ожидалось сообщение про timeoutSeconds, было: " + e.getMessage(),
+                e.getMessage().contains("timeoutSeconds"));
+        }
+    }
+
+    @Test
+    public void call_timeoutSecondsWithinRange_isPassedToRegistry() throws Exception {
+        InfobaseRegistry r = mock(InfobaseRegistry.class);
+        IInfobaseManager mgr = mock(IInfobaseManager.class);
+        when(mgr.generateGroupName()).thenReturn("Auto");
+
+        InfobaseReference ref = mock(InfobaseReference.class);
+        when(ref.getName()).thenReturn("Demo");
+        when(ref.getUuid()).thenReturn(UUID.randomUUID());
+        when(ref.getInfobaseType()).thenReturn(InfobaseType.FILE);
+        FileConnectionString cs = mock(FileConnectionString.class);
+        when(cs.asConnectionString()).thenReturn("");
+        when(ref.getConnectionString()).thenReturn(cs);
+        when(r.createFileInfobase(any(), any(), any(), any(), any())).thenReturn(ref);
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("name", "Demo"); args.put("type", "FILE"); args.put("location", "C:/IB/Demo");
+        args.put("version", "8.3.24");
+        args.put("timeoutSeconds", 120);
+        new CreateInfobaseTool(r, mgr, mock(IRuntimeRegistry.class)).call(args);
+
+        verify(r).createFileInfobase(eq("Demo"), any(Path.class), eq("8.3.24"), eq("Auto"),
+            eq(Duration.ofSeconds(120)));
     }
 
     @Test

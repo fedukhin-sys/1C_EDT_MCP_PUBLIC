@@ -15,6 +15,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.form.internal.FormFileReader;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 
 /**
  * {@code get_form} — детальная информация о конкретной форме по FQN.
@@ -121,7 +122,9 @@ public final class GetFormTool implements IMcpTool {
         }
         String[] parts = fqn.split("\\.");
         if (parts.length == 4 && "Form".equals(parts[2])) {
-            return "src/" + pluralize(parts[0]) + "/" + parts[1] + "/Forms/" + parts[3] + "/Form.form";
+            String folder = pluralize(parts[0]);
+            if (folder == null) return null;
+            return "src/" + folder + "/" + parts[1] + "/Forms/" + parts[3] + "/Form.form";
         }
         return null;
     }
@@ -150,23 +153,25 @@ public final class GetFormTool implements IMcpTool {
         // <Kind>.<ObjName>.Form.<FormName>
         String[] parts = fqn.split("\\.");
         if (parts.length == 4) {
-            // e.g. Catalog → Catalogs, Document → Documents, etc.
             String kindPlural = pluralize(parts[0]);
+            if (kindPlural == null) return null;
             return "src/" + kindPlural + "/" + parts[1] + "/Forms/" + parts[3] + "/Module.bsl";
         }
         return null;
     }
 
+    /**
+     * Папка kind'а в {@code src/} — из единого реестра {@link MdObjectRegistry}.
+     *
+     * <p>Раньше здесь была наивная плюрализация с фолбэком {@code kind + "s"}, которая давала
+     * несуществующие «BusinessProcesss» и «ChartOfAccountss» (правильно — «BusinessProcesses»
+     * и «ChartsOfAccounts»): get_form на этих kind'ах не находил Form.form.
+     *
+     * @return имя папки, либо {@code null} для неизвестного kind'а — вызывающий отобьёт FQN
+     *         внятной ошибкой вместо похода по выдуманному пути
+     */
     private static String pluralize(String kind) {
-        return switch (kind) {
-            case "Catalog"             -> "Catalogs";
-            case "Document"            -> "Documents";
-            case "InformationRegister" -> "InformationRegisters";
-            case "AccumulationRegister" -> "AccumulationRegisters";
-            case "DataProcessor"       -> "DataProcessors";
-            case "Report"              -> "Reports";
-            default                    -> kind + "s";
-        };
+        return MdObjectRegistry.folderName(kind);
     }
 
     private static String requireString(Map<String, Object> args, String key) throws ToolException {

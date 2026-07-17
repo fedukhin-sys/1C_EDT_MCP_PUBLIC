@@ -14,9 +14,17 @@ public final class CatalogStore {
 
     public static final String CATALOG_REL = ".mcp/pii-catalog.json";
 
+    /**
+     * Каталог и подпись, при которой он собран.
+     *
+     * <p>Одним объектом, а не двумя volatile-полями: раздельные записи давали окно, в котором
+     * подпись уже новая, а каталог ещё старый, — параллельный {@code current()} принимал устаревший
+     * каталог за актуальный и обезличивал по нему.
+     */
+    private record CachedCatalog(long signature, PiiCatalog catalog) { }
+
     private final Supplier<List<Path>> pathsSupplier;
-    private volatile PiiCatalog cached;
-    private volatile long cachedSignature = -1;
+    private volatile CachedCatalog cache;
 
     /** Рабочий конструктор: собирает пути каталогов открытых проектов workspace. */
     public CatalogStore() {
@@ -31,8 +39,8 @@ public final class CatalogStore {
     public PiiCatalog current() {
         List<Path> paths = pathsSupplier.get();
         long sig = signature(paths);
-        PiiCatalog c = cached;
-        if (c != null && sig == cachedSignature) return c;
+        CachedCatalog c = cache;
+        if (c != null && sig == c.signature()) return c.catalog();
         List<PiiCatalog> parts = new ArrayList<>();
         for (Path p : paths) {
             if (!Files.isRegularFile(p)) continue;
@@ -43,17 +51,21 @@ public final class CatalogStore {
             }
         }
         PiiCatalog merged = PiiCatalog.merge(parts);
-        cached = merged;
-        cachedSignature = sig;
+        cache = new CachedCatalog(sig, merged);
         return merged;
     }
 
     public void write(String projectName, PiiCatalog c) throws IOException {
         IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(projectName);
+        // У несуществующего/закрытого проекта getLocation() возвращает null — без явной проверки
+        // это был бы голый NPE вместо внятного сообщения.
+        if (project == null || project.getLocation() == null) {
+            throw new IOException("project '" + projectName + "' not found or has no location on disk");
+        }
         Path file = project.getLocation().toFile().toPath().resolve(CATALOG_REL);
         Files.createDirectories(file.getParent());
         Files.writeString(file, PiiCatalogJson.write(c, java.time.Instant.now().toString()));
-        cachedSignature = -1; // инвалидация
+        cache = null; // инвалидация
     }
 
     private static long signature(List<Path> paths) {

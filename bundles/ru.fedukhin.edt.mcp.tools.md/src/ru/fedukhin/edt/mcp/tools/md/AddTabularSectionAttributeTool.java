@@ -14,6 +14,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
 
 /**
@@ -26,16 +27,6 @@ import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
  * Date, Boolean, CatalogRef.X, DocumentRef.X, EnumRef.X, etc.
  */
 public final class AddTabularSectionAttributeTool implements IMcpTool {
-
-    private static final Map<String, String> KIND_FOLDER = Map.of(
-            "Catalog",                    "Catalogs",
-            "Document",                   "Documents",
-            "BusinessProcess",            "BusinessProcesses",
-            "Task",                       "Tasks",
-            "ChartOfAccounts",            "ChartsOfAccounts",
-            "ChartOfCalculationTypes",    "ChartsOfCalculationTypes",
-            "ChartOfCharacteristicTypes", "ChartsOfCharacteristicTypes"
-    );
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final MdoFileEditor            editor;
@@ -88,7 +79,10 @@ public final class AddTabularSectionAttributeTool implements IMcpTool {
         String ownerName = parts[1];
         String tsName = parts[3];
 
-        String folder = KIND_FOLDER.get(kind);
+        // Тот же набор kind'ов, что у add_tabular_section — переиспользуем его константу,
+        // чтобы списки не разъехались; папка — из единого реестра.
+        String folder = AddTabularSectionTool.KINDS_WITH_TABULAR_SECTIONS.contains(kind)
+                ? MdObjectRegistry.folderName(kind) : null;
         if (folder == null) {
             throw new ToolException("kind '" + kind + "' does not support tabular sections");
         }

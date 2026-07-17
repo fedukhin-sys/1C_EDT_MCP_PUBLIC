@@ -29,8 +29,15 @@ public class TypeStringParser {
     // BUG-14: any <Kind>Ref reference — Catalog/Document/Enum plus
     // ChartOfCharacteristicTypes/ChartOfAccounts/ChartOfCalculationTypes/
     // ExchangePlan/BusinessProcess/Task and so on.
+    //
+    // Буква Ё/ё перечислена отдельно: в Unicode она лежит ВНЕ диапазона А-Я/а-я
+    // (Ё=U+0401 до А=U+0410, ё=U+0451 после я=U+044F), поэтому [А-Яа-я] её не ловит.
+    // Без неё не парсились типы вроде CatalogRef.Партнёры или
+    // ChartOfAccountsRef.Хозрасчётный — а это объекты типовых конфигураций.
+    private static final String NAME_START = "A-Za-zА-ЯЁа-яё_";
+    private static final String NAME_PART  = "A-Za-zА-ЯЁа-яё0-9_";
     private static final Pattern REF_RE    = Pattern.compile(
-            "^([A-Za-zА-Яа-я][A-Za-zА-Яа-я0-9]*)Ref\\.([A-Za-zА-Яа-я_][A-Za-zА-Яа-я0-9_]*)$");
+            "^([A-Za-zА-ЯЁа-яё][A-Za-zА-ЯЁа-яё0-9]*)Ref\\.([" + NAME_START + "][" + NAME_PART + "]*)$");
 
     public ParsedType parseOne(String s) throws ToolException {
         if (s == null || s.isEmpty()) {

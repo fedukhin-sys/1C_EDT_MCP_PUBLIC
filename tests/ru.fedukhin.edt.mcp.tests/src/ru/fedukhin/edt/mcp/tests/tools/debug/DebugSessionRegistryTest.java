@@ -92,6 +92,24 @@ public class DebugSessionRegistryTest {
     }
 
     @Test
+    public void list_terminatesPrunedSessions() {
+        // dispose() снимает только слушателя событий. Сессия, которую EDT завершил сам
+        // (клиент закрыт пользователем), уносит с собой ссылку на target/launch и
+        // catch-all breakpoint: без terminate() launch остаётся в ILaunchManager, а
+        // breakpoint — в workspace. Prune обязан отработать симметрично stop_debug.
+        DebugSessionRegistry reg = new DebugSessionRegistry();
+        DebugSession alive = sessionMock(UUID.randomUUID(), false);
+        DebugSession dead = sessionMock(UUID.randomUUID(), true);
+        reg.register(alive);
+        reg.register(dead);
+
+        reg.list();
+
+        verify(dead).terminate();
+        verify(alive, never()).terminate();
+    }
+
+    @Test
     public void require_present_returnsSession() throws ToolException {
         DebugSessionRegistry reg = new DebugSessionRegistry();
         UUID id = UUID.randomUUID();

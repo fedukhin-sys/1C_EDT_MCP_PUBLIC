@@ -24,7 +24,12 @@ public class InstallTestRunnerTool implements IMcpTool {
     }
 
     @Override public String name() { return "install_test_runner"; }
-    @Override public String description() { return "Scaffold xUnit test runner modules + ПриНачалеРаботыСистемы handler"; }
+    @Override public String description() {
+        return "Scaffold xUnit test runner modules + ПриНачалеРаботыСистемы handler. "
+             + "The runner is launched by run_tests via 1cv8 ENTERPRISE: deploy_project the "
+             + "project first, and make sure the infobase either has no users, accepts OS "
+             + "authentication, or is given user/password in run_tests.";
+    }
 
     @Override public Map<String, Object> inputSchema() {
         Map<String, Object> proj = new LinkedHashMap<>(); proj.put("type", "string");

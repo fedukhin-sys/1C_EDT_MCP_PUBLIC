@@ -87,8 +87,13 @@ public class RuntimeCli {
 
         // Build the command line directly — the command-builder facade lives in services.core.runtimes.execution.impl
         // and requires a fully-resolved RuntimeInstallation, which we don't have in the headless path.
-        // Equivalent CLI shape (1C platform docs): 1cv8.exe CREATEINFOBASE File="<path>"
-        List<String> cmd = List.of(executable.getAbsolutePath(), "CREATEINFOBASE", "File=\"" + location + "\"");
+        // Equivalent CLI shape (1C platform docs): 1cv8.exe CREATEINFOBASE File=<path>
+        //
+        // Без кавычек вокруг пути: ProcessBuilder на Windows экранирует встроенные " как \",
+        // а 1cv8.exe такую форму не понимает — отвечает «Неопределена информационная база»
+        // (тот же отказ описан в TestRunnerLauncher.buildCommand). Кавычки вокруг аргумента
+        // с пробелами Windows расставляет сам.
+        List<String> cmd = List.of(executable.getAbsolutePath(), "CREATEINFOBASE", "File=" + location);
 
         Process p;
         try {
@@ -96,6 +101,12 @@ public class RuntimeCli {
         } catch (IOException e) {
             throw new ToolException("failed to start 1cv8.exe: " + e.getMessage(), e);
         }
+        // Дренируем потоки параллельно с ожиданием: полный pipe подвешивает сам процесс, и тогда
+        // никакой таймаут не спасёт (та же болезнь, что была у раннера тестов). Читать их до
+        // waitFor нельзя — блокирующее чтение и есть источник зависания.
+        StringBuilder stderr = new StringBuilder();
+        Thread errDrain = drainAsync(p.getErrorStream(), stderr);
+        Thread outDrain = drainAsync(p.getInputStream(), new StringBuilder());
         boolean finished;
         try {
             finished = p.waitFor(timeout.toSeconds(), TimeUnit.SECONDS);
@@ -108,11 +119,32 @@ public class RuntimeCli {
             p.destroyForcibly();
             throw new ToolException("createInfobase timeout after " + timeout.toSeconds() + "s");
         }
+        joinQuietly(errDrain);
+        joinQuietly(outDrain);
         int code = p.exitValue();
         if (code != 0) {
-            throw new ToolException("1cv8 exited " + code + ": " + tail(p.getErrorStream()));
+            throw new ToolException("1cv8 exited " + code + ": " + stderr.toString().trim());
         }
         return code;
+    }
+
+    /** Вычитывает поток процесса в daemon-потоке, чтобы не блокировать ожидание. */
+    private static Thread drainAsync(InputStream in, StringBuilder sink) {
+        Thread t = new Thread(() -> {
+            String read = tail(in);
+            synchronized (sink) { sink.append(read); }
+        }, "edt-mcp-1cv8-drain");
+        t.setDaemon(true);
+        t.start();
+        return t;
+    }
+
+    private static void joinQuietly(Thread t) {
+        try {
+            t.join(2000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** Resolves 1cv8 for the platform version of the given infobase. */

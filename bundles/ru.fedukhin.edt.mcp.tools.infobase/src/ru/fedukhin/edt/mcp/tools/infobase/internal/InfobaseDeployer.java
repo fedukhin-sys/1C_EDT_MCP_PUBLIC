@@ -42,12 +42,18 @@ public class InfobaseDeployer {
     public DeployResult deploy(IProject project, InfobaseReference ref, boolean force,
                                 IProgressMonitor monitor) throws ToolException {
         long t0 = System.currentTimeMillis();
+        Boolean connected = invokeIsConnected(project, ref);
         try {
-            if (!sync.isConnected(project, ref)) {
+            if (connected == null || !connected) {
                 sync.connectInfobase(project, ref, monitor);
             }
         } catch (InfobaseSynchronizationException e) {
-            throw new ToolException("deploy failed: " + e.getMessage(), e);
+            if (connected != null) {
+                throw new ToolException("deploy failed: " + e.getMessage(), e);
+            }
+            // Старый EDT: узнать, подключена ли ИБ, нечем, поэтому connectInfobase зовётся
+            // вслепую и на уже подключённой базе законно ругается. Реальную проблему,
+            // если она есть, покажет следующий шаг — updateInfobase.
         }
         boolean ok = invokeUpdateInfobase(project, ref, force, monitor);
         return new DeployResult(ok, System.currentTimeMillis() - t0);
@@ -63,6 +69,30 @@ public class InfobaseDeployer {
      * ищет метод только по имени и типам параметров (они стабильны), поэтому один байткод
      * работает на обеих ветках EDT. Результат интерпретируется в {@link #interpretUpdateResult}.
      */
+    /**
+     * Вызывает {@code IInfobaseSynchronizationManager.isConnected} через рефлексию.
+     *
+     * <p>Метод появился только в dt.platform.services.core 21 (EDT 2026.x): на EDT ≤2025.1
+     * (core 18/19) прямой вызов давал {@code NoSuchMethodError} ещё до updateInfobase, то есть
+     * deploy_project был неработоспособен на всей ветке 2023.x, хотя плагин заявлен dual-version.
+     *
+     * @return {@code true}/{@code false} — ответ платформы; {@code null} — метода нет (старый EDT)
+     */
+    protected Boolean invokeIsConnected(IProject project, InfobaseReference ref) throws ToolException {
+        try {
+            Method m = IInfobaseSynchronizationManager.class.getMethod("isConnected",
+                IProject.class, InfobaseReference.class);
+            return (Boolean) m.invoke(sync, project, ref);
+        } catch (NoSuchMethodError | NoSuchMethodException e) {
+            return null;
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new ToolException("deploy failed: " + cause.getMessage(), cause);
+        } catch (IllegalAccessException e) {
+            throw new ToolException("deploy failed: cannot call isConnected: " + e.getMessage(), e);
+        }
+    }
+
     private boolean invokeUpdateInfobase(IProject project, InfobaseReference ref, boolean force,
                                          IProgressMonitor monitor) throws ToolException {
         IInfobaseUpdateCallback callback = NoopUpdateCallback.create();
@@ -131,6 +161,7 @@ public class InfobaseDeployer {
         } catch (TimeoutException e) {
             monitor.setCanceled(true);
             f.cancel(true);
+            discardExecutor(exec);
             throw new ToolException("deploy timeout after " + timeoutSeconds
                 + "s; deploy may still be running in background");
         } catch (ExecutionException e) {
@@ -141,8 +172,28 @@ public class InfobaseDeployer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             f.cancel(true);
+            discardExecutor(exec);
             throw new ToolException("deploy interrupted");
         }
+    }
+
+    /**
+     * Отвязывает executor, поток которого мог остаться занят брошенной задачей.
+     *
+     * <p>Executor однопоточный, а отмена — best-effort: EDT-синхронизация не обязана
+     * реагировать ни на {@code monitor.setCanceled}, ни на interrupt. Если оставить тот же
+     * executor, следующий deploy молча встанет в очередь за зависшей задачей и упрётся в свой
+     * таймаут, ничего не сделав. Поэтому executor заменяется — брошенный поток доработает сам
+     * (он daemon) и умрёт вместе с ним.
+     *
+     * <p>{@code shutdownNow()} без {@code awaitTermination}: ждать зависшую задачу здесь
+     * значило бы заблокировать вызывающий поток ровно на то время, от которого мы уходим.
+     */
+    private synchronized void discardExecutor(ExecutorService exec) {
+        if (executor == exec) {
+            executor = null;
+        }
+        exec.shutdownNow();
     }
 
     public synchronized void shutdown() {

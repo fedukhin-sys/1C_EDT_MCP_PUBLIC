@@ -125,6 +125,83 @@ public class EventLogReaderTest {
         assertEquals("20260525000000.lgp", ps.get(1).getFileName().toString());
     }
 
+    /**
+     * Ключевой баг date_desc: окно [offset, offset+limit) применялось в порядке сканирования
+     * (внутри партиции — по возрастанию даты), и только потом страница переворачивалась. При
+     * limit меньше числа совпадений клиент получал самые СТАРЫЕ записи, разложенные задом наперёд,
+     * то есть ровно противоположное запрошенному.
+     */
+    @Test
+    public void descendingWithLimit_returnsNewestRecords() throws Exception {
+        Path dir = tmp.newFolder("log").toPath();
+        List<String> events = new java.util.ArrayList<>();
+        for (int i = 1; i <= 10; i++) {
+            events.add(evt(20260406120000L + i, "I", 4, 1, "e" + i, 1));
+        }
+        writeLog(dir, "20260406000000.lgp", events);
+
+        EventLogQuery q = new EventLogQuery();
+        q.user(List.of("ФедухинАА"));
+        q.descending = true;
+        q.limit = 3;
+        EventLogReader.Page page = new EventLogReader().read(dir, q);
+
+        assertEquals(10, page.matchedTotal);
+        assertEquals(3, page.records.size());
+        assertEquals("e10", page.records.get(0).comment);
+        assertEquals("e9",  page.records.get(1).comment);
+        assertEquals("e8",  page.records.get(2).comment);
+    }
+
+    /** offset в descending обязан отсчитываться от самой новой записи. */
+    @Test
+    public void descendingWithOffset_skipsNewestRecords() throws Exception {
+        Path dir = tmp.newFolder("log").toPath();
+        List<String> events = new java.util.ArrayList<>();
+        for (int i = 1; i <= 10; i++) {
+            events.add(evt(20260406120000L + i, "I", 4, 1, "e" + i, 1));
+        }
+        writeLog(dir, "20260406000000.lgp", events);
+
+        EventLogQuery q = new EventLogQuery();
+        q.user(List.of("ФедухинАА"));
+        q.descending = true;
+        q.offset = 2;
+        q.limit = 2;
+        EventLogReader.Page page = new EventLogReader().read(dir, q);
+
+        assertEquals(2, page.records.size());
+        assertEquals("e8", page.records.get(0).comment);
+        assertEquals("e7", page.records.get(1).comment);
+    }
+
+    /**
+     * Страница через несколько партиций: партиции перечисляются newest-first, а записи внутри
+     * них — oldest-first, поэтому без сортировки порядок выходил несогласованным.
+     */
+    @Test
+    public void descendingAcrossPartitions_isGloballyOrdered() throws Exception {
+        Path dir = tmp.newFolder("log").toPath();
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("1Cv8.lgf"), LGF, StandardCharsets.UTF_8);
+        writeLog(dir, "20260405000000.lgp", List.of(
+            evt(20260405120000L, "I", 4, 1, "old1", 1),
+            evt(20260405120001L, "I", 4, 1, "old2", 1)));
+        writeLog(dir, "20260406000000.lgp", List.of(
+            evt(20260406120000L, "I", 4, 1, "new1", 1),
+            evt(20260406120001L, "I", 4, 1, "new2", 1)));
+
+        EventLogQuery q = new EventLogQuery();
+        q.user(List.of("ФедухинАА"));
+        q.descending = true;
+        q.limit = 3;
+        EventLogReader.Page page = new EventLogReader().read(dir, q);
+
+        assertEquals(4, page.matchedTotal);
+        assertEquals(List.of("new2", "new1", "old2"),
+            page.records.stream().map(r -> r.comment).toList());
+    }
+
     @Test
     public void descendingOrder_reversesResults() throws Exception {
         Path dir = tmp.newFolder("log").toPath();

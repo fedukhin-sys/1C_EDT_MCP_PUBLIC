@@ -113,4 +113,23 @@ public class TypeStringParserTest {
 
     @Test(expected = ToolException.class)
     public void rejectsEmptyArray() throws Exception { p.parseMany(new String[]{}); }
+
+    /**
+     * Буква Ё/ё лежит вне диапазона [А-Яа-я] в Unicode (Ё=U+0401 до А=U+0410, ё=U+0451 после
+     * я=U+044F), поэтому ссылки на объекты типовых конфигураций с «ё» не парсились вовсе.
+     */
+    @Test
+    public void acceptsRefNamesWithYo() throws Exception {
+        ParsedType partners = p.parseOne("CatalogRef.Партнёры");
+        assertEquals("Catalog", partners.refKind());
+        assertEquals("Партнёры", partners.refName());
+
+        ParsedType accounts = p.parseOne("ChartOfAccountsRef.Хозрасчётный");
+        assertEquals("ChartOfAccounts", accounts.refKind());
+        assertEquals("Хозрасчётный", accounts.refName());
+
+        ParsedType receipt = p.parseOne("DocumentRef.ПриёмТовара");
+        assertEquals("Document", receipt.refKind());
+        assertEquals("ПриёмТовара", receipt.refName());
+    }
 }

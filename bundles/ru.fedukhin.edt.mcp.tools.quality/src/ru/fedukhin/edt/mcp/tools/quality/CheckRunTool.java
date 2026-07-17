@@ -88,7 +88,7 @@ public class CheckRunTool implements IMcpTool {
             scope.add("/" + name + "/" + path);
             scopeLabel = "file";
         }
-        CheckRunResult result = runner.run(project, scope, ids, waitSeconds, clearFirst);
+        CheckRunResult result = runner.run(project, scope, path, ids, waitSeconds, clearFirst);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ran",           true);

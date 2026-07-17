@@ -19,6 +19,8 @@ import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.form.internal.FormRegistry;
 import ru.fedukhin.edt.mcp.tools.form.internal.MdObjectLocator;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectKind;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 
 /**
  * {@code list_forms} — список форм в проекте, опционально по родительскому FQN.
@@ -30,6 +32,9 @@ import ru.fedukhin.edt.mcp.tools.form.internal.MdObjectLocator;
  * Spike §9.2: FQN формы = {@code <ParentKind>.<ParentName>.Form.<FormName>}.
  */
 public final class ListFormsTool implements IMcpTool {
+
+    /** Источник имён контейнеров Configuration ("getCatalogs", "getChartsOfAccounts", …). */
+    private static final MdObjectRegistry MD_REGISTRY = new MdObjectRegistry();
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final IBmModelManager bm;
@@ -105,12 +110,13 @@ public final class ListFormsTool implements IMcpTool {
                     Configuration cfg = resolveConfiguration(txn, project);
                     if (cfg != null) {
                         addCommonForms(cfg, forms);
-                        iterateKindContainer(cfg, "getCatalogs",              "Catalog",              forms);
-                        iterateKindContainer(cfg, "getDocuments",             "Document",             forms);
-                        iterateKindContainer(cfg, "getInformationRegisters",  "InformationRegister",  forms);
-                        iterateKindContainer(cfg, "getAccumulationRegisters", "AccumulationRegister", forms);
-                        iterateKindContainer(cfg, "getDataProcessors",        "DataProcessor",        forms);
-                        iterateKindContainer(cfg, "getReports",               "Report",               forms);
+                        // Обходим все kind'ы с формами, а не жёстко зашитую шестёрку: имя
+                        // контейнера берём из общего реестра, состав — из FormRegistry.
+                        for (String kind : registry.supportedKinds()) {
+                            MdObjectKind meta = MD_REGISTRY.get(kind);
+                            if (meta == null) continue;
+                            iterateKindContainer(cfg, meta.containerFeatureName(), kind, forms);
+                        }
                     }
                 }
             } catch (ToolException e) {

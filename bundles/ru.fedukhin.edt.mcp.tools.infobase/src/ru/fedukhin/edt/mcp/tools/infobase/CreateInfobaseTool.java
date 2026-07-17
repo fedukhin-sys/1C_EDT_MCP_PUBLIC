@@ -18,6 +18,10 @@ import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 
 public class CreateInfobaseTool implements IMcpTool {
 
+    private static final int DEFAULT_TIMEOUT_SECONDS = 60;
+    private static final int MIN_TIMEOUT_SECONDS = 10;
+    private static final int MAX_TIMEOUT_SECONDS = 600;
+
     private final InfobaseRegistry registry;
     private final IInfobaseManager manager;
     private final IRuntimeRegistry runtimeRegistry;
@@ -41,7 +45,9 @@ public class CreateInfobaseTool implements IMcpTool {
         Map<String, Object> version = new LinkedHashMap<>(); version.put("type", "string");
         Map<String, Object> folder = new LinkedHashMap<>(); folder.put("type", "string");
         Map<String, Object> timeout = new LinkedHashMap<>();
-        timeout.put("type", "integer"); timeout.put("minimum", 10); timeout.put("maximum", 600);
+        timeout.put("type", "integer");
+        timeout.put("minimum", MIN_TIMEOUT_SECONDS);
+        timeout.put("maximum", MAX_TIMEOUT_SECONDS);
 
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("name", name);
@@ -77,12 +83,30 @@ public class CreateInfobaseTool implements IMcpTool {
         if (folder == null || folder.isEmpty()) {
             folder = manager.generateGroupName();
         }
-        Object t = (args == null) ? null : args.get("timeoutSeconds");
-        Duration timeout = Duration.ofSeconds(t instanceof Number ? ((Number) t).longValue() : 60L);
+        Duration timeout = Duration.ofSeconds(parseTimeout(args));
 
         Path locPath = Paths.get(location);
         InfobaseReference ref = registry.createFileInfobase(name, locPath, version, folder, timeout);
         return ListInfobasesTool.serialise(ref);
+    }
+
+    /**
+     * Границы объявлены и в inputSchema, но schema-валидация на стороне сервера не выполняется —
+     * значение доходит до кода как есть. Без проверки {@code timeoutSeconds:0} превратился бы в
+     * нулевой бюджет для 1cv8 CREATEINFOBASE, а строка — молча в дефолтные 60с.
+     */
+    private static int parseTimeout(Map<String, Object> args) throws ToolException {
+        Object t = (args == null) ? null : args.get("timeoutSeconds");
+        if (t == null) return DEFAULT_TIMEOUT_SECONDS;
+        if (!(t instanceof Number n)) {
+            throw new ToolException("timeoutSeconds must be an integer");
+        }
+        int v = n.intValue();
+        if (v < MIN_TIMEOUT_SECONDS || v > MAX_TIMEOUT_SECONDS) {
+            throw new ToolException("timeoutSeconds must be in ["
+                + MIN_TIMEOUT_SECONDS + ", " + MAX_TIMEOUT_SECONDS + "], got " + v);
+        }
+        return v;
     }
 
     public static String stringArg(Map<String, Object> args, String key) throws ToolException {

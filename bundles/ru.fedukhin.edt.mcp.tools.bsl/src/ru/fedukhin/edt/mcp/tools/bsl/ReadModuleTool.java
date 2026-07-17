@@ -19,6 +19,12 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
 
 public class ReadModuleTool implements IMcpTool {
 
+    /**
+     * U+FEFF — BOM, которым 1С предваряет .bsl. Записан числом намеренно: сам символ
+     * невидим, и литерал в исходнике невозможно ни прочитать, ни надёжно отредактировать.
+     */
+    private static final char BOM = (char) 0xFEFF;
+
     private final Supplier<IWorkspaceRoot> rootSupplier;
 
     @Inject
@@ -87,6 +93,13 @@ public class ReadModuleTool implements IMcpTool {
         } catch (IOException | CoreException e) {
             throw new ToolException("failed to read: " + e.getMessage());
         }
+        // 1С пишет .bsl с BOM. При чтении в UTF-8 он приезжает первым символом (U+FEFF) и
+        // ломает всё, что смотрит на начало модуля (сравнение первой строки, парсинг директив
+        // «&НаКлиенте», поиск «Процедура»). Снимаем его из content, а сам факт наличия отдаём
+        // отдельным полем — write_module по нему восстановит BOM и не изменит кодировку файла.
+        boolean hasBom = sb.length() > 0 && sb.charAt(0) == BOM;
+        if (hasBom) sb.deleteCharAt(0);
+
         int lineCount = sb.length() == 0 ? 0 : newlineCount + 1;
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -95,6 +108,7 @@ public class ReadModuleTool implements IMcpTool {
         out.put("charset", charsetName);
         out.put("content", sb.toString());
         out.put("lineCount", lineCount);
+        out.put("hasBom", hasBom);
         return out;
     }
 

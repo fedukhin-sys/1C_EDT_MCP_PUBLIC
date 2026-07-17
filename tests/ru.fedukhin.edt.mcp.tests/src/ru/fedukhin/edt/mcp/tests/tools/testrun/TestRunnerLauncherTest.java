@@ -57,6 +57,65 @@ public class TestRunnerLauncherTest {
         }
     }
 
+    /**
+     * До этого раннер вообще не умел /N /P — тесты можно было гонять только по
+     * OS-аутентификации или в ИБ без пользователей.
+     */
+    @Test
+    public void runWithTimeout_userAndPassword_appendedAsSlashNSlashP() throws Exception {
+        List<List<String>> seen = new java.util.ArrayList<>();
+        ProcessRunner fake = (cmd, env, timeoutSec) -> {
+            seen.add(cmd);
+            Path rf = extractResultFile(cmd);
+            Files.writeString(rf, "{\"passed\":0,\"failed\":0,\"durationMs\":1,\"tests\":[]}");
+            return new ProcessRunner.RunOutcome(0, "", "");
+        };
+        launcher = new TestRunnerLauncher(fake);
+        launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";",
+            "EDT_MCP_TESTS=mode=ALL;rf=" + base64(systemTempJson()), 30, "Админ", "s3cret");
+
+        List<String> cmd = seen.get(0);
+        int n = cmd.indexOf("/N");
+        assertTrue("ожидался /N в команде: " + cmd, n >= 0);
+        assertEquals("Админ", cmd.get(n + 1));
+        int p = cmd.indexOf("/P");
+        assertTrue("ожидался /P в команде: " + cmd, p >= 0);
+        assertEquals("s3cret", cmd.get(p + 1));
+    }
+
+    @Test
+    public void runWithTimeout_noCredentials_noSlashNSlashP() throws Exception {
+        List<List<String>> seen = new java.util.ArrayList<>();
+        ProcessRunner fake = (cmd, env, timeoutSec) -> {
+            seen.add(cmd);
+            Path rf = extractResultFile(cmd);
+            Files.writeString(rf, "{\"passed\":0,\"failed\":0,\"durationMs\":1,\"tests\":[]}");
+            return new ProcessRunner.RunOutcome(0, "", "");
+        };
+        launcher = new TestRunnerLauncher(fake);
+        launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";",
+            "EDT_MCP_TESTS=mode=ALL;rf=" + base64(systemTempJson()), 30, null, null);
+
+        assertTrue("без учётных данных /N быть не должно: " + seen.get(0),
+            seen.get(0).indexOf("/N") < 0);
+        assertTrue(seen.get(0).indexOf("/P") < 0);
+    }
+
+    /** Текст ошибки печатает всю командную строку — пароль в него попасть не должен. */
+    @Test
+    public void runWithTimeout_errorMessage_doesNotLeakPassword() {
+        ProcessRunner fake = (cmd, env, timeoutSec) -> new ProcessRunner.RunOutcome(1, "", "boom");
+        launcher = new TestRunnerLauncher(fake);
+        try {
+            launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";",
+                "EDT_MCP_TESTS=mode=ALL;rf=" + base64(systemTempJson()), 30, "Админ", "s3cret");
+            fail("expected ToolException");
+        } catch (ToolException e) {
+            assertTrue("пароль не должен попадать в сообщение: " + e.getMessage(),
+                !e.getMessage().contains("s3cret"));
+        }
+    }
+
     @Test
     public void appendIbArgs_fileConnection_usesSlashFShortcut() {
         // Regression: Java ProcessBuilder on Windows escapes embedded " as \", which 1cv8.exe
@@ -94,6 +153,29 @@ public class TestRunnerLauncherTest {
                     e.getMessage().contains("[30, 3600]"));
             }
         }
+    }
+
+    /**
+     * Каталог результатов рос без ограничений: каждый прогон оставляет .json и .1cv8.log,
+     * и никто их не убирал. Свежие файлы трогать нельзя — они могут принадлежать
+     * параллельному прогону.
+     */
+    @Test
+    public void allocateResultFile_removesStaleLeftoversButKeepsFreshOnes() throws Exception {
+        Path dir = Path.of(System.getProperty("java.io.tmpdir"), "edt-mcp-test-results");
+        Files.createDirectories(dir);
+        Path stale = dir.resolve("stale-" + java.util.UUID.randomUUID() + ".json");
+        Path fresh = dir.resolve("fresh-" + java.util.UUID.randomUUID() + ".json");
+        Files.writeString(stale, "{}");
+        Files.writeString(fresh, "{}");
+        Files.setLastModifiedTime(stale, java.nio.file.attribute.FileTime.from(
+            java.time.Instant.now().minus(java.time.Duration.ofDays(30))));
+
+        TestRunnerLauncher.allocateResultFile();
+
+        assertTrue("свежий файл параллельного прогона трогать нельзя", Files.exists(fresh));
+        assertTrue("протухший файл должен быть удалён", !Files.exists(stale));
+        Files.deleteIfExists(fresh);
     }
 
     private static Path extractResultFile(List<String> cmd) throws Exception {

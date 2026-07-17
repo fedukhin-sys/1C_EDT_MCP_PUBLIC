@@ -8,6 +8,10 @@ import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.HttpServletSseServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
 import jakarta.inject.Inject;
+import org.eclipse.core.runtime.Platform;
+import org.eclipse.core.runtime.Status;
+import org.osgi.framework.Bundle;
+import org.osgi.framework.FrameworkUtil;
 import ru.fedukhin.edt.mcp.core.api.IToolRegistry;
 
 public class McpServerLifecycle {
@@ -55,7 +59,7 @@ public class McpServerLifecycle {
         server = McpServer.sync(transport)
             .jsonMapper(jsonMapper)
             .jsonSchemaValidator(validator)
-            .serverInfo("EDT_MCP", "1.9.0")
+            .serverInfo("EDT_MCP", bundleVersion())
             .instructions(SERVER_INSTRUCTIONS)
             .capabilities(McpSchema.ServerCapabilities.builder().tools(true).build())
             .tools(tools.tools().stream().map(adapter::adapt).toList())
@@ -119,9 +123,28 @@ public class McpServerLifecycle {
         if (transport != null) {
             try {
                 transport.closeGracefully().block(java.time.Duration.ofSeconds(2));
-            } catch (Exception ignore) {}
+            } catch (Exception e) {
+                Platform.getLog(getClass()).log(Status.warning("MCP transport close failed", e));
+            }
+        }
+        if (server != null) {
+            try {
+                server.close();
+            } catch (Exception e) {
+                Platform.getLog(getClass()).log(Status.warning("MCP server close failed", e));
+            }
         }
         transport = null;
         server = null;
+    }
+
+    /**
+     * Версия из манифеста бандла: раньше здесь был литерал, который отставал от релиза и врал
+     * клиенту в ответе {@code initialize} (застрял на 1.9.0). Вне OSGi (юнит-тесты) бандла нет —
+     * тогда версия неизвестна.
+     */
+    private String bundleVersion() {
+        Bundle bundle = FrameworkUtil.getBundle(getClass());
+        return bundle != null ? bundle.getVersion().toString() : "0.0.0.unknown";
     }
 }

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
@@ -19,6 +20,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
 import ru.fedukhin.edt.mcp.tools.md.internal.MxlxTemplateBuilder;
 import ru.fedukhin.edt.mcp.tools.md.internal.MxlxTemplateBuilder.Cell;
@@ -47,18 +49,30 @@ import ru.fedukhin.edt.mcp.tools.md.internal.MxlxTemplateBuilder.Row;
  */
 public final class AddMdTemplateTool implements IMcpTool {
 
-    /** kind → папка в src/. */
-    private static final Map<String, String> KIND_FOLDER = Map.ofEntries(
-            Map.entry("ExternalDataProcessor", "ExternalDataProcessors"),
-            Map.entry("ExternalReport",        "ExternalReports"),
-            Map.entry("DataProcessor",         "DataProcessors"),
-            Map.entry("Report",                "Reports"),
-            Map.entry("Catalog",               "Catalogs"),
-            Map.entry("Document",              "Documents"),
-            Map.entry("InformationRegister",   "InformationRegisters"),
-            Map.entry("AccumulationRegister",  "AccumulationRegisters"),
-            Map.entry("BusinessProcess",       "BusinessProcesses"),
-            Map.entry("Task",                  "Tasks"));
+    /**
+     * Внешние объекты: их нет в {@link MdObjectRegistry} (реестр — про объекты конфигурации),
+     * поэтому папки для них задаются здесь.
+     */
+    private static final Map<String, String> EXTERNAL_KIND_FOLDER = Map.of(
+            "ExternalDataProcessor", "ExternalDataProcessors",
+            "ExternalReport",        "ExternalReports");
+
+    /** Kind'ы конфигурации с макетами — папки берутся из {@link MdObjectRegistry#folderName}. */
+    private static final Set<String> KINDS_WITH_TEMPLATES = Set.of(
+            "DataProcessor", "Report", "Catalog", "Document",
+            "InformationRegister", "AccumulationRegister", "BusinessProcess", "Task");
+
+    private static String folderFor(String kind) {
+        String external = EXTERNAL_KIND_FOLDER.get(kind);
+        if (external != null) return external;
+        return KINDS_WITH_TEMPLATES.contains(kind) ? MdObjectRegistry.folderName(kind) : null;
+    }
+
+    private static Set<String> supportedKinds() {
+        Set<String> all = new java.util.TreeSet<>(EXTERNAL_KIND_FOLDER.keySet());
+        all.addAll(KINDS_WITH_TEMPLATES);
+        return all;
+    }
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final MdoFileEditor            mdoEditor;
@@ -146,10 +160,10 @@ public final class AddMdTemplateTool implements IMcpTool {
         }
         String kind = ownerFqn.substring(0, dot);
         String owner = ownerFqn.substring(dot + 1);
-        String folder = KIND_FOLDER.get(kind);
+        String folder = folderFor(kind);
         if (folder == null) {
             throw new ToolException("kind '" + kind + "' does not support templates (supported: "
-                    + KIND_FOLDER.keySet() + ")");
+                    + supportedKinds() + ")");
         }
 
         IProject project = rootSupplier.get().getProject(projectName);

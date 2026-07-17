@@ -49,7 +49,7 @@ public class CheckRunnerTest {
         IProject project = mock(IProject.class);
 
         CheckRunner runner = new CheckRunner(scheduler, provider, reader);
-        CheckRunResult result = runner.run(project, null, Set.of("check.a"), 30, true);
+        CheckRunResult result = runner.run(project, null, null, Set.of("check.a"), 30, true);
 
         verify(scheduler, times(1)).scheduleClearance(eq(project), eq(Set.of("check.a")), any());
         verify(scheduler, times(1)).scheduleValidation(eq(project), eq(Set.of("check.a")),
@@ -69,7 +69,7 @@ public class CheckRunnerTest {
         IProject project = mock(IProject.class);
 
         CheckRunner runner = new CheckRunner(scheduler, provider, reader);
-        runner.run(project, null, Set.of("check.a"), 30, false);
+        runner.run(project, null, null, Set.of("check.a"), 30, false);
 
         verify(scheduler, never()).scheduleClearance(any(), any(), any());
         verify(scheduler, times(1)).scheduleValidation(any(), any(), any(), any());
@@ -86,11 +86,31 @@ public class CheckRunnerTest {
         IProject project = mock(IProject.class);
 
         CheckRunner runner = new CheckRunner(scheduler, provider, reader);
-        runner.run(project, null, Collections.emptySet(), 60, true);
+        runner.run(project, null, null, Collections.emptySet(), 60, true);
 
         verify(scheduler, never()).scheduleClearance(any(), any(), any());   // no ids → no clearance
         verify(scheduler, times(1)).scheduleValidation(eq(project), eq(Collections.emptySet()),
                 eq(Collections.emptyList()), any());
+    }
+
+    @Test public void pathScopeIsAlsoAppliedAsMarkerFilter() throws InterruptedException {
+        // check_run path=X сужал только область валидации, а маркеры вычитывал по всему
+        // проекту: клиент просил проверить один файл, а получал маркеры всей конфигурации.
+        ICheckScheduler scheduler = mock(ICheckScheduler.class);
+        IDerivedDataManager dd = mock(IDerivedDataManager.class);
+        when(dd.waitAllComputations(anyLong())).thenReturn(true);
+        IDerivedDataManagerProvider provider = mock(IDerivedDataManagerProvider.class);
+        when(provider.get(any(IProject.class))).thenReturn(dd);
+        MarkerReader reader = mock(MarkerReader.class);
+        when(reader.read(any(), any(), any(), any(), any())).thenReturn(List.of());
+        IProject project = mock(IProject.class);
+
+        CheckRunner runner = new CheckRunner(scheduler, provider, reader);
+        runner.run(project, List.of("/Demo/src/CommonModules/Расчёты/Module.bsl"),
+                "src/CommonModules/Расчёты/Module.bsl", Collections.emptySet(), 30, true);
+
+        verify(reader, times(1)).read(eq(project), eq("src/CommonModules/Расчёты/Module.bsl"),
+                any(), any(), any());
     }
 
     @Test public void waitTimeoutReturnsCompletedFalse() throws InterruptedException {
@@ -104,7 +124,7 @@ public class CheckRunnerTest {
         IProject project = mock(IProject.class);
 
         CheckRunner runner = new CheckRunner(scheduler, provider, reader);
-        CheckRunResult result = runner.run(project, null, Set.of("check.a"), 5, true);
+        CheckRunResult result = runner.run(project, null, null, Set.of("check.a"), 5, true);
 
         assertFalse(result.completed());
         assertEquals(5, result.waitedSeconds());

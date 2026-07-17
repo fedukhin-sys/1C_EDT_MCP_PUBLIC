@@ -23,6 +23,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.debug.core.DebugException;
 import org.eclipse.debug.core.DebugPlugin;
 import org.eclipse.debug.core.ILaunch;
 import org.eclipse.debug.core.ILaunchConfigurationType;
@@ -126,18 +127,72 @@ public class DebugLauncher {
             throw new ToolException("debug launch failed: " + e.getMessage(), e);
         }
 
+        // Всё, что после успешного createLocal, — под cleanup: dbgs.exe уже запущен и target к
+        // нему подключён. Если вторая фаза упадёт и мы просто пробросим исключение, target
+        // останется подключённым, а launch — в ILaunchManager: следующий debug_client по той же
+        // ИБ упадёт «Попытка повторного соединения с сервером отладки» (тот же отказ, который
+        // на happy-path чинит DebugSession.terminate(), — здесь DebugSession ещё не создан,
+        // и звать terminate() некому).
         URL debugServerUrl;
         try {
             debugServerUrl = new URL(target.getDebugServerUrl());
         } catch (MalformedURLException e) {
+            releaseTarget(target, launch);
             throw new ToolException("debug launch failed: bad debug server url '"
                     + target.getDebugServerUrl() + "'", e);
         }
 
-        Process clientProcess =
-                clientLauncher.launchForDebug(infobase, clientType, user, password, debugServerUrl);
+        Process clientProcess;
+        try {
+            clientProcess =
+                    clientLauncher.launchForDebug(infobase, clientType, user, password, debugServerUrl);
+        } catch (ToolException | RuntimeException e) {
+            releaseTarget(target, launch);
+            throw e;
+        }
 
         return new DebugLaunchResult(target, launch, clientProcess, infobase.getName(), clientType);
+    }
+
+    /**
+     * Освобождает пару target/launch — симметрично {@link DebugSession#terminate()}:
+     * сначала рвём соединение с dbgs (disconnect, иначе terminate), затем гасим launch и
+     * убираем его из {@link ILaunchManager}, чтобы следующий {@code createLocal} по этой ИБ
+     * поднял свежий target на новом порту, а не пытался переподключиться.
+     *
+     * <p>Best-effort: каждый шаг молча пропускается при null / уже завершённом состоянии —
+     * вызывающий код в любом случае бросает исходную ошибку запуска, и потерять её из-за
+     * сбоя уборки нельзя.
+     */
+    private static void releaseTarget(IRuntimeDebugClientTarget target, ILaunch launch) {
+        if (target != null && !target.isTerminated()) {
+            try {
+                if (target.canDisconnect()) {
+                    target.disconnect();
+                } else if (target.canTerminate()) {
+                    target.terminate();
+                }
+            } catch (DebugException | RuntimeException e) {
+                // best-effort — ниже всё равно гасим launch
+            }
+        }
+        if (launch != null) {
+            try {
+                if (!launch.isTerminated()) {
+                    launch.terminate();
+                }
+            } catch (DebugException | RuntimeException e) {
+                // best-effort — target мог уже уйти
+            }
+            try {
+                ILaunchManager mgr = DebugPlugin.getDefault().getLaunchManager();
+                if (mgr != null) {
+                    mgr.removeLaunch(launch);
+                }
+            } catch (RuntimeException e) {
+                // best-effort — EDT мог уже вычистить его сам
+            }
+        }
     }
 
     private RuntimeInstallation resolveDebugServerInstallation(InfobaseReference infobase)

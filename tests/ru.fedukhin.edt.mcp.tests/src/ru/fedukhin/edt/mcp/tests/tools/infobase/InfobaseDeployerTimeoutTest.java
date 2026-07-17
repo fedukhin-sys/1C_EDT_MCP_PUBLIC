@@ -16,6 +16,7 @@ import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCal
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -116,6 +117,54 @@ public class InfobaseDeployerTimeoutTest {
             assertTrue("expected 'conflict X' detail, was: " + e.getMessage(),
                 e.getMessage().contains("conflict X"));
         }
+    }
+
+    /**
+     * После таймаута зависшая задача продолжает занимать единственный поток executor'а
+     * (EDT-синхронизация не обязана честно реагировать на отмену). Если executor не
+     * пересоздать, следующий deploy молча встанет в очередь за ней и «повиснет» —
+     * пользователь увидит таймаут вместо работы.
+     */
+    @Test
+    public void deployWithTimeout_afterTimeout_nextDeployNotQueuedBehindHungTask() throws Exception {
+        IInfobaseSynchronizationManager sync = mock(IInfobaseSynchronizationManager.class);
+        IProject project = mock(IProject.class);
+        InfobaseReference ref = mock(InfobaseReference.class);
+        when(sync.isConnected(project, ref)).thenReturn(true);
+
+        AtomicInteger calls = new AtomicInteger();
+        doAnswer(inv -> {
+                if (calls.getAndIncrement() == 0) {
+                    // Имитируем EDT-операцию, игнорирующую отмену/interrupt: поток занят ~5с.
+                    long end = System.nanoTime() + 5_000_000_000L;
+                    while (System.nanoTime() < end) {
+                        try {
+                            Thread.sleep(50);
+                        } catch (InterruptedException ie) {
+                            // намеренно глотаем — эмулируем неотменяемую операцию
+                        }
+                    }
+                    Thread.interrupted();   // снимаем флаг, чтобы не мешал
+                }
+                return Status.OK_STATUS;
+            }).when(sync).updateInfobase(
+                eq(project), eq(ref), any(IInfobaseUpdateCallback.class), eq(false), any(IProgressMonitor.class));
+
+        deployer = new InfobaseDeployer(sync);
+        try {
+            deployer.deployWithTimeout(project, ref, false, 1);
+            fail("expected ToolException (timeout)");
+        } catch (ToolException e) {
+            assertTrue(e.getMessage().contains("timeout"));
+        }
+
+        long t0 = System.currentTimeMillis();
+        InfobaseDeployer.DeployResult res = deployer.deployWithTimeout(project, ref, false, 30);
+        long elapsed = System.currentTimeMillis() - t0;
+
+        assertTrue(res.ok());
+        assertTrue("второй deploy не должен ждать зависшую задачу, ждал " + elapsed + " ms",
+            elapsed < 2000);
     }
 
     @Test

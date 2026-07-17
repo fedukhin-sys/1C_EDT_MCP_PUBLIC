@@ -16,6 +16,6 @@
             description="Read full text of a BSL module"/>
       <tool class="ru.fedukhin.edt.mcp.tools.bsl.di.ToolsBslExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.bsl.WriteModuleTool"
             name="write_module"
-            description="Write BSL module content (optionally validated by Xtext before write)"/>
+            description="Write BSL module content. validate=true (default) runs a structural balance check only (Процедура/КонецПроцедуры, Функция/КонецФункции, no nested methods) — NOT a syntax check: broken expressions pass. For real validation run check_list_markers / check_run on the project."/>
    </extension>
 </plugin>

@@ -45,7 +45,20 @@ public class MdoFileEditor {
     public record TsAttributeSpec(String tsName, String name, String type) { }
 
     /** Spec для добавления root-level &lt;attributes&gt; в parent .mdo (Catalog/Document/etc). */
-    public record MdAttributeSpec(String name, String type) { }
+    /**
+     * @param types один или несколько type-выражений; несколько — составной тип
+     */
+    public record MdAttributeSpec(String name, List<String> types) {
+        /** Реквизит одного типа. */
+        public MdAttributeSpec(String name, String type) {
+            this(name, List.of(type));
+        }
+
+        /** Первый тип — для совместимости со старыми вызовами/тестами. */
+        public String type() {
+            return types.get(0);
+        }
+    }
 
     /**
      * Spec для добавления Attribute/Dimension/Resource в Register .mdo
@@ -183,7 +196,9 @@ public class MdoFileEditor {
 
         Element attr = doc.createElement("attributes");
         attr.setAttribute("uuid", UUID.randomUUID().toString());
-        attr.appendChild(buildType(doc, spec.type));
+        // buildMultiType, а не buildType: раньше брался только первый тип, и составной тип
+        // реквизита молча превращался в одиночный — при том, что для регистров он писался честно.
+        attr.appendChild(buildMultiType(doc, spec.types));
         appendText(doc, attr, "name", spec.name);
 
         // Anchor: insert before tabularSections/forms/commands/commandInterface/extInfo
@@ -721,6 +736,119 @@ public class MdoFileEditor {
         if ("InformationRegister".equals(kind) || "AccumulationRegister".equals(kind)) {
             readAttrTag(root, "dimensions", "Dimension", out);
             readAttrTag(root, "resources",  "Resource",  out);
+        }
+        return out;
+    }
+
+    /**
+     * Читает значения перечисления прямо из {@code .mdo} на диске.
+     *
+     * @return {@code [{name, synonym, comment}]}; пустой список, если значений нет
+     */
+    public List<Map<String, Object>> readEnumValues(IFile mdoFile) throws ToolException {
+        Document doc = load(mdoFile);
+        Element root = doc.getDocumentElement();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        NodeList kids = root.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node k = kids.item(i);
+            if (k.getNodeType() != Node.ELEMENT_NODE || !"enumValues".equals(k.getNodeName())) {
+                continue;
+            }
+            Element v = (Element) k;
+            Map<String, Object> value = new java.util.LinkedHashMap<>();
+            String name = childText(v, "name");
+            value.put("name", name != null ? name : "");
+            value.put("synonym", synonymRu(v));
+            String comment = childText(v, "comment");
+            value.put("comment", comment != null ? comment : "");
+            out.add(value);
+        }
+        return out;
+    }
+
+    /**
+     * Добавляет значение в перечисление.
+     *
+     * <p>DOM-маршрутом — как {@code add_attribute} после v1.10.2: BM-route на .mdo даёт гонки
+     * сериализации. Порядок и состав тегов — как в типовых конфигурациях:
+     * {@code <enumValues uuid><name/>[<synonym/>][<comment/>]</enumValues>}.
+     *
+     * @param synonym ru-синоним (null/пусто — {@code <synonym>} не пишется)
+     * @param comment комментарий (null/пусто — {@code <comment>} не пишется)
+     * @throws ToolException если значение с таким именем уже есть
+     */
+    public void addEnumValue(IFile mdoFile, String valueName, String synonym, String comment)
+            throws ToolException {
+        if (valueName == null || valueName.isEmpty()) {
+            throw new ToolException("enum value name required");
+        }
+        Document doc = load(mdoFile);
+        Element root = doc.getDocumentElement();
+
+        NodeList existing = root.getChildNodes();
+        for (int i = 0; i < existing.getLength(); i++) {
+            Node k = existing.item(i);
+            if (k.getNodeType() != Node.ELEMENT_NODE || !"enumValues".equals(k.getNodeName())) {
+                continue;
+            }
+            if (valueName.equals(childText((Element) k, "name"))) {
+                throw new ToolException("enum value '" + valueName + "' already exists in "
+                    + mdoFile.getName());
+            }
+        }
+
+        Element value = doc.createElement("enumValues");
+        value.setAttribute("uuid", UUID.randomUUID().toString());
+        appendText(doc, value, "name", valueName);
+        if (synonym != null && !synonym.isEmpty()) {
+            Element syn = doc.createElement("synonym");
+            appendText(doc, syn, "key", "ru");
+            appendText(doc, syn, "value", synonym);
+            value.appendChild(syn);
+        }
+        if (comment != null && !comment.isEmpty()) {
+            appendText(doc, value, "comment", comment);
+        }
+
+        Node anchor = firstChildByName(root, "forms");
+        if (anchor == null) anchor = firstChildByName(root, "commands");
+        if (anchor == null) anchor = firstChildByName(root, "commandInterface");
+        if (anchor == null) anchor = firstChildByName(root, "extInfo");
+        if (anchor != null) root.insertBefore(value, anchor);
+        else                root.appendChild(value);
+
+        save(mdoFile, doc);
+    }
+
+    /**
+     * Читает табличные части и их колонки прямо из {@code .mdo} на диске — тем же disk-route,
+     * что и {@link #readAttributes} (BM-модель отстаёт от файла на последнюю DOM-мутацию).
+     *
+     * <p>Колонки ТЧ лежат inline внутри {@code <tabularSections>} — ровно так их пишет
+     * {@link #addTabularSectionAttribute}.
+     *
+     * @return {@code [{name, synonym, attributes: [...]}]}; пустой список, если ТЧ нет
+     */
+    public List<Map<String, Object>> readTabularSections(IFile mdoFile) throws ToolException {
+        Document doc = load(mdoFile);
+        Element root = doc.getDocumentElement();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        NodeList kids = root.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node k = kids.item(i);
+            if (k.getNodeType() != Node.ELEMENT_NODE || !"tabularSections".equals(k.getNodeName())) {
+                continue;
+            }
+            Element ts = (Element) k;
+            Map<String, Object> section = new java.util.LinkedHashMap<>();
+            String name = childText(ts, "name");
+            section.put("name", name != null ? name : "");
+            section.put("synonym", synonymRu(ts));
+            List<Map<String, Object>> columns = new java.util.ArrayList<>();
+            readAttrTag(ts, "attributes", "Attribute", columns);
+            section.put("attributes", columns);
+            out.add(section);
         }
         return out;
     }

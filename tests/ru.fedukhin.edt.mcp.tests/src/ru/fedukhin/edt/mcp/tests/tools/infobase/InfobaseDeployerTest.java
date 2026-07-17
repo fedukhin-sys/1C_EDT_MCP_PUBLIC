@@ -6,6 +6,7 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseSynchronizationManager;
 import com._1c.g5.v8.dt.platform.services.core.infobases.sync.IInfobaseUpdateCallback;
+import com._1c.g5.v8.dt.platform.services.core.infobases.sync.InfobaseSynchronizationException;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -66,6 +68,73 @@ public class InfobaseDeployerTest {
         assertTrue(result.ok());
         verify(sync).connectInfobase(eq(project), eq(ref), any(IProgressMonitor.class));
         verify(sync).updateInfobase(eq(project), eq(ref), any(IInfobaseUpdateCallback.class), eq(true), any(IProgressMonitor.class));
+    }
+
+    /**
+     * На EDT ≤2025.1 (dt.platform.services.core 18/19) метода {@code isConnected} в интерфейсе нет
+     * вовсе — прямой вызов давал NoSuchMethodError ещё до updateInfobase, то есть deploy_project
+     * не работал на всей ветке 2023.x. Отсутствие метода в юнит-тесте не сымитировать (компилируемся
+     * против core 23), поэтому проверяется сама ветка фолбэка: узнать состояние нечем.
+     */
+    @Test
+    public void deploy_oldEdtWithoutIsConnected_connectsBlindlyAndUpdates() throws Exception {
+        IInfobaseSynchronizationManager sync = mock(IInfobaseSynchronizationManager.class);
+        IProject project = mock(IProject.class);
+        InfobaseReference ref = mock(InfobaseReference.class);
+        doReturn(Status.OK_STATUS).when(sync).updateInfobase(
+            eq(project), eq(ref), any(IInfobaseUpdateCallback.class), eq(false), any(IProgressMonitor.class));
+
+        InfobaseDeployer d = new InfobaseDeployer(sync) {
+            @Override protected Boolean invokeIsConnected(IProject p, InfobaseReference r) {
+                return null; // старый EDT: метода нет
+            }
+        };
+        InfobaseDeployer.DeployResult result = d.deploy(project, ref, false, new NullProgressMonitor());
+
+        assertTrue(result.ok());
+        verify(sync).connectInfobase(eq(project), eq(ref), any(IProgressMonitor.class));
+    }
+
+    /** На старом EDT «уже подключена» прилетает исключением — деплой обязан продолжиться. */
+    @Test
+    public void deploy_oldEdtAlreadyConnected_ignoresConnectFailureAndUpdates() throws Exception {
+        IInfobaseSynchronizationManager sync = mock(IInfobaseSynchronizationManager.class);
+        IProject project = mock(IProject.class);
+        InfobaseReference ref = mock(InfobaseReference.class);
+        doThrow(new InfobaseSynchronizationException(Status.error("уже подключена")))
+            .when(sync).connectInfobase(eq(project), eq(ref), any(IProgressMonitor.class));
+        doReturn(Status.OK_STATUS).when(sync).updateInfobase(
+            eq(project), eq(ref), any(IInfobaseUpdateCallback.class), eq(false), any(IProgressMonitor.class));
+
+        InfobaseDeployer d = new InfobaseDeployer(sync) {
+            @Override protected Boolean invokeIsConnected(IProject p, InfobaseReference r) {
+                return null;
+            }
+        };
+        InfobaseDeployer.DeployResult result = d.deploy(project, ref, false, new NullProgressMonitor());
+
+        assertTrue("на старом EDT отказ connectInfobase не должен валить деплой", result.ok());
+        verify(sync).updateInfobase(eq(project), eq(ref), any(IInfobaseUpdateCallback.class),
+            eq(false), any(IProgressMonitor.class));
+    }
+
+    /** На новом EDT состояние известно — настоящий отказ подключения обязан подниматься. */
+    @Test
+    public void deploy_newEdtConnectFails_throws() throws Exception {
+        IInfobaseSynchronizationManager sync = mock(IInfobaseSynchronizationManager.class);
+        IProject project = mock(IProject.class);
+        InfobaseReference ref = mock(InfobaseReference.class);
+        when(sync.isConnected(project, ref)).thenReturn(false);
+        doThrow(new InfobaseSynchronizationException(Status.error("нет доступа")))
+            .when(sync).connectInfobase(eq(project), eq(ref), any(IProgressMonitor.class));
+
+        InfobaseDeployer d = new InfobaseDeployer(sync);
+        try {
+            d.deploy(project, ref, false, new NullProgressMonitor());
+            fail("настоящий отказ подключения обязан подниматься");
+        } catch (ToolException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("нет доступа"));
+        }
     }
 
     @Test

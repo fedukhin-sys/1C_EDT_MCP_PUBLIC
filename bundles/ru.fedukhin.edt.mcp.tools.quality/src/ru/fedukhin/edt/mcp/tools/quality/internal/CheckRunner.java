@@ -44,6 +44,9 @@ public class CheckRunner {
      * @param project     IProject to validate (required)
      * @param scopeObjects collection of scope objects (Long/String/URI per Spike 3); pass
      *                    null/empty list for "whole project"
+     * @param path        project-relative путь того же scope'а (или {@code null} для проекта
+     *                    целиком) — им фильтруются вычитываемые маркеры: без этого клиент,
+     *                    попросивший проверить один файл, получал маркеры всей конфигурации
      * @param checkIds    set of full CheckUid strings (or empty for "all enabled checks")
      * @param waitSeconds maximum wait for completion (clamped externally to [1, 600])
      * @param clearFirst  if true and checkIds is non-empty, runs {@link ICheckScheduler#scheduleClearance}
@@ -51,6 +54,7 @@ public class CheckRunner {
      */
     public CheckRunResult run(IProject project,
                               List<Object> scopeObjects,
+                              String path,
                               Set<String> checkIds,
                               int waitSeconds,
                               boolean clearFirst) {
@@ -71,7 +75,7 @@ public class CheckRunner {
             completed = false;
         }
 
-        List<CheckMarker> markers = markerReader.read(project, null, null,
+        List<CheckMarker> markers = markerReader.read(project, path, null,
                 ids.isEmpty() ? null : ids, null);
 
         return new CheckRunResult(completed, waitSeconds, markers,

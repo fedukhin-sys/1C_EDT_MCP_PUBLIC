@@ -26,7 +26,10 @@ import ru.fedukhin.edt.mcp.tools.md.internal.TypeStringFormatter;
 /**
  * {@code get_md_object} — возвращает детали одного MdObject по FQN.
  *
- * <p>Результат: {@code { kind, name, fqn, synonym, comment, properties, attributes[] }}.
+ * <p>Результат: {@code { kind, name, fqn, synonym, comment, properties, attributes[],
+ * tabularSections[], values[] }}, где {@code tabularSections = [{ name, synonym, attributes[] }]},
+ * {@code values = [{ name, synonym, comment }]} (непусто только у Enum). Колонки табличных частей
+ * в плоский {@code attributes} не подмешиваются.
  */
 public final class GetMdObjectTool implements IMcpTool {
 
@@ -63,7 +66,10 @@ public final class GetMdObjectTool implements IMcpTool {
     }
 
     @Override public String name()        { return "get_md_object"; }
-    @Override public String description() { return "Get details of a single MdObject by FQN"; }
+    @Override public String description() {
+        return "Get details of a single MdObject by FQN, including its tabularSections with their "
+             + "columns and — for an Enum — its values";
+    }
 
     @Override
     public Map<String, Object> inputSchema() {
@@ -113,6 +119,9 @@ public final class GetMdObjectTool implements IMcpTool {
                     String comment = extractComment(obj);
                     Map<String, Object> properties = extractProperties(obj, kind);
                     List<Map<String, Object>> attributes = AttributeReader.readAll(obj, kind, formatter);
+                    List<Map<String, Object>> tabularSections =
+                        AttributeReader.readTabularSections(obj, formatter);
+                    List<Map<String, Object>> values = AttributeReader.readEnumValues(obj);
 
                     Map<String, Object> r = new LinkedHashMap<>();
                     r.put("kind",       kind);
@@ -122,6 +131,8 @@ public final class GetMdObjectTool implements IMcpTool {
                     r.put("comment",    comment);
                     r.put("properties", properties);
                     r.put("attributes", attributes);
+                    r.put("tabularSections", tabularSections);
+                    r.put("values", values);
                     result[0] = r;
                 } catch (ToolException te) {
                     err[0] = te;
@@ -130,6 +141,12 @@ public final class GetMdObjectTool implements IMcpTool {
             });
 
         if (err[0] instanceof ToolException te) throw te;
+        if (result[0] == null) {
+            // BM-задача не отработала (движок не выполнил read-only task) и исключения не
+            // оставила. Молча вернуть null — отдать клиенту пустой ответ без объяснения.
+            throw new ToolException("failed to read md object '" + fqn + "' in project '"
+                + projectName + "': BM read task produced no result");
+        }
         return result[0];
     }
 

@@ -52,27 +52,47 @@ public final class LgpParser {
         this.refs = refs;
     }
 
-    /** Streams all events from {@code lgp}. Returns total records parsed (incl. skipped). */
-    public long stream(Path lgp, Predicate<EventRecord> filter, Sink sink) throws IOException {
+    /**
+     * Итог разбора партиции.
+     *
+     * @param total   сколько записей разобрано (включая отфильтрованные)
+     * @param partial чтение остановилось на рваной записи — для активной партиции это штатно
+     */
+    public record StreamOutcome(long total, boolean partial) { }
+
+    /** Streams all events from {@code lgp}. */
+    public StreamOutcome stream(Path lgp, Predicate<EventRecord> filter, Sink sink) throws IOException {
         try (InputStream in = Files.newInputStream(lgp, StandardOpenOption.READ);
              BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8), 64 * 1024)) {
             return stream(br, filter, sink);
         }
     }
 
-    public long stream(BufferedReader br, Predicate<EventRecord> filter, Sink sink) throws IOException {
+    public StreamOutcome stream(BufferedReader br, Predicate<EventRecord> filter, Sink sink)
+            throws IOException {
         skipHeader(br);
         LgTokenizer tk = new LgTokenizer(br);
         long total = 0;
-        LgToken rec;
-        while ((rec = tk.nextRecord()) != null) {
+        while (true) {
+            LgToken rec;
+            try {
+                rec = tk.nextRecord();
+            } catch (IOException e) {
+                // Активную партицию кластер дописывает прямо во время чтения, поэтому её хвост
+                // штатно обрывается посреди записи. Всё, что прочитано до обрыва, — валидно;
+                // ронять из-за этого весь запрос нельзя. Но если не прочитано ничего, то это не
+                // дописываемый хвост, а битый файл — о таком надо сообщать.
+                if (total == 0) throw e;
+                return new StreamOutcome(total, true);
+            }
+            if (rec == null) break;
             total++;
             EventRecord ev = decode(rec);
             if (ev == null) continue;
             if (filter != null && !filter.test(ev)) continue;
             if (!sink.accept(ev)) break;
         }
-        return total;
+        return new StreamOutcome(total, false);
     }
 
     private void skipHeader(BufferedReader br) throws IOException {

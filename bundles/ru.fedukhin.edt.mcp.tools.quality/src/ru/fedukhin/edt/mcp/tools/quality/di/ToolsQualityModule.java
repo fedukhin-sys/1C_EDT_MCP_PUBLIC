@@ -1,6 +1,7 @@
 package ru.fedukhin.edt.mcp.tools.quality.di;
 
 import com._1c.g5.v8.dt.core.platform.IDerivedDataManagerProvider;
+import com._1c.g5.v8.dt.core.platform.IResourceLookup;
 import com._1c.g5.v8.dt.validation.marker.v2.IMarkerManagerV2;
 import com._1c.g5.wiring.AbstractServiceAwareModule;
 import com.e1c.g5.v8.dt.check.ICheckScheduler;
@@ -29,6 +30,9 @@ public class ToolsQualityModule extends AbstractServiceAwareModule {
         bind(ICheckScheduler.class).toService();
         bind(IMarkerManagerV2.class).toService();
         bind(IDerivedDataManagerProvider.class).toService();
+        // Нужен MarkerReader'у: EDT-маркер привязан к объекту модели, а не к ресурсу, —
+        // реальный путь файла достаётся только через резолв EObject → IFile.
+        bind(IResourceLookup.class).toService();
 
         bind(CheckCatalog.class).in(Singleton.class);
 

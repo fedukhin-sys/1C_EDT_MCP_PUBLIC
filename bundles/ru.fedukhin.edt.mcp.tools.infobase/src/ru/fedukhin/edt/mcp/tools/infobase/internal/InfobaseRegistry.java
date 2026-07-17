@@ -89,14 +89,36 @@ public class InfobaseRegistry {
         if (deleteFiles && ref.getConnectionString() instanceof FileConnectionString fcs) {
             Path dir = Path.of(fcs.getFile());
             if (Files.exists(dir)) {
-                try (Stream<Path> walk = Files.walk(dir)) {
-                    walk.sorted(Comparator.reverseOrder())
-                        .map(Path::toFile)
-                        .forEach(java.io.File::delete);
-                } catch (IOException e) {
-                    throw new ToolException("failed to delete files: " + e.getMessage(), e);
-                }
+                deleteRecursively(dir);
             }
+        }
+    }
+
+    /**
+     * Удаляет каталог ИБ и сообщает о том, что удалить не удалось.
+     *
+     * <p>Раньше здесь стоял {@code forEach(File::delete)}, а он возвращает {@code false} вместо
+     * исключения: при занятом файле ИБ (открыт клиент 1С, работает отладчик) каталог оставался
+     * на диске, а инструмент рапортовал успех. Обходим дерево «снизу вверх», ошибки копим и
+     * поднимаем одним {@link ToolException} — так видно все остатки, а не только первый.
+     */
+    private static void deleteRecursively(Path dir) throws ToolException {
+        List<String> failed = new ArrayList<>();
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException | RuntimeException e) {
+                    failed.add(p.toString());
+                }
+            });
+        } catch (IOException e) {
+            throw new ToolException("failed to delete files: " + e.getMessage(), e);
+        }
+        if (!failed.isEmpty()) {
+            throw new ToolException("failed to delete " + failed.size() + " file(s) under '"
+                + dir + "' (infobase files may still be in use by a running 1С client): "
+                + String.join(", ", failed));
         }
     }
 }

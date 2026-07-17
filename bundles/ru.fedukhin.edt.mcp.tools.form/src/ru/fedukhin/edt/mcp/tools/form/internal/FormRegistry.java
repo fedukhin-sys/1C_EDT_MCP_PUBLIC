@@ -8,9 +8,17 @@ import java.util.Map;
 /**
  * Карта parent-kind → accessor name на ParentMdObject для коллекции форм.
  *
- * Spike §9.4 amendment: все 6 форм-поддерживающих kinds имеют `getForms()`.
- * Конфигурация-level common forms — отдельный случай, обрабатывается в ListFormsTool
- * через `getCommonForms()` напрямую.
+ * <p>У всех kind'ов с формами accessor один и тот же — {@code getForms()}; карта нужна ради
+ * ответа на вопрос «а бывают ли у этого kind'а формы вообще».
+ *
+ * <p>Раньше список был обрезан до 6 kind'ов, из-за чего {@code list_forms} без parentFqn не
+ * показывал формы бизнес-процессов, задач, планов счетов/видов расчёта/характеристик, планов
+ * обмена, перечислений и журналов документов, а с parentFqn отбивал их как «не поддерживает
+ * формы». Имя контейнера в Configuration берётся из
+ * {@code MdObjectRegistry.containerFeatureName()} — второй карты заводить не нужно.
+ *
+ * <p>Конфигурация-level common forms — отдельный случай, обрабатывается в ListFormsTool
+ * через {@code getCommonForms()} напрямую.
  */
 public final class FormRegistry {
 
@@ -18,12 +26,13 @@ public final class FormRegistry {
 
     public FormRegistry() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("Catalog",              "getForms");
-        m.put("Document",             "getForms");
-        m.put("InformationRegister",  "getForms");
-        m.put("AccumulationRegister", "getForms");
-        m.put("DataProcessor",        "getForms");
-        m.put("Report",               "getForms");
+        for (String kind : new String[]{
+                "Catalog", "Document", "InformationRegister", "AccumulationRegister",
+                "DataProcessor", "Report", "BusinessProcess", "Task",
+                "ChartOfAccounts", "ChartOfCalculationTypes", "ChartOfCharacteristicTypes",
+                "ExchangePlan", "Enum", "DocumentJournal"}) {
+            m.put(kind, "getForms");
+        }
         this.accessorByKind = Collections.unmodifiableMap(m);
     }
 

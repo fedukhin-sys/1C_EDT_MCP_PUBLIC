@@ -80,6 +80,83 @@ public class AddTestMethodToolTest {
         assertEquals("Тест_МойТест", result.get("fqn"));
     }
 
+    // Модуль-«тестовый» без процедуры ИсполняемыеСценарии: метод дописать можно,
+    // но зарегистрировать его негде — xUnitFor1C такой тест не увидит.
+    private static final String RU_MODULE_NO_SCENARIOS = ""
+        + "#Область ПрограммныйИнтерфейс\r\n\r\n"
+        + "Процедура Тест_Существующий() Экспорт\r\n"
+        + "КонецПроцедуры\r\n\r\n"
+        + "#КонецОбласти\r\n";
+
+    @Test
+    public void moduleWithoutExecutableScenarios_reportsRegisteredFalseWithWarning() throws Exception {
+        // Без ИсполняемыеСценарии строка ЮнитТесты.ДобавитьТест(...) не вставляется —
+        // метод есть в модуле, но раннер его никогда не запустит. Рапортовать
+        // registered:true в этом случае = врать клиенту.
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        makeProject(root, "КаталогТесты", RU_MODULE_NO_SCENARIOS);
+
+        AddTestMethodTool tool = new AddTestMethodTool(
+                () -> root, new TestModuleHeuristic(), new BslTestMethodAppender());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) tool.call(Map.of(
+                "project", "Demo",
+                "moduleFqn", "CommonModule.КаталогТесты",
+                "methodName", "НовыйТест"));
+
+        assertEquals(false, result.get("registered"));
+        assertEquals(false, result.get("alreadyExisted"));
+        assertNotNull("должно быть предупреждение о пропущенной регистрации",
+                result.get("warning"));
+    }
+
+    @Test
+    public void existingMethodWithoutRegistration_reportsRegisteredFalse() throws Exception {
+        // Идемпотентный повтор по модулю, где метод есть, а регистрации нет:
+        // alreadyExisted=true не должен маскировать отсутствие регистрации.
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        makeProject(root, "КаталогТесты", RU_MODULE_NO_SCENARIOS);
+
+        AddTestMethodTool tool = new AddTestMethodTool(
+                () -> root, new TestModuleHeuristic(), new BslTestMethodAppender());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) tool.call(Map.of(
+                "project", "Demo",
+                "moduleFqn", "CommonModule.КаталогТесты",
+                "methodName", "Существующий"));
+
+        assertEquals(true, result.get("alreadyExisted"));
+        assertEquals(false, result.get("registered"));
+    }
+
+    @Test
+    public void existingMethodWithRegistration_reportsRegisteredTrue() throws Exception {
+        String registered = ""
+            + "#Область ПрограммныйИнтерфейс\r\n\r\n"
+            + "Процедура ИсполняемыеСценарии(ЮнитТесты) Экспорт\r\n"
+            + "\tЮнитТесты.ДобавитьТест(\"Тест_МойТест\");\r\n"
+            + "КонецПроцедуры\r\n\r\n"
+            + "Процедура Тест_МойТест() Экспорт\r\n"
+            + "КонецПроцедуры\r\n";
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        makeProject(root, "КаталогТесты", registered);
+
+        AddTestMethodTool tool = new AddTestMethodTool(
+                () -> root, new TestModuleHeuristic(), new BslTestMethodAppender());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) tool.call(Map.of(
+                "project", "Demo",
+                "moduleFqn", "CommonModule.КаталогТесты",
+                "methodName", "МойТест"));
+
+        assertEquals(true, result.get("alreadyExisted"));
+        assertEquals(true, result.get("registered"));
+        assertNull(result.get("warning"));
+    }
+
     // Test 3: body parameter embedded in method — verify result is not alreadyExisted
     @Test
     public void bodyParam_embeddedInMethod() throws Exception {

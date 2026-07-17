@@ -2,7 +2,10 @@ package ru.fedukhin.edt.mcp.tests.tools.client;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -14,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.client.RunClientTool;
@@ -100,6 +104,61 @@ public class RunClientToolTest {
         Map<String, Object> out = (Map<String, Object>) new RunClientTool(lookup, launcher, registry).call(args);
 
         assertEquals("thick", out.get("clientType"));
+    }
+
+    /**
+     * 1cv8 при ошибке (нет прав, битая ИБ, отказ аутентификации) тихо умирает с exit=1
+     * и без stderr — без probe'а инструмент рапортовал бы success на мёртвом процессе.
+     */
+    @Test
+    public void call_processDiedImmediately_reportsAliveFalseAndExitCode() throws Exception {
+        InfobaseReference ref = mock(InfobaseReference.class);
+        when(ref.getName()).thenReturn("Demo");
+        InfobaseLookup lookup = mock(InfobaseLookup.class);
+        when(lookup.findByName("Demo")).thenReturn(Optional.of(ref));
+
+        Process p = mock(Process.class);
+        when(p.pid()).thenReturn(42L);
+        when(p.waitFor(anyLong(), any(TimeUnit.class))).thenReturn(true);   // успел завершиться
+        when(p.exitValue()).thenReturn(1);
+        when(p.isAlive()).thenReturn(false);
+        ClientLauncher launcher = mock(ClientLauncher.class);
+        when(launcher.launch(eq(ref), eq("thin"), eq(null), eq(null))).thenReturn(p);
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("infobase", "Demo");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = (Map<String, Object>) new RunClientTool(
+            lookup, launcher, new ClientProcessRegistry()).call(args);
+
+        assertEquals(Boolean.FALSE, out.get("alive"));
+        assertEquals(1, ((Number) out.get("exitCode")).intValue());
+        assertNotNull("мёртвый клиент должен сопровождаться warning", out.get("warning"));
+    }
+
+    @Test
+    public void call_processStillAlive_reportsAliveTrueWithoutExitCode() throws Exception {
+        InfobaseReference ref = mock(InfobaseReference.class);
+        when(ref.getName()).thenReturn("Demo");
+        InfobaseLookup lookup = mock(InfobaseLookup.class);
+        when(lookup.findByName("Demo")).thenReturn(Optional.of(ref));
+
+        Process p = mock(Process.class);
+        when(p.pid()).thenReturn(7L);
+        when(p.waitFor(anyLong(), any(TimeUnit.class))).thenReturn(false);  // всё ещё работает
+        when(p.isAlive()).thenReturn(true);
+        ClientLauncher launcher = mock(ClientLauncher.class);
+        when(launcher.launch(eq(ref), eq("thin"), eq(null), eq(null))).thenReturn(p);
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("infobase", "Demo");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = (Map<String, Object>) new RunClientTool(
+            lookup, launcher, new ClientProcessRegistry()).call(args);
+
+        assertEquals(Boolean.TRUE, out.get("alive"));
+        assertNull("живой клиент не имеет exitCode", out.get("exitCode"));
+        assertNull("живой клиент не требует warning", out.get("warning"));
     }
 
     @Test

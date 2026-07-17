@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import javax.xml.parsers.DocumentBuilder;
@@ -38,6 +39,7 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 
 /**
  * {@code borrow_form} — заимствование (sub-borrow) Form'ы из base parent
@@ -60,20 +62,14 @@ public final class BorrowFormTool implements IMcpTool {
 
     private static final String XSI_NS = "http://www.w3.org/2001/XMLSchema-instance";
 
-    /** kind → folder name in src/ */
-    private static final Map<String, String> KIND_FOLDER = Map.ofEntries(
-            Map.entry("Catalog",                    "Catalogs"),
-            Map.entry("Document",                   "Documents"),
-            Map.entry("DataProcessor",              "DataProcessors"),
-            Map.entry("Report",                     "Reports"),
-            Map.entry("InformationRegister",        "InformationRegisters"),
-            Map.entry("AccumulationRegister",       "AccumulationRegisters"),
-            Map.entry("BusinessProcess",            "BusinessProcesses"),
-            Map.entry("Task",                       "Tasks"),
-            Map.entry("ChartOfAccounts",            "ChartsOfAccounts"),
-            Map.entry("ChartOfCalculationTypes",    "ChartsOfCalculationTypes"),
-            Map.entry("ChartOfCharacteristicTypes", "ChartsOfCharacteristicTypes")
-    );
+    /**
+     * Kind'ы, у объектов которых бывают собственные формы. Имя папки — из
+     * {@link MdObjectRegistry#folderName}; здесь только состав.
+     */
+    private static final Set<String> KINDS_WITH_FORMS = Set.of(
+            "Catalog", "Document", "DataProcessor", "Report",
+            "InformationRegister", "AccumulationRegister", "BusinessProcess", "Task",
+            "ChartOfAccounts", "ChartOfCalculationTypes", "ChartOfCharacteristicTypes");
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final IV8ProjectManager        projectManager;
@@ -125,10 +121,10 @@ public final class BorrowFormTool implements IMcpTool {
         }
         String kind = parentFqn.substring(0, dot);
         String parentName = parentFqn.substring(dot + 1);
-        String folder = KIND_FOLDER.get(kind);
+        String folder = KINDS_WITH_FORMS.contains(kind) ? MdObjectRegistry.folderName(kind) : null;
         if (folder == null) {
             throw new ToolException("kind '" + kind + "' does not support forms; supported: "
-                    + KIND_FOLDER.keySet());
+                    + KINDS_WITH_FORMS);
         }
 
         IProject extIProject = rootSupplier.get().getProject(projectName);

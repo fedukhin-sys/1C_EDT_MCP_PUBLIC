@@ -23,6 +23,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectBorrower;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 
 /**
  * {@code borrow_form_pictures} — Stage 10: auto-discovery + borrow всех
@@ -186,23 +187,13 @@ public final class BorrowFormPicturesTool implements IMcpTool {
                 + formFqn);
     }
 
+    /** Папка kind'а в {@code src/} — из единого реестра, а не из локальной копии карты. */
     private static String pluralForKind(String kind) throws ToolException {
-        return switch (kind) {
-            case "Catalog"                    -> "Catalogs";
-            case "Document"                   -> "Documents";
-            case "DataProcessor"              -> "DataProcessors";
-            case "Report"                     -> "Reports";
-            case "InformationRegister"        -> "InformationRegisters";
-            case "AccumulationRegister"       -> "AccumulationRegisters";
-            case "BusinessProcess"            -> "BusinessProcesses";
-            case "Task"                       -> "Tasks";
-            case "ChartOfAccounts"            -> "ChartsOfAccounts";
-            case "ChartOfCalculationTypes"    -> "ChartsOfCalculationTypes";
-            case "ChartOfCharacteristicTypes" -> "ChartsOfCharacteristicTypes";
-            case "ExchangePlan"               -> "ExchangePlans";
-            case "Enum"                       -> "Enums";
-            default -> throw new ToolException("unknown kind '" + kind + "' for Form parent");
-        };
+        String folder = MdObjectRegistry.folderName(kind);
+        if (folder == null) {
+            throw new ToolException("unknown kind '" + kind + "' for Form parent");
+        }
+        return folder;
     }
 
     /** Public API for unit-tests: scan a Form.form input stream and collect unique picture names. */

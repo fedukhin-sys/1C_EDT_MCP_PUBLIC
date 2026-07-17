@@ -27,11 +27,28 @@ public final class ContentPatterns {
     // паспортом, и с ИНН — паспорт шёл в цикле первым и маскировал бы его
     // неверной меткой, оставляя ветку ИНН(10) мёртвым кодом.
     private static final Pattern PASSPORT = Pattern.compile("\\b\\d{4}\\s\\d{6}\\b|\\b\\d{2}\\s\\d{2}\\s\\d{6}\\b");
+    // Банковский счёт (р/с, к/с) — ровно 20 цифр, с разделителями или без.
+    // CLAUDE.md заявлял охват «БИК/р/с», а паттернов на них не было вовсе.
+    private static final Pattern ACCOUNT = Pattern.compile(
+        "\\b\\d{20}\\b|\\b\\d{5}[\\s\\-]\\d{3}[\\s\\-]\\d[\\s\\-]\\d{4}[\\s\\-]\\d{7}\\b");
+    // Карта: 16 цифр подряд либо группами по 4.
+    private static final Pattern CARD = Pattern.compile(
+        "\\b\\d{16}\\b|\\b\\d{4}[\\s\\-]\\d{4}[\\s\\-]\\d{4}[\\s\\-]\\d{4}\\b");
+    // СНИЛС без разделителей — 11 цифр. Идёт ПОСЛЕ телефона: 8XXXXXXXXXX это тоже 11 цифр,
+    // и телефон должен получить свою метку первым.
+    private static final Pattern SNILS_PLAIN = Pattern.compile("\\b\\d{11}\\b");
+    // БИК — 9 цифр, российские начинаются на 04 или 05. Сужено до этих префиксов:
+    // «любое 9-значное число» давало бы слишком много ложных срабатываний.
+    private static final Pattern BIK = Pattern.compile("\\b0[45]\\d{7}\\b");
 
+    // Порядок важен: более специфичные и более длинные — раньше, иначе короткий
+    // паттерн заберёт часть длинного номера и повесит неверную метку.
     private static final Pattern[][] LABELLED = {
-        {EMAIL},  {SNILS}, {PHONE}, {PASSPORT}, {OGRN}, {INN}
+        {EMAIL}, {SNILS}, {PHONE}, {PASSPORT}, {ACCOUNT}, {CARD}, {OGRN}, {SNILS_PLAIN}, {INN}, {BIK}
     };
-    private static final String[] LABELS = {"email", "снилс", "телефон", "паспорт", "огрн", "инн"};
+    private static final String[] LABELS = {
+        "email", "снилс", "телефон", "паспорт", "счёт", "карта", "огрн", "снилс", "инн", "бик"
+    };
 
     private ContentPatterns() {}
 

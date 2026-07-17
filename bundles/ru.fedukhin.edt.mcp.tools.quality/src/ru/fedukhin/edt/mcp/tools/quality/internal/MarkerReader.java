@@ -1,5 +1,6 @@
 package ru.fedukhin.edt.mcp.tools.quality.internal;
 
+import com._1c.g5.v8.dt.core.platform.IResourceLookup;
 import com._1c.g5.v8.dt.validation.marker.IExtraInfoMap;
 import com._1c.g5.v8.dt.validation.marker.Marker;
 import com._1c.g5.v8.dt.validation.marker.MarkerFilter;
@@ -7,7 +8,9 @@ import com._1c.g5.v8.dt.validation.marker.StandardExtraInfo;
 import com._1c.g5.v8.dt.validation.marker.v2.IMarkerManagerV2;
 import com._1c.g5.v8.dt.validation.marker.v2.IMarkerReader;
 import jakarta.inject.Inject;
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.runtime.IPath;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,21 +39,24 @@ public class MarkerReader {
 
     private final IMarkerManagerV2 markerManager;
     private final CheckCatalog     catalog;
+    private final IResourceLookup  resourceLookup;
 
     @Inject
-    public MarkerReader(IMarkerManagerV2 markerManager, CheckCatalog catalog) {
-        this.markerManager = markerManager;
-        this.catalog       = catalog;
+    public MarkerReader(IMarkerManagerV2 markerManager, CheckCatalog catalog,
+                        IResourceLookup resourceLookup) {
+        this.markerManager   = markerManager;
+        this.catalog         = catalog;
+        this.resourceLookup  = resourceLookup;
     }
 
     /**
-     * Читает маркеры для {@code project}, опционально фильтруя их по серьёзности,
-     * множеству {@code checkIds} (полная форма {@code CheckUid}) и метке источника.
-     * Параметр {@code path} в Stage 4 пропускается «как есть» в поле DTO
-     * {@link CheckMarker#path()} — серверной фильтрации по нему пока нет.
+     * Читает маркеры для {@code project}, опционально фильтруя их по пути файла,
+     * серьёзности, множеству {@code checkIds} (полная форма {@code CheckUid}) и метке источника.
      *
      * @param project   целевой {@link IProject} (обязателен)
-     * @param path      опциональный относительный путь файла; копируется в DTO без изменений
+     * @param path      опциональный префикс project-relative пути ({@code "src/CommonModules"},
+     *                  {@code "src/Catalogs/Товары/Форма/Форма.form"}); маркеры, не резолвящиеся
+     *                  в файл, фильтр не проходят
      * @param severity  опциональный фильтр серьёзности ("error" / "warning" / "info")
      * @param checkIds  опциональное множество полных идентификаторов проверок ({@code CheckUid.toString()});
      *                  {@code null} или пустое — без фильтра
@@ -62,10 +68,12 @@ public class MarkerReader {
                                   String severity,
                                   Set<String> checkIds,
                                   String source) {
+        String pathPrefix = normalizePath(path);
         IMarkerReader reader = markerManager.createReader(Collections.singleton(project));
         List<CheckMarker> hits = new ArrayList<>();
         reader.markers(new MarkerFilter[0]).forEach(m -> {
-            CheckMarker dto = toDto(m, project.getName(), path);
+            CheckMarker dto = toDto(m, project.getName());
+            if (pathPrefix != null && !dto.path().regionMatches(true, 0, pathPrefix, 0, pathPrefix.length())) return;
             if (severity != null && !severity.equals(dto.severity())) return;
             if (checkIds != null && !checkIds.isEmpty() && !checkIds.contains(dto.checkId())) return;
             if (source   != null && !source  .equals(dto.source()))   return;
@@ -74,7 +82,43 @@ public class MarkerReader {
         return hits;
     }
 
-    private CheckMarker toDto(Marker m, String projectName, String pathFilter) {
+    /**
+     * Приводит клиентский {@code path} к форме project-relative пути EDT: разделители «/»,
+     * без ведущего слэша. {@code null} / пустая строка — фильтра нет.
+     */
+    private static String normalizePath(String path) {
+        if (path == null) return null;
+        String p = path.replace('\\', '/').trim();
+        while (p.startsWith("/")) p = p.substring(1);
+        return p.isEmpty() ? null : p;
+    }
+
+    /**
+     * Реальный project-relative путь файла маркера.
+     *
+     * <p>EDT-маркер — не Eclipse {@code IMarker}, у него нет {@code getResource()}: он привязан
+     * к объекту модели, а не к ресурсу. Путь получается в два шага —
+     * {@link Marker#provideObject(java.util.function.Function)} резолвит EObject проверяемого
+     * объекта, {@link IResourceLookup#getPlatformResource(org.eclipse.emf.ecore.EObject)} —
+     * его {@link IFile}. Маркеры уровня конфигурации и маркеры на удалённых объектах в файл
+     * не резолвятся — для них путь пуст.
+     */
+    private String resolvePath(Marker m) {
+        if (resourceLookup == null) return "";
+        try {
+            IFile file = m.provideObject(
+                    eObject -> eObject == null ? null : resourceLookup.getPlatformResource(eObject));
+            if (file == null) return "";
+            IPath rel = file.getProjectRelativePath();
+            return rel == null ? "" : rel.toString();
+        } catch (RuntimeException e) {
+            // Резолв идёт через BM: объект мог исчезнуть между чтением маркера и резолвом.
+            // Путь — вспомогательное поле, ронять из-за него весь check_list_markers нельзя.
+            return "";
+        }
+    }
+
+    private CheckMarker toDto(Marker m, String projectName) {
         String sourceType = m.getSourceType();
         Optional<CheckEntry> entry = catalog.get(sourceType);
         String source = entry.map(CheckEntry::source).orElse(CheckSource.OTHER);
@@ -89,7 +133,7 @@ public class MarkerReader {
         return new CheckMarker(
                 m.getMarkerId(),
                 projectName,
-                pathFilter == null ? "" : pathFilter,
+                resolvePath(m),
                 line,
                 severity,
                 sourceType,

@@ -32,19 +32,6 @@ import ru.fedukhin.edt.mcp.tools.md.internal.TypeStringParser;
  */
 public final class AddAttributeTool implements IMcpTool {
 
-    /** kind → folder name in src/. */
-    private static final Map<String, String> KIND_FOLDER = Map.ofEntries(
-            Map.entry("Catalog",                    "Catalogs"),
-            Map.entry("Document",                   "Documents"),
-            Map.entry("BusinessProcess",            "BusinessProcesses"),
-            Map.entry("Task",                       "Tasks"),
-            Map.entry("ChartOfAccounts",            "ChartsOfAccounts"),
-            Map.entry("ChartOfCalculationTypes",    "ChartsOfCalculationTypes"),
-            Map.entry("ChartOfCharacteristicTypes", "ChartsOfCharacteristicTypes"),
-            Map.entry("AccumulationRegister",       "AccumulationRegisters"),
-            Map.entry("InformationRegister",        "InformationRegisters")
-    );
-
     /** Register-kinds — для них роль обязательна и определяет XML-tag. */
     private static final Set<String> REGISTER_KINDS =
             Set.of("AccumulationRegister", "InformationRegister");
@@ -69,8 +56,18 @@ public final class AddAttributeTool implements IMcpTool {
     }
 
     @Override public String name()        { return "add_attribute"; }
-    @Override public String description() { return "Add an attribute/dimension/resource to an MdObject"; }
+    @Override public String description() {
+        return "Add an attribute/dimension/resource to an MdObject. "
+             + "To set synonym/comment on the new attribute, call set_md_property afterwards.";
+    }
 
+    /**
+     * {@code synonym}/{@code comment} здесь НЕ объявлены намеренно: они были в схеме, но
+     * {@link #call} их никогда не читал — клиент передавал значения и молча их терял.
+     * Рабочий путь — {@code set_md_property} (умеет synonym/comment на
+     * Attribute/Dimension/Resource через BM). Если аргументы всё же пришли — не глотаем
+     * молча, а возвращаем warning в результате.
+     */
     @Override
     public Map<String, Object> inputSchema() {
         Map<String, Object> strType = Map.of("type", "string");
@@ -80,8 +77,6 @@ public final class AddAttributeTool implements IMcpTool {
         props.put("name",    strType);
         props.put("type",    Map.of());
         props.put("role",    strType);
-        props.put("synonym", strType);
-        props.put("comment", strType);
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", props);
@@ -109,7 +104,9 @@ public final class AddAttributeTool implements IMcpTool {
             throw new ToolException("kind '" + kind + "' does not support attributes");
         }
 
-        String folder = KIND_FOLDER.get(kind);
+        // Папка — из реестра (единая точка правды), а не из локальной копии карты:
+        // расхождение таких копий и было корнем находки Task 6.
+        String folder = kindMeta.folderName();
         if (folder == null) {
             throw new ToolException("kind '" + kind + "' is registered but has no DOM-folder mapping");
         }
@@ -158,7 +155,7 @@ public final class AddAttributeTool implements IMcpTool {
                 throw new ToolException("kind '" + kind + "' supports only role=Attribute");
             }
             mdoEditor.addMdObjectAttribute(mdoFile,
-                    new MdoFileEditor.MdAttributeSpec(name, typeExprList.get(0)));
+                    new MdoFileEditor.MdAttributeSpec(name, typeExprList));
             effectiveRole = "Attribute";
         }
 
@@ -167,6 +164,10 @@ public final class AddAttributeTool implements IMcpTool {
         result.put("attributeName", name);
         result.put("role",          effectiveRole);
         result.put("type",          typeArg);
+        if (args.get("synonym") != null || args.get("comment") != null) {
+            result.put("warning", "add_attribute does not write synonym/comment — the arguments "
+                + "were ignored. Set them with set_md_property on '" + fqn + "." + name + "'.");
+        }
         return result;
     }
 

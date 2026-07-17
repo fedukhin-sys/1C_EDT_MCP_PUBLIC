@@ -58,6 +58,45 @@ public class RuntimeCliTest {
         assertEquals(0, code);
     }
 
+    /**
+     * Аргумент собирался как {@code File="<path>"} со встроенными кавычками. ProcessBuilder на
+     * Windows экранирует их как {@code \"}, а 1cv8.exe такую форму не понимает и отвечает
+     * «Неопределена информационная база» — этот же отказ проект уже задокументировал у себя в
+     * TestRunnerLauncher.buildCommand. Кавычки вокруг пути с пробелами Windows расставляет сам.
+     */
+    @Test
+    public void createFileInfobase_pathWithSpaces_isPassedWithoutEmbeddedQuotes() throws Exception {
+        Path location = Paths.get("C:/Program Files/My IB");
+        IRuntime runtime = mock(IRuntime.class);
+        when(runtime.getVersion()).thenReturn(new Version("8.3.24"));
+        IRuntimeRegistry reg = mock(IRuntimeRegistry.class);
+        when(reg.getRuntime("8.3.24")).thenReturn(runtime);
+        when(reg.getRuntimes()).thenReturn(Collections.singletonList(runtime));
+
+        java.util.List<java.util.List<String>> captured = new java.util.ArrayList<>();
+        RuntimeCli cli = new RuntimeCli(reg,
+            v -> new File("C:/Program Files/1cv8/8.3.24/bin/1cv8.exe"),
+            (cmd, dir) -> {
+                captured.add(cmd);
+                Process p = mock(Process.class);
+                try {
+                    when(p.waitFor(60L, java.util.concurrent.TimeUnit.SECONDS)).thenReturn(true);
+                } catch (InterruptedException ignored) {}
+                when(p.exitValue()).thenReturn(0);
+                when(p.getInputStream()).thenReturn(new java.io.ByteArrayInputStream(new byte[0]));
+                when(p.getErrorStream()).thenReturn(new java.io.ByteArrayInputStream(new byte[0]));
+                return p;
+            });
+
+        cli.createFileInfobase(location, "8.3.24", Duration.ofSeconds(60));
+
+        java.util.List<String> cmd = captured.get(0);
+        String fileArg = cmd.get(cmd.size() - 1);
+        assertTrue("ожидался File=<путь> без кавычек, а получено: " + fileArg,
+            fileArg.startsWith("File=") && !fileArg.contains("\""));
+        assertTrue("путь обязан дойти целиком: " + fileArg, fileArg.contains("My IB"));
+    }
+
     @Test
     public void createFileInfobase_unknownVersion_throwsToolException() {
         IRuntimeRegistry reg = mock(IRuntimeRegistry.class);

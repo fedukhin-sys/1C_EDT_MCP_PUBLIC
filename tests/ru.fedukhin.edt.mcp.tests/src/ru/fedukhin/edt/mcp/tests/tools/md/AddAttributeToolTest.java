@@ -25,6 +25,25 @@ import ru.fedukhin.edt.mcp.tools.md.internal.TypeStringParser;
  */
 public class AddAttributeToolTest {
 
+    /**
+     * synonym/comment были объявлены в inputSchema, но никогда не читались в call() —
+     * клиент передавал их и молча терял. Рабочий путь — set_md_property (PropertyAccessor
+     * умеет synonym/comment на Attribute/Dimension/Resource).
+     */
+    @Test
+    public void inputSchema_doesNotDeclareUnimplementedSynonymAndComment() {
+        AddAttributeTool tool = new AddAttributeTool(
+                () -> mock(IWorkspaceRoot.class), new MdObjectRegistry(),
+                new TypeStringParser(), mock(MdoFileEditor.class));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> props = (Map<String, Object>) tool.inputSchema().get("properties");
+
+        assertFalse("synonym не реализован — не должен объявляться", props.containsKey("synonym"));
+        assertFalse("comment не реализован — не должен объявляться", props.containsKey("comment"));
+        assertTrue("description обязан подсказывать рабочий путь: " + tool.description(),
+                tool.description().contains("set_md_property"));
+    }
+
     private final MdObjectRegistry registry = new MdObjectRegistry();
     private final TypeStringParser parser   = new TypeStringParser();
 
@@ -64,6 +83,32 @@ public class AddAttributeToolTest {
         verify(mdoEditor).addMdObjectAttribute(any(), cap.capture());
         assertEquals("Article",   cap.getValue().name());
         assertEquals("String(25)", cap.getValue().type());
+    }
+
+    /**
+     * Составной тип на не-регистровом kind'е молча обрезался до первого типа: бралcя
+     * {@code typeExprList.get(0)}, хотя для регистров multi-type писался честно.
+     */
+    @Test
+    public void compositeTypeOnCatalog_isWrittenWhole() throws Exception {
+        IProject project = mockProject();
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("Demo")).thenReturn(project);
+
+        MdoFileEditor mdoEditor = mock(MdoFileEditor.class);
+        AddAttributeTool tool = new AddAttributeTool(() -> root, registry, parser, mdoEditor);
+
+        tool.call(Map.of(
+                "project", "Demo",
+                "fqn", "Catalog.Goods",
+                "name", "Владелец",
+                "type", java.util.List.of("CatalogRef.Партнёры", "DocumentRef.Заказ")));
+
+        ArgumentCaptor<MdoFileEditor.MdAttributeSpec> cap =
+                ArgumentCaptor.forClass(MdoFileEditor.MdAttributeSpec.class);
+        verify(mdoEditor).addMdObjectAttribute(any(), cap.capture());
+        assertEquals(java.util.List.of("CatalogRef.Партнёры", "DocumentRef.Заказ"),
+                cap.getValue().types());
     }
 
     @Test(expected = ToolException.class)

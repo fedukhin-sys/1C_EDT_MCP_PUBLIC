@@ -4,6 +4,7 @@ import jakarta.inject.Inject;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
@@ -14,13 +15,18 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
 
 /**
  * {@code list_attributes} — перечисляет attributes/dimensions/resources MdObject.
  *
  * <p>Args: {@code { project, fqn }}.
- * <p>Result: {@code { attributes: AttributeInfo[] }}.
+ * <p>Result: {@code { attributes: AttributeInfo[], tabularSections: TabularSectionInfo[],
+ * values: EnumValueInfo[] }}, где {@code TabularSectionInfo = { name, synonym, attributes[] }},
+ * {@code EnumValueInfo = { name, synonym, comment }}. Плоский {@code attributes} несёт только
+ * реквизиты верхнего уровня — колонки ТЧ в него не подмешиваются; {@code values} непусты только
+ * у Enum. Все три ключа присутствуют всегда.
  *
  * <p>BUG-16: читает напрямую из {@code .mdo} на диске (а не из BM-модели), потому
  * что BM-модель отстаёт от диска сразу после DOM-route мутации ({@code add_attribute})
@@ -28,18 +34,18 @@ import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
  */
 public final class ListAttributesTool implements IMcpTool {
 
-    /** kind → folder name in src/. */
-    private static final Map<String, String> KIND_FOLDER = Map.ofEntries(
-            Map.entry("Catalog",                    "Catalogs"),
-            Map.entry("Document",                   "Documents"),
-            Map.entry("BusinessProcess",            "BusinessProcesses"),
-            Map.entry("Task",                       "Tasks"),
-            Map.entry("ChartOfAccounts",            "ChartsOfAccounts"),
-            Map.entry("ChartOfCalculationTypes",    "ChartsOfCalculationTypes"),
-            Map.entry("ChartOfCharacteristicTypes", "ChartsOfCharacteristicTypes"),
-            Map.entry("AccumulationRegister",       "AccumulationRegisters"),
-            Map.entry("InformationRegister",        "InformationRegisters")
-    );
+    /**
+     * Kind'ы, чей .mdo вообще несёт что-то перечислимое: реквизиты/измерения/ресурсы,
+     * табличные части либо значения перечисления. Имя папки берётся из
+     * {@link MdObjectRegistry#folderName} — здесь только «какие kind'ы читаем».
+     */
+    private static final Set<String> READABLE_KINDS = Set.of(
+            "Catalog", "Document", "BusinessProcess", "Task",
+            "ChartOfAccounts", "ChartOfCalculationTypes", "ChartOfCharacteristicTypes",
+            "ExchangePlan", "AccumulationRegister", "InformationRegister", "Enum");
+
+    /** kind'ы, чей .mdo несёт не реквизиты, а значения перечисления. */
+    private static final String ENUM_KIND = "Enum";
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final MdoFileEditor            mdoEditor;
@@ -56,7 +62,11 @@ public final class ListAttributesTool implements IMcpTool {
     }
 
     @Override public String name()        { return "list_attributes"; }
-    @Override public String description() { return "List attributes/dimensions/resources of an MdObject"; }
+
+    @Override public String description() {
+        return "List top-level attributes/dimensions/resources of an MdObject, its tabularSections "
+             + "with their columns, and — for an Enum — its values";
+    }
 
     @Override
     public Map<String, Object> inputSchema() {
@@ -89,10 +99,10 @@ public final class ListAttributesTool implements IMcpTool {
             throw new ToolException("project '" + projectName + "' not found or not open");
         }
 
-        String folder = KIND_FOLDER.get(kind);
+        String folder = READABLE_KINDS.contains(kind) ? MdObjectRegistry.folderName(kind) : null;
         if (folder == null) {
-            // kind has no attribute-bearing .mdo (CommonModule, Enum, ...) — empty list
-            return Map.of("attributes", List.of());
+            // kind has no attribute-bearing .mdo (CommonModule, Subsystem, ...) — empty lists
+            return Map.of("attributes", List.of(), "tabularSections", List.of(), "values", List.of());
         }
 
         // BUG-16: refreshLocal so Eclipse sees a .mdo a mutation just wrote, then
@@ -108,7 +118,17 @@ public final class ListAttributesTool implements IMcpTool {
         if (!mdoFile.exists()) {
             throw new ToolException("MdObject '.mdo' not found at " + mdoRel);
         }
-        return Map.of("attributes", mdoEditor.readAttributes(mdoFile, kind));
+        if (ENUM_KIND.equals(kind)) {
+            // У перечисления нет ни реквизитов, ни ТЧ — только значения.
+            return Map.of(
+                "attributes",      List.of(),
+                "tabularSections", List.of(),
+                "values",          mdoEditor.readEnumValues(mdoFile));
+        }
+        return Map.of(
+            "attributes",      mdoEditor.readAttributes(mdoFile, kind),
+            "tabularSections", mdoEditor.readTabularSections(mdoFile),
+            "values",          List.of());
     }
 
     private static String requireString(Map<String, Object> args, String key) throws ToolException {

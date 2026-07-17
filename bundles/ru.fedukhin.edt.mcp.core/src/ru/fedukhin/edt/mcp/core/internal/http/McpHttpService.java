@@ -57,10 +57,15 @@ public class McpHttpService {
 
     public synchronized void stop() throws Exception {
         if (server == null) return;
-        lifecycle.close();
-        server.stop();
-        server.join();
-        server = null;
+        try {
+            lifecycle.close();
+            server.stop();
+            server.join();
+        } finally {
+            // Даже если stop/join упали, держаться за мёртвый Server нельзя: isStarted() врал бы,
+            // а следующий start() отказывался бы поднимать сервер до рестарта EDT.
+            server = null;
+        }
     }
 
     public boolean isStarted() { return server != null && server.isStarted(); }

@@ -15,6 +15,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
 
 /**
@@ -29,16 +30,13 @@ import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
  */
 public final class AddTabularSectionTool implements IMcpTool {
 
-    /** kind → folder name in src/ */
-    private static final Map<String, String> KIND_FOLDER = Map.of(
-            "Catalog",                    "Catalogs",
-            "Document",                   "Documents",
-            "BusinessProcess",            "BusinessProcesses",
-            "Task",                       "Tasks",
-            "ChartOfAccounts",            "ChartsOfAccounts",
-            "ChartOfCalculationTypes",    "ChartsOfCalculationTypes",
-            "ChartOfCharacteristicTypes", "ChartsOfCharacteristicTypes"
-    );
+    /**
+     * Kind'ы с табличными частями. Имя папки — из {@link MdObjectRegistry#folderName};
+     * здесь только «у кого вообще есть ТЧ» (у регистров и перечислений их нет).
+     */
+    static final Set<String> KINDS_WITH_TABULAR_SECTIONS = Set.of(
+            "Catalog", "Document", "BusinessProcess", "Task",
+            "ChartOfAccounts", "ChartOfCalculationTypes", "ChartOfCharacteristicTypes");
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final MdoFileEditor            editor;
@@ -86,10 +84,11 @@ public final class AddTabularSectionTool implements IMcpTool {
         }
         String kind = ownerFqn.substring(0, dot);
         String ownerName = ownerFqn.substring(dot + 1);
-        String folder = KIND_FOLDER.get(kind);
+        String folder = KINDS_WITH_TABULAR_SECTIONS.contains(kind)
+                ? MdObjectRegistry.folderName(kind) : null;
         if (folder == null) {
             throw new ToolException("kind '" + kind + "' does not support tabular sections; supported: "
-                    + KIND_FOLDER.keySet());
+                    + KINDS_WITH_TABULAR_SECTIONS);
         }
 
         IProject project = rootSupplier.get().getProject(projectName);

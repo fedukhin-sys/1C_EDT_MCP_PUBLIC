@@ -106,6 +106,30 @@ public class MdObjectBorrower {
         KINDS.put("Subsystem",                  new KindMeta("Subsystems",                  "subsystems",                  "SubsystemExtension"));
     }
 
+    /**
+     * Kind'ы, которые умеет заимствовать этот класс.
+     *
+     * <p>Открыто наружу, чтобы {@link MdObjectRegistry} можно было сверять с этим списком тестом:
+     * их рассинхрон уже приводил к тому, что заимствованные объекты были невидимы для
+     * {@code list_md_objects} и {@code get_md_object}.
+     */
+    public static java.util.Set<String> supportedKinds() {
+        return java.util.Collections.unmodifiableSet(KINDS.keySet());
+    }
+
+    /**
+     * Имя папки в {@code src/} для kind'а по версии этого класса.
+     *
+     * <p>Открыто наружу ради теста-сверки с {@link MdObjectRegistry#folderName}: своя карта
+     * здесь осталась потому, что {@link KindMeta} несёт ещё ns-prefix и имя extension-типа,
+     * но имена папок в двух картах обязаны совпадать — иначе borrow положит объект не туда,
+     * где его ищут остальные инструменты.
+     */
+    public static String folderOf(String kind) {
+        KindMeta meta = KINDS.get(kind);
+        return meta == null ? null : meta.folder();
+    }
+
     public record BorrowResult(String project, String fqn, String adoptedUuid,
                                 String baseUuid, String mdoPath,
                                 List<String> cascadedOwners) {

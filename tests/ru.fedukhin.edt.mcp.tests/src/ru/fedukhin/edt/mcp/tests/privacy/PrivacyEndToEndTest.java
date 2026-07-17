@@ -30,7 +30,7 @@ public class PrivacyEndToEndTest {
         // ПДн по имени переменной — реальный PrivacyRedactor + AttributeNameDictionary + Pseudonymizer
         List<Map<String,Object>> vars = new ArrayList<>();
         vars.add(new LinkedHashMap<>(Map.of("name","СНИЛС","type","Строка","value","112-233-445 95")));
-        Object masked = filter.redact("get_variables", Map.of("name","E2EBase"), vars);
+        Object masked = filter.redact("get_variables", "E2EBase", vars);
         String v = (String) ((List<Map<String,Object>>) masked).get(0).get("value");
         assertNotEquals("112-233-445 95", v); // значение обезличено
 
@@ -38,7 +38,7 @@ public class PrivacyEndToEndTest {
         PrivacyState.flags().setFlag("E2EBase", false);
         List<Map<String,Object>> vars2 = new ArrayList<>();
         vars2.add(new LinkedHashMap<>(Map.of("name","СНИЛС","type","Строка","value","112-233-445 95")));
-        Object passthrough = filter.redact("get_variables", Map.of("name","E2EBase"), vars2);
+        Object passthrough = filter.redact("get_variables", "E2EBase", vars2);
         assertEquals("112-233-445 95",
             ((List<Map<String,Object>>) passthrough).get(0).get("value")); // не тронуто
 

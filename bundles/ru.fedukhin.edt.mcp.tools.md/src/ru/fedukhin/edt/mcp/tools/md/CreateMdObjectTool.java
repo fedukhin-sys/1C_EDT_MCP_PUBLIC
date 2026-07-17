@@ -15,6 +15,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.tools.md.internal.BmSyncWaiter;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectFactory;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectKind;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
@@ -99,26 +100,31 @@ public final class CreateMdObjectTool implements IMcpTool {
             throw new ToolException("project '" + projectName + "' not found or not open");
         }
 
+        // Реестр знает и те kind'ы, что доступны только для чтения и заимствования: EMF-фабрика
+        // создаст любой, но объект выйдет битым (CommonForm без Form.form) либо путь не проверялся
+        // на живом EDT. Отбиваем до мутации BM — иначе в конфигурацию попадёт мусор.
+        MdObjectKind requested = registry.get(kind);
+        if (requested != null && !requested.creatable()) {
+            throw new ToolException("kind '" + kind + "' cannot be created from scratch; "
+                + "it is supported for reading and for borrow_md_object only");
+        }
+
         String fqn = factory.create(project, kind, name, synonym, comment);
 
         // Bug #3 (race-condition create→add_attribute): MdObjectFactory мутирует BM
         // через глобальный контекст, который сериализует .mdo асинхронно (Global Editing
         // Context.execute() возвращает до того, как .mdo появился на диске). Без явного
         // ожидания следующий немедленный add_attribute получал mdoFile.exists()=false.
-        //
-        // Алгоритм: waitModelSynchronization → refreshLocal → poll FS до 3с с backoff.
-        // Если за 3с .mdo не появился — возвращаем результат всё равно (subsequent
-        // tools имеют свой retry).
-        if (bmModelManager != null) {
-            try { bmModelManager.waitModelSynchronization(project); }
-            catch (Throwable ignored) { /* best-effort */ }
-        }
+        BmSyncWaiter.awaitModel(bmModelManager, project);
 
         MdObjectKind kindMeta = registry.get(kind);
         String mdoRel = null;
+        boolean mdoOnDisk = true;
         if (kindMeta != null && kindMeta.folderName() != null) {
             mdoRel = "src/" + kindMeta.folderName() + "/" + name + "/" + name + ".mdo";
-            waitForMdoOnDisk(project, mdoRel, /* maxMillis */ 3000);
+            // awaitStableFile, а не просто awaitFile: сериализатор EDT создаёт файл до того,
+            // как допишет его, и следующий инструмент мог прочитать половину XML.
+            mdoOnDisk = BmSyncWaiter.awaitStableFile(project, mdoRel, BmSyncWaiter.DEFAULT_MAX_MILLIS);
         }
 
         // Post-write cosmetic fixes: EDT XML-serializer пропускает default'ы enum'ов,
@@ -142,31 +148,16 @@ public final class CreateMdObjectTool implements IMcpTool {
             result.put("modulePath", modulePath);
         }
 
-        return result;
-    }
-
-    /**
-     * Ждёт появления .mdo на диске с экспоненциальным backoff (50/100/200/400/800/1600ms).
-     * После каждого тика — refreshLocal + проверка {@code IFile.exists()}.
-     * Возвращает после первого успеха или после исчерпания {@code maxMillis}.
-     */
-    private static void waitForMdoOnDisk(IProject project, String relPath, long maxMillis) {
-        long deadline = System.currentTimeMillis() + maxMillis;
-        long sleep = 50L;
-        while (true) {
-            try { project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor()); }
-            catch (CoreException ignored) { /* best-effort */ }
-            IFile f = project.getFile(relPath);
-            if (f != null && f.exists()) return;
-            long remaining = deadline - System.currentTimeMillis();
-            if (remaining <= 0) return;
-            long actual = Math.min(sleep, remaining);
-            try { Thread.sleep(actual); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            sleep = Math.min(sleep * 2, 1600L);
+        // Паттерн BUG-18: молчаливый «успех» после неудавшегося ожидания посылает агента
+        // делать следующий вызов по пути, которого ещё нет.
+        if (!mdoOnDisk) {
+            result.put("warning", "object was created in the BM model, but '" + mdoRel
+                + "' had not appeared on disk within " + BmSyncWaiter.DEFAULT_MAX_MILLIS
+                + " ms — EDT serialises .mdo asynchronously. A follow-up tool call may report "
+                + "the file as missing; retry it, or re-read the object with get_md_object.");
         }
+
+        return result;
     }
 
     private static String requireString(Map<String, Object> args, String key) throws ToolException {

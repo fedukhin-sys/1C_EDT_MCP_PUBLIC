@@ -2,15 +2,41 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
-## [Unreleased]
+## [1.18.0] — 2026-07-17
 
-### Изменено
+По итогам глобального аудита v1.17.0 (2 BLOCKER, 13 MAJOR, ~30 MINOR).
+Итого **97 инструментов** в 12 tool-бандлах.
 
-- **Скиллы Claude Code (`.claude/skills`) актуализированы по итогам аудита кода 2026-07-16** (код плагина не менялся, версия остаётся 1.17.0):
-  - `edt-mcp/SKILL.md`: счётчик инструментов 91 → 95, добавлена секция Privacy (4 инструмента обезличивания 152-ФЗ); исправлены неверные значения параметров (`create_form.formType` = `MANAGED`/`ORDINARY`, `add_form_group.groupType` = `Pages`/`Page`/`UsualGroup`, канонический `formFqn` у `borrow_form_pictures`); переписан рецепт «Обработчик формы» (`set_form_handler` сам создаёт Module.bsl со stub'ом); дополнены параметры `query_event_log` (`session`/`offset`/`order`) и `create_project` (`namePrefix`); раздел «Что НЕ работает» отражает актуальные ограничения v1.17.0 (деплой на EDT 2026.1, чтение табличных частей/перечислений, сборка .epf без синтакс-контроля и др.).
-  - Новый `edt-mcp/references/1c-gotchas.md` — проверенные грабли BSL/1С (зарезервированные слова, XDTO-порядок узлов форм, вёрстка .mxlx, headless-работа с .epf).
-  - `edt-skd/SKILL.md`: уточнён default `templateName` (`ОсновнаяСхема`), +7 практических граблей СКД (dataSetLink, навигационные поля, функциональные опции и др.).
-- `.gitignore`: приватные локальные документы покрыты обобщённым паттерном `docs/*.txt`.
+### Исправлено
+
+- **BLOCKER: `deploy_project` не работал на 1C:EDT 2026.x.** `IInfobaseSynchronizationManager.resolveInfobaseChanges` расходится по возвращаемому типу между ветками EDT — прямой вызов давал `ClassCastException` в `NoopUpdateCallback`. Вызов переведён на рефлексию с фолбэком.
+- **BLOCKER: `deploy_project` не работал на всей ветке 1C:EDT 2023.x.** `IInfobaseSynchronizationManager.isConnected` отсутствует в `dt.platform.services.core` 18/19 → `NoSuchMethodError` ещё до `updateInfobase`. Та же схема: рефлексия + фолбэк (при отсутствии метода `connectInfobase` зовётся вслепую, а отказ «уже подключена» не роняет деплой). Обе точки dual-version теперь закрыты; live-smoke на 2023.x **не проводился** — см. матрицу поддержки в `README.md`.
+- **`run_tests`: честный таймаут.** Процесс убивается через `destroyForcibly` + асинхронный дренаж потоков; в результате появился признак `killed`. Раньше executor заклинивал.
+- **Обезличивание ПДн (152-ФЗ) — закрыты обходы:**
+  - `returnsInfobaseData` добавлен `run_tests`, `run_test_method`, `set_variable` — стало **7** помеченных каналов (было 4);
+  - маскируются и **тексты ошибок** инструментов, возвращающих данные ИБ (BM/EMF/debug-движок вкладывают в message фрагменты значений базы);
+  - ключ инфобазы для per-infobase флага берётся из `IMcpTool.privacyInfobaseKey(args)`, а **не** из сырых `args` — раньше клиент мог дописать в аргументы debug-инструмента посторонний `name` «безопасной» базы и отключить обезличивание;
+  - `data.value` журнала регистрации маскируется без привязки к каталогу.
+- **`query_event_log`:** починен порядок `date_desc`, добавлена толерантность к рваному хвосту активной `.lgp` (новый ключ `partial`).
+- **`check_list_markers` / `check_run`:** аргумент `path` стал настоящим фильтром, DTO несёт реальный путь маркера (раньше путь был фиктивным).
+- **`add_test_method`:** честный `registered` + `warning` вместо безусловного «зарегистрирован».
+- **Буква «Ё»** не ловилась regex-диапазоном `[А-Яа-я]` (в Unicode она вне диапазона) — починено в `TypeStringParser` и `BslAstReader`.
+- **`add_attribute`:** поддержка составных (multi-type) типов; ожидание асинхронной BM-сериализации `.mdo`; кавычки в строке подключения `CREATEINFOBASE`.
+- **Отладка:** cleanup при падении запуска — `dbgs`/target/breakpoint больше не утекают.
+- MINOR-пакет по `core`/`ui`: версия сервера, secure store, кэш каталога ПДн, аудит, cleanup.
+
+### Добавлено
+
+- **`add_enum_value`** — добавление значения в перечисление.
+- **`build_external_object`** — сборка внешнего объекта в `.epf`/`.erf` (EDT-проект → Designer XML → `1cv8 DESIGNER`). Обязательный precheck: отказывается собирать при BSL-ошибках компиляции — **ни один шаг пайплайна синтаксис не проверяет**.
+- `list_attributes` / `get_md_object` возвращают дополнительные ключи `tabularSections` (табличные части с колонками) и `values` (значения перечисления).
+- `list_md_objects` работает на external-object проектах (файловый скан `src/`).
+- Единый реестр kind'ов метаданных: все **19** borrow-kind'ов + флаг `creatable`. `create_md_object` отбивает не-creatable вид с подсказкой использовать `borrow_md_object`; `borrow`/`list`/`get`/`add_attribute` согласованы между собой.
+- `query_event_log`: параметры `session`, `offset`, `order`.
+
+### Известные ограничения
+
+- Схемы с `anyOf`/`oneOf` (`query_event_log`, `get_event_log_path`) MCP SDK клиенту **не публикует** — record `JsonSchema` не имеет таких полей. Требование «указать ровно один из `name` / `uuid` / `logDir`» продублировано словами в `description` инструмента.
 
 ## [1.17.0] — 2026-07-04
 
@@ -140,6 +166,10 @@
 
 История до v1.12.0 разработки внутренняя; первая публичная редакция отражает состояние v1.12.0.
 
+[1.18.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.18.0
+[1.17.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.17.0
+[1.16.1]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.16.1
+[1.16.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.16.0
 [1.15.5]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.5
 [1.15.4]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.4
 [1.15.3]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.3

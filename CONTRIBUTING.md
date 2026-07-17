@@ -4,7 +4,7 @@
 
 - JDK 17.
 - Maven 3.9+ (бинарь `mvn` не обязан быть в PATH; пример пути: `E:\Tools\maven\apache-maven-3.9.9\bin\mvn.cmd`).
-- Локально установленный 1C:EDT 2026.1; target platform тащится из его p2-пула (`C:/Users/User/.p2/pool/plugins`) — см. `targets/default/default.target`.
+- Локально установленный 1C:EDT 2026.x; target platform тащится из его p2-пула (`C:/Users/User/.p2/pool/plugins`) — см. `targets/default/default.target`. Матрица поддерживаемых веток EDT в runtime — в [`README.md`](README.md#матрица-поддержки-1cedt).
 
 ## Сборка
 
@@ -14,11 +14,11 @@ mvn clean verify
 
 Артефакты:
 - p2 update site: `repositories/ru.fedukhin.edt.mcp.repository/target/repository/`.
-- Тестов: 685 (unit + integration с полным MCP SSE handshake; 10 `@Ignore` — Jackson LinkageError под tycho-surefire и headless-xtext ограничения, см. javadoc на самих классах).
+- Тестов: **874, 0 failures, 10 skipped** (замер на v1.18.0-ветке `feat/audit-docs`, 2026-07-17). Unit + integration с полным MCP SSE handshake; 10 `@Ignore` — Jackson LinkageError под tycho-surefire и headless-xtext ограничения, см. javadoc на самих классах. Число растёт с каждым PR — источник истины всегда вывод `mvn verify`, а не эта строка.
 
 ## Структура
 
-11 bundles + feature + p2 repo + target platform:
+14 bundles (12 tool-бандлов + `core` + `ui`) + feature + p2 repo + target platform:
 
 - `bundles/ru.fedukhin.edt.mcp.core` — Bearer auth, embedded Jetty 12 (EE10), MCP SDK SSE servlet, tool registry, lifecycle, Guice wiring (`com._1c.g5.wiring`).
 - `bundles/ru.fedukhin.edt.mcp.tools.edt` — workspace/project tools, `IV8ProjectManager` + `IRuntimeVersionSupport`.
@@ -32,6 +32,7 @@ mvn clean verify
 - `bundles/ru.fedukhin.edt.mcp.tools.quality` — validator/marker API.
 - `bundles/ru.fedukhin.edt.mcp.tools.tests` — xUnitFor1C-каркас (создание CommonModule + методов).
 - `bundles/ru.fedukhin.edt.mcp.tools.testrun` — auto-run xUnitFor1C под живой ИБ (`ManagedApplicationModule` handler + `1cv8.exe ENTERPRISE`).
+- `bundles/ru.fedukhin.edt.mcp.tools.privacy` — управляющий контур обезличивания ПДн 152-ФЗ (каталог ПДн, per-infobase флаг, журнал). Сам редактор — `ru.fedukhin.edt.mcp.core.privacy`, см. [`CLAUDE.md`](CLAUDE.md#обезличивание-персональных-данных-152-фз).
 - `bundles/ru.fedukhin.edt.mcp.ui` — `AbstractUIPlugin`, preference page, команды, status-bar.
 
 Tools регистрируются через extension point `ru.fedukhin.edt.mcp.core.tool` — пример в `bundles/ru.fedukhin.edt.mcp.tools.edt/plugin.xml`.
@@ -40,13 +41,14 @@ Tools регистрируются через extension point `ru.fedukhin.edt.m
 
 - MCP SDK: `io.modelcontextprotocol.sdk:mcp-core:1.1.2` (+ `mcp-json-jackson2`).
   `McpJsonMapper` и `JsonSchemaValidator` передаются явно — SDK ServiceLoader / OSGi DS-путь нестабилен под tycho-surefire.
-- Target platform — `<location type="Directory">` на локальный 1C:EDT 2026.1 pool (онлайн p2 InstallableUnit-режим не разруливает EDT + Eclipse 2023-12 + Xtext set).
+- Target platform — `<location type="Directory">` на локальный 1C:EDT 2026.x pool (онлайн p2 InstallableUnit-режим не разруливает EDT + Eclipse 2023-12 + Xtext set).
+- Расходящееся между ветками EDT платформенное API (`IInfobaseSynchronizationManager`: `resolveInfobaseChanges`, `isConnected`, `updateInfobase`) вызывается только через рефлексию с фолбэком — компилируемся против core 23, но обязаны работать и на core 18/19. Прямой вызов такого метода = `NoSuchMethodError` на 2023.x. Тесты фолбэка — подменой `protected`-обёртки в подклассе (отсутствие метода в юнит-тесте не сымитировать).
 - Тесты используют in-memory token storage (`mcp.security.useInMemory=true`, см. parent pom tycho-surefire `<systemProperties>`); production — Equinox secure preferences.
 
 ## Релизный процесс
 
 1. Все доки/код приведены в соответствие.
-2. `mvn verify` → BUILD SUCCESS + 685 PASS.
+2. `mvn verify` → BUILD SUCCESS, 0 failures (skipped-тесты — только заведомые `@Ignore`, см. «Сборка»).
 3. PR в `main` с описанием изменений.
 4. После merge — `git tag vX.Y.Z` + `git push origin vX.Y.Z`.
 5. `gh release create vX.Y.Z` (опционально с release notes).
@@ -62,7 +64,9 @@ Bundle-Version в `META-INF/MANIFEST.MF` каждого bundle'а — это о�
 
 ## Известные ограничения
 
-- 7 integration-тестов `@Ignore` из-за Jackson LinkageError под tycho-surefire (Jackson 2.20 внутри `core` bundle ↔ EDT runtime classloader). Lehmgen — отдельный stage.
-- `Stage3cDebugLaunchProbeTest`, `InfobaseRegistryIntegrationTest`, `ClientLauncherIntegrationTest` — требуют живой IDE / 1С runtime, manual smoke only.
+- 10 тестов `@Ignore` (= `Skipped: 10` в выводе `mvn verify`), двумя группами:
+  - 6 × `McpServer*IntegrationTest` + `BslAstReaderIntegrationTest` — Jackson LinkageError под tycho-surefire (Jackson 2.20 внутри `core` bundle ↔ EDT runtime classloader) и ограничения headless-xtext;
+  - `Stage3cDebugLaunchProbeTest`, `InfobaseRegistryIntegrationTest`, `ClientLauncherIntegrationTest` — требуют живой IDE / 1С runtime, manual smoke only.
+- Схемы с `anyOf`/`oneOf` (`query_event_log`, `get_event_log_path`) MCP SDK клиенту **не публикует** — record `JsonSchema` не имеет таких полей. Взаимоисключающие аргументы приходится дублировать словами в `description` инструмента.
 - `add_use_as_is_reference` отвергнут как broken (revert `b9811b1`); use-as-is CommonForm ⇒ обязательный `borrow_md_object` flow (full inline-borrow).
 - `extend_form_attribute_type` отменён 2026-05-19 (нет канонического образца для reverse-engineering, deploy=зелёный без него).

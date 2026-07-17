@@ -1,5 +1,6 @@
 package ru.fedukhin.edt.mcp.tests.tools.bsl;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -44,6 +46,71 @@ public class WriteModuleToolTest {
         when(file.getCharset()).thenReturn(charset);
         when(file.getFullPath()).thenReturn(new org.eclipse.core.runtime.Path("/P/src/M.bsl"));
         return file;
+    }
+
+    /**
+     * read_module снимает BOM с content'а — если write_module его не вернёт, круг
+     * read→edit→write молча лишит модуль BOM, которым 1С предваряет .bsl.
+     */
+    @Test
+    public void call_existingFileHadBom_bomIsPreserved() throws Exception {
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] old = ("﻿Процедура Old()\nКонецПроцедуры\n").getBytes(StandardCharsets.UTF_8);
+
+        IFile file = bslFile("UTF-8");
+        when(file.getContents()).thenAnswer(inv -> new java.io.ByteArrayInputStream(old));
+        IProject project = mock(IProject.class);
+        when(project.exists()).thenReturn(true);
+        when(project.getFile("src/M.bsl")).thenReturn(file);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("P")).thenReturn(project);
+
+        byte[][] written = new byte[1][];
+        doAnswer(inv -> {
+            written[0] = ((java.io.InputStream) inv.getArgument(0)).readAllBytes();
+            return null;
+        }).when(file).setContents(any(java.io.InputStream.class), anyBoolean(), anyBoolean(),
+                any(IProgressMonitor.class));
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("project", "P"); args.put("path", "src/M.bsl");
+        args.put("content", "Процедура F()\nКонецПроцедуры\n");
+        args.put("validate", Boolean.FALSE);
+        new WriteModuleTool(runImmediately(), () -> root, mock(BslAstReader.class)).call(args);
+
+        assertNotNull("setContents должен был получить байты", written[0]);
+        assertArrayEquals("BOM исходного файла обязан сохраниться",
+                bom, java.util.Arrays.copyOf(written[0], 3));
+    }
+
+    @Test
+    public void call_existingFileWithoutBom_bomIsNotAdded() throws Exception {
+        byte[] old = "Процедура Old()\nКонецПроцедуры\n".getBytes(StandardCharsets.UTF_8);
+
+        IFile file = bslFile("UTF-8");
+        when(file.getContents()).thenAnswer(inv -> new java.io.ByteArrayInputStream(old));
+        IProject project = mock(IProject.class);
+        when(project.exists()).thenReturn(true);
+        when(project.getFile("src/M.bsl")).thenReturn(file);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("P")).thenReturn(project);
+
+        byte[][] written = new byte[1][];
+        doAnswer(inv -> {
+            written[0] = ((java.io.InputStream) inv.getArgument(0)).readAllBytes();
+            return null;
+        }).when(file).setContents(any(java.io.InputStream.class), anyBoolean(), anyBoolean(),
+                any(IProgressMonitor.class));
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("project", "P"); args.put("path", "src/M.bsl");
+        args.put("content", "Процедура F()\nКонецПроцедуры\n");
+        args.put("validate", Boolean.FALSE);
+        new WriteModuleTool(runImmediately(), () -> root, mock(BslAstReader.class)).call(args);
+
+        assertNotNull(written[0]);
+        assertEquals("файл без BOM не должен его получить",
+                'П', new String(written[0], StandardCharsets.UTF_8).charAt(0));
     }
 
     @Test

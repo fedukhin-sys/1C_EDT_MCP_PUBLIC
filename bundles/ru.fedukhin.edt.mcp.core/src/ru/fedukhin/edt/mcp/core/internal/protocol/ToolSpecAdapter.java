@@ -11,6 +11,7 @@ import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
 import ru.fedukhin.edt.mcp.core.api.IMcpTool;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.core.privacy.ContentPatterns;
 import ru.fedukhin.edt.mcp.core.privacy.IPrivacyFilter;
 
 public class ToolSpecAdapter {
@@ -27,9 +28,19 @@ public class ToolSpecAdapter {
     /** Прогоняет результат через слой обезличивания, если инструмент возвращает данные ИБ. */
     public Object applyPrivacy(IMcpTool tool, Map<String, Object> args, Object result) {
         if (tool.returnsInfobaseData() && privacyFilter != null) {
-            return privacyFilter.redact(tool.name(), args, result);
+            return privacyFilter.redact(tool.name(), tool.privacyInfobaseKey(args), result);
         }
         return result;
+    }
+
+    /**
+     * Маскирует текст ошибки инструмента, возвращающего данные ИБ: BM/EMF/debug-движок
+     * вкладывают в message фрагменты значений базы, а ветка catch идёт мимо applyPrivacy.
+     * Structure-aware слой тут неприменим (текст свободный) — только content-regex.
+     */
+    static String maskError(IMcpTool tool, String message) {
+        if (!tool.returnsInfobaseData() || message == null) return message;
+        return ContentPatterns.maskInline(message);
     }
 
     public SyncToolSpecification adapt(IMcpTool tool) {
@@ -42,7 +53,9 @@ public class ToolSpecAdapter {
         return SyncToolSpecification.builder()
             .tool(toolMeta)
             .callHandler((McpSyncServerExchange exch, McpSchema.CallToolRequest req) -> {
-                Map<String, Object> args = req.arguments();
+                // Клиент вправе не прислать arguments вовсе; инструменты без обязательных
+                // аргументов на null падали NPE вместо честной работы.
+                Map<String, Object> args = req.arguments() != null ? req.arguments() : Map.of();
                 try {
                     Object result = applyPrivacy(tool, args, tool.call(args));
                     String json = MAPPER.writeValueAsString(result);
@@ -52,13 +65,21 @@ public class ToolSpecAdapter {
                         .build();
                 } catch (ToolException te) {
                     return McpSchema.CallToolResult.builder()
-                        .content(List.of(new McpSchema.TextContent(describe(te))))
+                        .content(List.of(new McpSchema.TextContent(maskError(tool, describe(te)))))
                         .isError(true)
                         .build();
-                } catch (RuntimeException | java.io.IOException re) {
-                    LOG.log(Status.error("MCP tool '" + tool.name() + "' threw", re));
+                } catch (Throwable t) {
+                    // Ловим Throwable, а не RuntimeException: дрейф API EDT между версиями даёт
+                    // NoSuchMethodError/NoClassDefFoundError — это Error, и он рвал бы SSE-сессию
+                    // целиком вместо ошибки одного вызова.
+                    // Прерывание проглатывать нельзя — восстанавливаем флаг для вызывающего.
+                    if (t instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
+                    LOG.log(Status.error("MCP tool '" + tool.name() + "' threw", t));
                     return McpSchema.CallToolResult.builder()
-                        .content(List.of(new McpSchema.TextContent("internal error: " + describe(re))))
+                        .content(List.of(new McpSchema.TextContent(
+                            "internal error: " + maskError(tool, describe(t)))))
                         .isError(true)
                         .build();
                 }
@@ -82,6 +103,15 @@ public class ToolSpecAdapter {
         return t.getClass().getName();
     }
 
+    /**
+     * ⚠ Ограничение MCP SDK (mcp-core 1.1.2): {@code McpSchema.JsonSchema} — record с фиксированным
+     * набором полей (type/properties/required/additionalProperties/$defs/definitions), полей
+     * {@code anyOf}/{@code oneOf} у него нет. Вторая перегрузка {@code Tool.Builder.inputSchema
+     * (McpJsonMapper, String)} тоже сводится к этому record через {@code McpSchema.parseSchema},
+     * поэтому сырым JSON их протащить нельзя. Следствие: схемы, где обязателен один из нескольких
+     * аргументов (query_event_log, get_event_log_path — name|uuid|logDir), публикуются без этой
+     * альтернативы, и требование приходится дублировать словами в {@code description}.
+     */
     @SuppressWarnings("unchecked")
     private static McpSchema.JsonSchema toJsonSchema(Map<String, Object> schema) {
         if (schema == null) {
@@ -94,6 +124,10 @@ public class ToolSpecAdapter {
         Boolean additionalProperties = (addProps instanceof Boolean) ? (Boolean) addProps : null;
         Map<String, Object> defs = (Map<String, Object>) schema.get("$defs");
         Map<String, Object> definitions = (Map<String, Object>) schema.get("definitions");
+        if (schema.containsKey("anyOf") || schema.containsKey("oneOf")) {
+            LOG.log(Status.warning("inputSchema declares anyOf/oneOf, which MCP SDK's JsonSchema "
+                + "cannot carry — the alternative must be spelled out in the tool description"));
+        }
         return new McpSchema.JsonSchema(type, properties, required, additionalProperties, defs, definitions);
     }
 }

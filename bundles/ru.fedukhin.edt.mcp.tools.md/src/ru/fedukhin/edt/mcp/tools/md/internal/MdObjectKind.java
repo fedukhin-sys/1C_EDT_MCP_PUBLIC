@@ -14,6 +14,12 @@ package ru.fedukhin.edt.mcp.tools.md.internal;
  *    на диске. {@code true} только для CommonModule (без него EDT не распознаёт модуль).
  *    Для остальных — {@code false}: {@code create_md_object} вернёт путь, но файл создаст
  *    модель агента (например, через {@code add_extension_method_override}) при первом write'е.
+ *  - {@code creatable} — можно ли создать объект этого kind'а с нуля через {@code create_md_object}.
+ *    {@code false} у kind'ов, которые реестр знает только ради чтения и заимствования: EMF-фабрика
+ *    их создать может, но осмысленного объекта не выйдет без сопутствующих артефактов
+ *    (CommonForm без Form.form, CommonPicture без файла картинки) либо путь просто не проверялся
+ *    на живом EDT (планы счетов и видов расчёта, Task, BusinessProcess, ExchangePlan,
+ *    DocumentJournal).
  *
  * Конкретные EClass / EFactory для каждого kind подключаются в {@link MdObjectFactory}
  * (Plan 2) по {@code name} — registry хранит только метаданные про API-форму.
@@ -26,10 +32,12 @@ public final class MdObjectKind {
     private final boolean hasModule;
     private final String  moduleFileName;
     private final boolean requireEmptyModuleFile;
+    private final boolean creatable;
 
     MdObjectKind(String name, String containerFeatureName, String folderName,
                  boolean supportsAttributes, boolean hasModule,
-                 String moduleFileName, boolean requireEmptyModuleFile) {
+                 String moduleFileName, boolean requireEmptyModuleFile,
+                 boolean creatable) {
         this.name                   = name;
         this.containerFeatureName   = containerFeatureName;
         this.folderName             = folderName;
@@ -37,6 +45,7 @@ public final class MdObjectKind {
         this.hasModule              = hasModule;
         this.moduleFileName         = moduleFileName;
         this.requireEmptyModuleFile = requireEmptyModuleFile;
+        this.creatable              = creatable;
     }
 
     public String  name()                   { return name; }
@@ -46,4 +55,5 @@ public final class MdObjectKind {
     public boolean hasModule()              { return hasModule; }
     public String  moduleFileName()         { return moduleFileName; }
     public boolean requireEmptyModuleFile() { return requireEmptyModuleFile; }
+    public boolean creatable()              { return creatable; }
 }

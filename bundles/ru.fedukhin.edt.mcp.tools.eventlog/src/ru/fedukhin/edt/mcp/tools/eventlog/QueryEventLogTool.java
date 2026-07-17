@@ -37,7 +37,10 @@ public class QueryEventLogTool implements IMcpTool {
 
     @Override public String name() { return "query_event_log"; }
     @Override public String description() {
-        return "Query the 1C event log (.lgf/.lgp) with filters: date range, user, event, severity, comment, metadata";
+        // Требование «один из name/uuid/logDir» объявлено в схеме через anyOf, но MCP SDK его
+        // не публикует (см. ToolSpecAdapter.toJsonSchema) — поэтому дублируем словами.
+        return "Query the 1C event log (.lgf/.lgp) with filters: date range, user, event, severity, "
+             + "comment, metadata. Requires exactly one of: name, uuid, or logDir.";
     }
 
     @Override public Map<String, Object> inputSchema() {
@@ -110,6 +113,8 @@ public class QueryEventLogTool implements IMcpTool {
         out.put("offset", q.offset);
         out.put("order", q.descending ? "date_desc" : "date_asc");
         if (page.truncated) out.put("truncated", true);
+        // Активная партиция дописывается кластером: её хвост мог оборваться посреди записи.
+        if (page.partial) out.put("partial", true);
         out.put("events", records);
         return out;
     }
@@ -263,4 +268,12 @@ public class QueryEventLogTool implements IMcpTool {
     }
 
     @Override public boolean returnsInfobaseData() { return true; }
+
+    /** name/uuid — объявленные аргументы этого инструмента, поэтому им можно верить. */
+    @Override public String privacyInfobaseKey(Map<String, Object> args) {
+        if (args == null) return null;
+        if (args.get("name") instanceof String s && !s.isBlank()) return s;
+        if (args.get("uuid") instanceof String s && !s.isBlank()) return s;
+        return null;
+    }
 }
