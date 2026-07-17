@@ -35,7 +35,7 @@ Required помечены `*`.
 | `get_md_object` | `project*`, `fqn*`. Возвращает в т.ч. `tabularSections` (ТЧ с колонками) и `values` (значения Enum) |
 | `create_md_object` | `project*`, `kind*`, `name*`, `synonym`, `comment`. Не-creatable kind (CommonForm, CommonPicture, ChartOf*, Task, BusinessProcess, ExchangePlan, DocumentJournal) отбивается с подсказкой использовать `borrow_md_object` |
 | `create_external_object` | `project*` (проект внешних объектов), `kind*` (`ExternalDataProcessor`/`ExternalReport`), `name*`, `synonym`, `comment` |
-| `build_external_object` | `project*`, `fqn*`, `outPath*`, `serviceInfobase` (обязателен фактически — 1cv8 DESIGNER нужна свободная служебная ИБ: `/F<путь>` или `/S<сервер>\<база>`), `platformVersion`, `timeoutSeconds`. Сборка `.epf`/`.erf`. **Отказывается собирать при BSL-ошибках компиляции** (те же маркеры, что у `check_list_markers`) |
+| `build_external_object` | `project*`, `fqn*`, `outPath*`, `timeoutSeconds`. Сборка `.epf`/`.erf` штатным экспорт-сервисом EDT (`IExternalObjectDumper`); ИБ/учётка/версия платформы — из ассоциированного приложения проекта (`associate_infobase` обязателен), на время сборки ИБ блокируется. **Отказывается собирать при BSL-ошибках компиляции целевой обработки** (те же маркеры, что у `check_list_markers`); транзиентный «already connected» первым вызовом ретраит сам |
 | `add_md_template` | `project*`, `ownerFqn*` (`<Kind>.<Name>`), `templateName*`, `synonym`, `areaName` (default = templateName), `columns` (массив ширин), `rows` (массив строк), `overwrite` (default false) |
 | `rename_md_object` | `project*`, `fqn*`, `newName*` |
 | `set_md_property` | `project*`, `fqn*`, `property*`, `value*`, `path` |
@@ -134,8 +134,8 @@ Required помечены `*`.
 | `get_test_methods` | `project*`, `moduleFqn*` |
 | `install_test_runner` | `project*` |
 | `uninstall_test_runner` | `project*` |
-| `run_tests` | `project*`, `infobase*`, `moduleFqn`, `timeoutSeconds`. По таймауту процесс убивается принудительно → в результате `killed` |
-| `run_test_method` | `project*`, `infobase*`, `moduleFqn*`, `methodName*`, `timeoutSeconds` |
+| `run_tests` | `project*`, `infobase*`, `moduleFqn`, `user`, `password`, `timeoutSeconds`. `user`/`password` → `/N /P` для 1cv8 (без них — OS-аутентификация, иначе висит на диалоге логина). По таймауту процесс убивается принудительно → в результате `killed` |
+| `run_test_method` | `project*`, `infobase*`, `moduleFqn*`, `methodName*`, `user`, `password`, `timeoutSeconds` |
 
 ## Client + debug (17)
 | Tool | Args |

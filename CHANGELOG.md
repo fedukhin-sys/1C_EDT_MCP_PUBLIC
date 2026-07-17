@@ -2,6 +2,12 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [Не выпущено]
+
+### Документация
+
+- Скилл `edt-mcp` актуализирован до v1.19.2: `build_external_object` описан по новой схеме (без `serviceInfobase`/`platformVersion`, сборка штатным экспорт-сервисом EDT, нужна ассоциация проекта с ИБ), у `run_tests`/`run_test_method` задокументированы `user`/`password`, раздел «Что НЕ работает» сверен с кодом.
+
 ## [1.19.2] — 2026-07-17
 
 Правка по итогам live-smoke 1.19.1.

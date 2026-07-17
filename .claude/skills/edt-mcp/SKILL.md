@@ -197,21 +197,21 @@ Tool сам создаёт файл если его нет, дописывает
       ] } },
   // 3. ОБЯЗАТЕЛЬНО перед сборкой — проверка (сборка синтаксис не проверяет!)
   { "tool": "check_list_markers", "args": { "project": "ВнешниеОбработки" } },
-  // 4. собрать .epf (build_external_object сам откажется при BSL-ошибках)
+  // 4. собрать .epf штатным экспортом EDT (сам откажется при BSL-ошибках;
+  //    проекту нужна ассоциированная ИБ — associate_infobase)
   { "tool": "build_external_object", "args": {
       "project": "ВнешниеОбработки",
       "fqn": "ExternalDataProcessor.ДосудебнаяПретензия",
-      "outPath": "C:/out/ДосудебнаяПретензия.epf",
-      "serviceInfobase": "/F C:/temp/service_ib" } }
+      "outPath": "C:/out/ДосудебнаяПретензия.epf" } }
 ]
 ```
 
 - **`create_external_object`** пишет `src/ExternalDataProcessors/<Имя>/<Имя>.mdo` (skeleton с `producedTypes/objectType` + `containedObjects`; classId = id MdClass-а: `c3831ec8-d8d5-4f93-8a22-f9bfae07327f` обработка, `e41aff26-25cf-4bb6-b6c1-3f478a75f374` отчёт) и пустой `ObjectModule.bsl`. Логику печати (`СведенияОВнешнейОбработке`, `Печать(...)`) пишешь через `write_module`.
 - **`add_md_template`** генерит `Templates/<Имя>/Template.mxlx` и регистрит `<templates>` в `.mdo`. Ячейка: `text` ИЛИ `parameter`; `span`/`rowSpan` → объединение (`<merge>`); `bold`, `size`, `align` (`left`/`center`/`right`/`justify`), `valign` (`top`/`center`/`bottom`), `wrap`. **Объединение НЕ через `<i>`** — генератор сам пишет `<merge>` (0-based `r`/`c`, `w`=span−1). `ownerFqn` поддерживает не только внешние объекты, но и `DataProcessor.X`/`Report.X`/`Catalog.X`/`Document.X`. `overwrite=false` (default) не трогает существующий макет — ручную доводку вёрстки в редакторе EDT не затрёт.
 - Сумма ширин колонок должна влезать в одну печатную страницу портрета (эмпирически ≈820 ед.; 1060 → тело уходит на 2-ю страницу). В BSL печати ставь `ТабДок.АвтоМасштаб = Истина` (НЕ `РазмерБумаги = ТипРазмераБумаги.A4` — ошибка компиляции).
-- **`build_external_object`** собирает `.epf`/`.erf`: EDT-проект → Designer XML (внутренний export-сервис) → `1cv8 DESIGNER /LoadExternalDataProcessorOrReportFromFiles`. Аргументы: `project*`, `fqn*`, `outPath*`, `serviceInfobase` (фактически обязателен — DESIGNER'у нужна **свободная** служебная ИБ; строка подключения 1cv8: `/F<путь>` или `/S<сервер>\<база>`; на время сборки DESIGNER её блокирует), `platformVersion`, `timeoutSeconds`.
-- **⚠ Сборка `.epf` синтаксис НЕ проверяет** — ни 1cedtcli, ни 1cv8 не компилируют модуль, битый BSL молча уедет в файл. Поэтому `build_external_object` **сам отказывается собирать**, пока в проекте есть BSL-ошибки компиляции (те же маркеры, что у `check_list_markers`). Если собираешь внешним пайплайном — `check_list_markers` ДО сборки обязателен, это единственный барьер.
-- «Деплой» к внешним объектам не применяется: валидация — `check_list_markers` (blocker:0/critical:0), затем `build_external_object`. Грабли ручного пайплайна: кириллические пути для 1cedtcli лечатся junction'ом; фоновый конфигуратор EDT может держать служебную ИБ.
+- **`build_external_object`** собирает `.epf`/`.erf` **штатным экспорт-сервисом EDT** (`IExternalObjectDumper` — тот же, что за «Export» в IDE), без 1cv8 DESIGNER и служебной ИБ. Аргументы: `project*`, `fqn*`, `outPath*`, `timeoutSeconds`. ИБ, учётка и версия платформы берутся из **приложения, ассоциированного с проектом** (`associate_infobase` обязателен); на время сборки ИБ блокируется. Precheck скоупится на каталог целевой обработки — BSL-блокеры соседних обработок того же проекта сборке не мешают. Первое обращение к ИБ в свежем сеансе EDT может дать транзиентный «Infobase … is already connected» — инструмент сам ретраит один раз с паузой 1 с.
+- **⚠ Сборка `.epf` синтаксис НЕ проверяет** — ни экспорт EDT, ни ручной пайплайн (1cedtcli/1cv8) не компилируют модуль, битый BSL молча уедет в файл. Поэтому `build_external_object` **сам отказывается собирать**, пока у целевой обработки есть BSL-ошибки компиляции (те же маркеры, что у `check_list_markers`). Если собираешь внешним пайплайном — `check_list_markers` ДО сборки обязателен, это единственный барьер.
+- «Деплой» к внешним объектам не применяется: валидация — `check_list_markers` (blocker:0/critical:0), затем `build_external_object`. Если всё же собираешь ручным пайплайном вне EDT: кириллические пути для 1cedtcli лечатся junction'ом.
 
 ### Subsystem (командный интерфейс)
 ```jsonc
@@ -248,7 +248,8 @@ Tool сам создаёт файл если его нет, дописывает
   { "tool": "install_test_runner", "args": { "project": "X" } },
   { "tool": "create_test_module", "args": { "project": "X", "name": "МоиТесты", "language": "ru" } },
   { "tool": "add_test_method", "args": { "project": "X", "moduleFqn": "CommonModule.МоиТесты", "methodName": "Сценарий1", "body": "..." } },
-  { "tool": "run_test_method", "args": { "project": "X", "infobase": "МояИБ", "moduleFqn": "CommonModule.МоиТесты", "methodName": "Тест_Сценарий1" } }
+  // user/password — если в ИБ есть пользователи (без них 1cv8 виснет на диалоге логина до таймаута)
+  { "tool": "run_test_method", "args": { "project": "X", "infobase": "МояИБ", "moduleFqn": "CommonModule.МоиТесты", "methodName": "Тест_Сценарий1", "user": "Админ", "password": "..." } }
 ]
 ```
 
@@ -290,14 +291,14 @@ MCP-инструменты создают **минимальные** объек�
 12. **Расположение конфы** — для extension `parentConfigurationName` обязателен (имя родительской конфигурации). Если родителя не указать — extension не привяжется и deploy будет жаловаться на UUID-маппинг.
 13. **Текст запроса — только по фактическим метаданным.** Перед написанием любого запроса (наборы данных СКД, `add_dcs_data_set_query`, `set_dcs_query_text`, запросы в BSL) сверь по `.mdo`, что все таблицы, реквизиты и поля ТЧ существуют — НЕ выдумывай реквизиты «по аналогии» и не угадывай «стандартные» имена. `check_run` ошибки запроса СКД не ловит — «Поле не найдено» всплывёт только в рантайме 1С.
 
-## Что НЕ работает / не покрыто (по состоянию на v1.18.0)
+## Что НЕ работает / не покрыто (по состоянию на v1.19.2)
 
-Сверено с кодом ветки аудита 2026-07-17. Часть граблей прошлых редакций **закрыта** — см. «Починено в v1.18.0» ниже, не воспроизводи старые workaround'ы.
+Сверено с кодом main v1.19.2 (2026-07-17). Часть граблей прошлых редакций **закрыта** — см. «Починено в v1.18.0–v1.19.2» ниже, не воспроизводи старые workaround'ы.
 
 ### Актуальные ограничения
 
-- **Сборка `.epf` синтаксис НЕ проверяет.** Ни `1cedtcli export`, ни `1cv8 DESIGNER` не компилируют BSL — битый модуль молча уедет в файл. Инструмент `build_external_object` поэтому **сам отбивает сборку при BSL-ошибках** (те же маркеры, что у `check_list_markers`), но если собираешь внешним пайплайном — `check_list_markers` ДО сборки обязателен, это единственный барьер.
-- **xUnit `run_tests`/`run_test_method` не передают `/N /P`** — в схеме нет `user`/`password` (в отличие от `run_client`/`debug_client`, где они есть). На ИБ с пользователями запуск падает/виснет; нужна OS-аутентификация или база без пользователей. Также требуют предварительного `install_test_runner` на проекте.
+- **Сборка `.epf` синтаксис НЕ проверяет.** Ни штатный экспорт EDT, ни `1cedtcli export`, ни `1cv8 DESIGNER` не компилируют BSL — битый модуль молча уедет в файл. Инструмент `build_external_object` поэтому **сам отбивает сборку при BSL-ошибках** (те же маркеры, что у `check_list_markers`), но если собираешь внешним пайплайном — `check_list_markers` ДО сборки обязателен, это единственный барьер.
+- **xUnit `run_tests`/`run_test_method` требуют предварительного `install_test_runner`** на проекте. На ИБ с пользователями передавай `user`/`password` — без них 1cv8 полагается на OS-аутентификацию, иначе виснет на диалоге логина до таймаута.
 - **Взаимоисключающие аргументы не публикуются в схеме.** `query_event_log` и `get_event_log_path` требуют ровно один из `name`/`uuid`/`logDir`, но MCP SDK не отдаёт клиенту `anyOf`/`oneOf` (record `JsonSchema` не имеет таких полей). Требование продублировано словами в `description` — читай description, схема тут неполна.
 - **`check_run` НЕ ловит ошибки в тексте запроса СКД** — «Поле не найдено» вылезет только в рантайме 1С при открытии отчёта. Сверяй запрос по `.mdo` руками (правило 13).
 - **Деплой может зависнуть** при «грязной» BM-сериализации. Если deploy висит больше 5-10 минут — отмени, кильни 1cv8, перезапусти.
@@ -305,13 +306,15 @@ MCP-инструменты создают **минимальные** объек�
 - **Extension attributes на adopted Document + form binding** — см. «Известное ограничение» выше.
 - **Не-creatable kind'ы**: `CommonForm`, `CommonPicture`, `ChartOf*`, `Task`, `BusinessProcess`, `ExchangePlan`, `DocumentJournal` доступны только для чтения и `borrow_md_object` — `create_md_object` их отбивает намеренно (EMF-фабрика создаст пустышку без `Form.form`/файла картинки).
 
-### Починено в v1.18.0 — старые workaround'ы больше не нужны
+### Починено в v1.18.0–v1.19.2 — старые workaround'ы больше не нужны
 
 - **`deploy_project` на EDT 2026.x** (был `ClassCastException: InfobaseConflictResolutionResult cannot be cast to InfobaseConflictResolution`) — **починен**. Обход через `1cedtcli export` + `1cv8 DESIGNER /LoadCfg` больше не требуется.
 - **`deploy_project` на EDT 2023.x** падал `NoSuchMethodError` на `isConnected` — **починен** (рефлексия + фолбэк). ⚠ Live-smoke на 2023.x не проводился: ожидается, но не проверено.
 - **Табличные части читаются**: `list_attributes` / `get_md_object` возвращают ключ `tabularSections`.
 - **Перечисления читаются и пополняются**: ключ `values` в `list_attributes` / `get_md_object` + инструмент `add_enum_value`.
-- **Сборка `.epf` инструментом есть** — `build_external_object` (с обязательным precheck).
+- **Сборка `.epf` инструментом есть** — `build_external_object` (с обязательным precheck). С v1.19.0 — на штатном экспорт-сервисе EDT (`IExternalObjectDumper`): параметры `serviceInfobase`/`platformVersion` **удалены из схемы**, служебная ИБ и 1cv8 DESIGNER не нужны; нужна ассоциация проекта с ИБ (`associate_infobase`). С v1.19.1 precheck скоупится на целевую обработку; с v1.19.2 — авто-ретрай транзиентного «already connected».
+- **`run_tests`/`run_test_method` принимают `user`/`password`** (`/N /P` для 1cv8) — запуск на ИБ с пользователями работает (подтверждено live).
+- **`create_project type=configuration` работает** — создаёт скелет с `Configuration.mdo`; `get_project` видит тип, `create_md_object` не падает «namespace may not be null» (починено в v1.19.0).
 - **`check_list_markers path`** стал настоящим фильтром, DTO несёт реальный путь маркера.
 - **`query_event_log order=date_desc`** больше не возвращает самые старые записи; добавлен ключ `partial` для недочитанного хвоста активной `.lgp`.
 - **`run_tests`**: честный таймаут (`killed` в результате), executor больше не клинит.
