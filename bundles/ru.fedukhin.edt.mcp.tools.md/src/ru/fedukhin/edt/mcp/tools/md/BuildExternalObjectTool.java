@@ -127,13 +127,17 @@ public final class BuildExternalObjectTool implements IMcpTool {
         try { project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor()); }
         catch (CoreException ignored) { /* best-effort */ }
 
-        String mdoPath = "src/" + folder + "/" + name + "/" + name + ".mdo";
+        String objectDir = "src/" + folder + "/" + name;
+        String mdoPath = objectDir + "/" + name + ".mdo";
         if (!project.getFile(mdoPath).exists()) {
             throw new ToolException("external object '" + fqn + "' not found: no .mdo at " + mdoPath);
         }
 
+        // Precheck скоупится на каталог собираемой обработки, а не на весь проект: .epf
+        // содержит одну обработку, поэтому битый BSL в соседней (external-object проект может
+        // держать их десятками) в этот файл не попадёт и блокировать сборку не должен.
         BuildPrecheck.Verdict verdict = BuildPrecheck.of(
-                markerReader.read(project, null, null, null, null));
+                markerReader.read(project, objectDir, null, null, null));
         if (!verdict.blockers().isEmpty()) {
             throw new ToolException(blockerMessage(projectName, verdict.blockers()));
         }

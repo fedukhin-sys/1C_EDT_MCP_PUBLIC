@@ -5,7 +5,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -63,9 +62,8 @@ public class BuildExternalObjectToolTest {
         outFile = Files.createTempDirectory("edt-mcp-test-out-").resolve("Печать.epf");
 
         markerReader = mock(MarkerReader.class);
-        when(markerReader.read(any(IProject.class), isNull(), isNull(), anySet(), isNull()))
-            .thenReturn(markers);
-        when(markerReader.read(any(IProject.class), isNull(), isNull(), isNull(), isNull()))
+        // precheck скоупится на каталог целевой обработки — path непустой (не isNull).
+        when(markerReader.read(any(IProject.class), anyString(), isNull(), isNull(), isNull()))
             .thenReturn(markers);
 
         externalObject = mock(EObject.class);
@@ -161,6 +159,19 @@ public class BuildExternalObjectToolTest {
         }
 
         verify(dumper, never()).dump(any(), any(), any(), any());
+    }
+
+    /**
+     * External-object проект держит десятки обработок; .epf собирается для одной, поэтому
+     * precheck обязан смотреть маркеры только её каталога — иначе блокер в соседней обработке
+     * (её битый BSL в этот .epf не попадёт) не даст собрать целевую.
+     */
+    @Test
+    public void precheck_isScopedToTargetObjectDir() throws Exception {
+        BuildExternalObjectTool tool = toolFor(List.of(), true);
+        call(tool);
+        verify(markerReader).read(any(IProject.class), eq("src/ExternalDataProcessors/Печать"),
+            isNull(), isNull(), isNull());
     }
 
     @Test
