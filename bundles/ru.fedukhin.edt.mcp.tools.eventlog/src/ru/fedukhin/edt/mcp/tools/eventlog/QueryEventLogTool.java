@@ -55,7 +55,7 @@ public class QueryEventLogTool implements IMcpTool {
         properties.put("to",   strProp("Inclusive end date/time, ISO-8601 (e.g. 2026-05-31T23:59:59)"));
 
         properties.put("severity",        arrOfStr("Severity filter: Information/Warning/Error/Note (or I/W/E/N)"));
-        properties.put("user",            arrOfStr("User display name(s) (e.g. \"ФедухинАА\")"));
+        properties.put("user",            arrOfStr("User display name(s) (e.g. \"ИвановИИ\")"));
         properties.put("userUuid",        arrOfStr("User UUID(s) — alternative to user name"));
         properties.put("application",     arrOfStr("Application name(s) (e.g. 1CV8C, Designer, BackgroundJob)"));
         properties.put("event",           arrOfStr("Exact event name(s) (e.g. \"_$Data$_.Update\")"));

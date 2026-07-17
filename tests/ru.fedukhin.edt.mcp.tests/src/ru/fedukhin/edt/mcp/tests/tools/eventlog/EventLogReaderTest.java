@@ -22,7 +22,7 @@ public class EventLogReaderTest {
     private static final String LGF = ""
         + "1CV8LOG(ver 2.0)\nuuid\n\n"
         + "{1,uuid-1,\"\",1},\n"
-        + "{1,uuid-2,\"ФедухинАА\",4},\n"
+        + "{1,uuid-2,\"ИвановИИ\",4},\n"
         + "{2,\"ASUS-TUF\",1},\n"
         + "{3,\"1CV8C\",6},\n"
         + "{3,\"BackgroundJob\",5},\n"
@@ -54,13 +54,13 @@ public class EventLogReaderTest {
         Path dir = tmp.newFolder("log").toPath();
         writeLog(dir, "20260406000000.lgp", List.of(
             evt(20260406120000L, "I", 1, 1, "noise",   1),
-            evt(20260407120000L, "E", 4, 9, "Расширение ЕССКонтракты применено с ошибкой", 7),
-            evt(20260408120000L, "E", 1, 9, "Расширение ЕССКонтракты применено с ошибкой", 8),
+            evt(20260407120000L, "E", 4, 9, "Расширение ДемоРасширение применено с ошибкой", 7),
+            evt(20260408120000L, "E", 1, 9, "Расширение ДемоРасширение применено с ошибкой", 8),
             evt(20260409120000L, "I", 4, 13, "Update", 7)
         ));
         EventLogQuery q = new EventLogQuery().from("2026-04-01").to("2026-05-31T23:59:59");
         q.severity(List.of("Error"));
-        q.commentContains = "ессКонтракты";
+        q.commentContains = "демоРасширение";
         EventLogReader.Page page = new EventLogReader().read(dir, q);
         assertEquals(2, page.matchedTotal);
         assertEquals(2, page.records.size());
@@ -77,7 +77,7 @@ public class EventLogReaderTest {
             evt(20260407120000L, "I", 4, 1, "Фед session finish",7)
         ));
         EventLogQuery q = new EventLogQuery();
-        q.user(List.of("ФедухинАА"));
+        q.user(List.of("ИвановИИ"));
         EventLogReader.Page page = new EventLogReader().read(dir, q);
         assertEquals(3, page.matchedTotal);
         assertEquals(3, page.records.size());
@@ -96,7 +96,7 @@ public class EventLogReaderTest {
             evt(20260406120004L, "I", 4, 1, "e", 1)
         ));
         EventLogQuery q = new EventLogQuery();
-        q.user(List.of("ФедухинАА"));
+        q.user(List.of("ИвановИИ"));
         q.offset = 1;
         q.limit = 2;
         EventLogReader.Page page = new EventLogReader().read(dir, q);
@@ -141,7 +141,7 @@ public class EventLogReaderTest {
         writeLog(dir, "20260406000000.lgp", events);
 
         EventLogQuery q = new EventLogQuery();
-        q.user(List.of("ФедухинАА"));
+        q.user(List.of("ИвановИИ"));
         q.descending = true;
         q.limit = 3;
         EventLogReader.Page page = new EventLogReader().read(dir, q);
@@ -164,7 +164,7 @@ public class EventLogReaderTest {
         writeLog(dir, "20260406000000.lgp", events);
 
         EventLogQuery q = new EventLogQuery();
-        q.user(List.of("ФедухинАА"));
+        q.user(List.of("ИвановИИ"));
         q.descending = true;
         q.offset = 2;
         q.limit = 2;
@@ -192,7 +192,7 @@ public class EventLogReaderTest {
             evt(20260406120001L, "I", 4, 1, "new2", 1)));
 
         EventLogQuery q = new EventLogQuery();
-        q.user(List.of("ФедухинАА"));
+        q.user(List.of("ИвановИИ"));
         q.descending = true;
         q.limit = 3;
         EventLogReader.Page page = new EventLogReader().read(dir, q);
@@ -210,7 +210,7 @@ public class EventLogReaderTest {
             evt(20260406120001L, "I", 4, 1, "last",  1)
         ));
         EventLogQuery q = new EventLogQuery();
-        q.user(List.of("ФедухинАА"));
+        q.user(List.of("ИвановИИ"));
         q.descending = true;
         EventLogReader.Page page = new EventLogReader().read(dir, q);
         assertEquals("last", page.records.get(0).comment);

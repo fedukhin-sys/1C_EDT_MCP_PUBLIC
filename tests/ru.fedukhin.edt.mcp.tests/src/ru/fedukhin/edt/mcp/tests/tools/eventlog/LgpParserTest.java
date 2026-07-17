@@ -21,7 +21,7 @@ public class LgpParserTest {
     private static EventLogReferences refs() {
         EventLogReferences r = new EventLogReferences();
         r.users.put(1, new EventLogReferences.User("uuid-1", ""));
-        r.users.put(4, new EventLogReferences.User("61325421-dc2a-4613-b463-50312df65072", "ФедухинАА"));
+        r.users.put(4, new EventLogReferences.User("22222222-2222-2222-2222-222222222222", "ИвановИИ"));
         r.computers.put(1, "ASUS-TUF");
         r.applications.put(5, "BackgroundJob");
         r.applications.put(6, "1CV8C");
@@ -36,7 +36,7 @@ public class LgpParserTest {
     private static final String SAMPLE =
         "1CV8LOG(ver 2.0)\nuuid\n\n"
         + "{20260504000006,N,{0,0},1,1,5,1233,6,I,\"\",1,{\"B\",0},\"\",1,1,0,4,0,{2,1,1,2,1}},\n"
-        + "{20260504000008,C,{2454a189a4080,5bd},4,1,6,1233,9,E,\"Расширение ЕССКонтракты применено с ошибкой\",1,{\"U\",\"u\"},\"\",1,1,0,4,0,{2,1,1,2,1}}\n";
+        + "{20260504000008,C,{2454a189a4080,5bd},4,1,6,1233,9,E,\"Расширение ДемоРасширение применено с ошибкой\",1,{\"U\",\"u\"},\"\",1,1,0,4,0,{2,1,1,2,1}}\n";
 
     /**
      * Активную партицию кластер дописывает прямо во время чтения, поэтому её хвост штатно
@@ -98,12 +98,12 @@ public class LgpParserTest {
         EventRecord e1 = out.get(1);
         assertEquals("C", e1.txStatus);
         assertEquals("2454a189a4080/5bd", e1.txId);
-        assertEquals("ФедухинАА", e1.user);
-        assertEquals("61325421-dc2a-4613-b463-50312df65072", e1.userUuid);
+        assertEquals("ИвановИИ", e1.user);
+        assertEquals("22222222-2222-2222-2222-222222222222", e1.userUuid);
         assertEquals("1CV8C", e1.application);
         assertEquals("_$Session$_.ConfigExtensionApplyError", e1.event);
         assertEquals("Error", e1.severity);
-        assertEquals("Расширение ЕССКонтракты применено с ошибкой", e1.comment);
+        assertEquals("Расширение ДемоРасширение применено с ошибкой", e1.comment);
     }
 
     @Test

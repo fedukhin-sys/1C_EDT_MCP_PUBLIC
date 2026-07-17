@@ -244,7 +244,7 @@ public class MdObjectBorrower {
 
         // CommonForm: kind содержит inline-nested Form.form + Module.bsl, которые
         // .mdo skeleton не передаёт. Без них редактор формы зависает и Enterprise
-        // показывает пустую форму. Эталон полного borrow — Юпитер extensions:
+        // показывает пустую форму. Эталон полного borrow — реальные extensions:
         // 4 файла (.mdo с <form>Extended</form>, Form.form, BaseForm/Form.form, Module.bsl).
         if ("CommonForm".equals(kind)) {
             copyCommonFormFiles(baseIProject, extIProject, name);

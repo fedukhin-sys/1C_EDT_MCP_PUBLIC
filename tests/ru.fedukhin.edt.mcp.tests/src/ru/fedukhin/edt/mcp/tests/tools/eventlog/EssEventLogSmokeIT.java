@@ -15,46 +15,68 @@ import ru.fedukhin.edt.mcp.tools.eventlog.internal.EventLogReader;
 import ru.fedukhin.edt.mcp.tools.eventlog.internal.EventRecord;
 
 /**
- * Smoke test against the live ЕСС cluster log on this developer machine.
+ * Smoke test against a live cluster event log on a developer machine.
  *
- * <p>Skipped (via {@link org.junit.Assume}) on machines that don't have the
- * fixed log path — these assertions exercise the parser on a real, large,
- * actively-written {@code 1Cv8.lgf}/{@code *.lgp} pair.
+ * <p>Skipped (via {@link org.junit.Assume}) unless the log directory is provided — these
+ * assertions exercise the parser on a real, large, actively-written {@code 1Cv8.lgf}/{@code *.lgp}
+ * pair, which no CI box has.
  *
- * <p>If you ever rerun this on a fresh box, edit the constants to point at
- * whichever cluster IB uuid your ЕСС resolves to (find it via
- * {@code GetEventLogPathTool} or by reading {@code reg_1541/1CV8Clst.lst}).
+ * <p>Everything machine- and client-specific is passed via system properties so nothing
+ * identifying lands in the repository (this file ships to a public mirror). To run it, point
+ * the parser at whichever cluster IB your log resolves to — find the uuid via
+ * {@code GetEventLogPathTool} or {@code reg_1541/1CV8Clst.lst}:
+ *
+ * <pre>
+ *   -Dedt.mcp.eventlog.smoke.dir="C:\…\srvinfo\reg_1541\&lt;ib-uuid&gt;\1Cv8Log"
+ *   -Dedt.mcp.eventlog.smoke.comment=&lt;substring of a comment to match&gt;   (optional)
+ *   -Dedt.mcp.eventlog.smoke.user=&lt;user name to filter&gt;                  (optional)
+ *   -Dedt.mcp.eventlog.smoke.out=&lt;dir for dumps&gt;                         (optional, default: target/)
+ * </pre>
  */
 public class EssEventLogSmokeIT {
 
-    private static final Path ESS_LOG = Paths.get(
-        "C:\\Program Files (x86)\\1cv8\\srvinfo\\reg_1541\\04c66542-e27a-478f-b49f-8144e410edf2\\1Cv8Log");
+    /** Log directory; when unset the tests skip. No default — a hardcoded path would leak a machine. */
+    private static final String LOG_DIR  = System.getProperty("edt.mcp.eventlog.smoke.dir");
+    private static final String COMMENT  = System.getProperty("edt.mcp.eventlog.smoke.comment");
+    private static final String USER     = System.getProperty("edt.mcp.eventlog.smoke.user");
+    private static final Path   OUT_DIR  = Paths.get(
+            System.getProperty("edt.mcp.eventlog.smoke.out", "target"));
 
-    @Test
-    public void scenario1_extensionApplyErrors_aprMay2026() throws Exception {
-        assumeTrue("ESS log not present on this machine", Files.isDirectory(ESS_LOG));
-
-        EventLogQuery q = new EventLogQuery().from("2026-04-01").to("2026-05-31T23:59:59");
-        q.severity(List.of("Error"));
-        q.commentContains = "ЕССКонтракты";
-        q.limit = 100;
-
-        EventLogReader.Page page = new EventLogReader().read(ESS_LOG, q);
-        dump(Paths.get("E:\\EDTProjects\\EDT_MCP\\target\\smoke-scenario1.txt"), page, "scenario1");
-        assertTrue("scanned > 0 expected on live ESS log", page.scanned > 0);
+    private static Path logDir() {
+        return LOG_DIR == null ? null : Paths.get(LOG_DIR);
     }
 
     @Test
-    public void scenario2_userFedukhinActivity() throws Exception {
-        assumeTrue("ESS log not present on this machine", Files.isDirectory(ESS_LOG));
+    public void scenario1_commentFilteredErrors() throws Exception {
+        Path log = logDir();
+        assumeTrue("set -Dedt.mcp.eventlog.smoke.dir to a live log directory to run this smoke",
+            log != null && Files.isDirectory(log));
+        assumeTrue("set -Dedt.mcp.eventlog.smoke.comment to a comment substring", COMMENT != null);
+
+        EventLogQuery q = new EventLogQuery().from("2026-04-01").to("2026-05-31T23:59:59");
+        q.severity(List.of("Error"));
+        q.commentContains = COMMENT;
+        q.limit = 100;
+
+        EventLogReader.Page page = new EventLogReader().read(log, q);
+        dump(OUT_DIR.resolve("smoke-scenario1.txt"), page, "scenario1");
+        assertTrue("scanned > 0 expected on live log", page.scanned > 0);
+    }
+
+    @Test
+    public void scenario2_userFilteredActivity() throws Exception {
+        Path log = logDir();
+        assumeTrue("set -Dedt.mcp.eventlog.smoke.dir to a live log directory to run this smoke",
+            log != null && Files.isDirectory(log));
+        assumeTrue("set -Dedt.mcp.eventlog.smoke.user to a user name", USER != null);
 
         EventLogQuery q = new EventLogQuery().from("2026-05-01").to("2026-05-31T23:59:59");
-        q.user(List.of("ФедухинАА"));
+        q.user(List.of(USER));
         q.limit = 50;
 
-        EventLogReader.Page page = new EventLogReader().read(ESS_LOG, q);
-        dump(Paths.get("E:\\EDTProjects\\EDT_MCP\\target\\smoke-scenario2.txt"), page, "scenario2");
-        assertTrue("scanned > 0 expected on live ESS log", page.scanned > 0);
+        EventLogReader.Page page = new EventLogReader().read(log, q);
+        dump(OUT_DIR.resolve("smoke-scenario2.txt"), page, "scenario2");
+        assertTrue("scanned > 0 expected on live log", page.scanned > 0);
     }
 
     private static void dump(Path file, EventLogReader.Page page, String tag) throws Exception {

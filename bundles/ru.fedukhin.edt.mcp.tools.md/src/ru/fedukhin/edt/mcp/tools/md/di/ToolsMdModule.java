@@ -1,20 +1,15 @@
 package ru.fedukhin.edt.mcp.tools.md.di;
 
-import com._1c.g5.v8.dt.cli.api.workspace.IExportConfigurationFilesApi;
 import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IConfigurationProvider;
 import com._1c.g5.v8.dt.core.platform.IResourceLookup;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
-import com._1c.g5.v8.dt.platform.services.core.runtimes.environments.IResolvableRuntimeInstallationManager;
-import com._1c.g5.v8.dt.platform.services.core.runtimes.execution.IRuntimeComponentManager;
-import com._1c.g5.v8.dt.platform.version.IRuntimeVersionSupport;
+import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumper;
 import com._1c.g5.v8.dt.validation.marker.v2.IMarkerManagerV2;
 import com._1c.g5.wiring.AbstractServiceAwareModule;
 import com.e1c.g5.v8.dt.check.settings.ICheckRepository;
-import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import org.eclipse.core.runtime.Plugin;
-import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
 import ru.fedukhin.edt.mcp.tools.md.BuildExternalObjectTool;
 import ru.fedukhin.edt.mcp.tools.md.internal.ExternalObjectBuilder;
 import ru.fedukhin.edt.mcp.tools.quality.internal.CheckCatalog;
@@ -82,13 +77,11 @@ public final class ToolsMdModule extends AbstractServiceAwareModule {
         bind(IConfigurationProvider.class).toService();
         bind(IResourceLookup.class).toService();
 
-        // build_external_object: экспорт EDT→XML, резолв 1cv8.exe, precheck по маркерам.
+        // build_external_object: сборку .epf делает штатный сервис EDT (он же выгружает XML,
+        // находит ИБ проекта и запускает платформу), нам остаётся precheck по маркерам.
         // MarkerReader/CheckCatalog приезжают из tools.quality — читаем те же маркеры,
         // что показывает check_list_markers, а не собственную их копию.
-        bind(IExportConfigurationFilesApi.class).toService();
-        bind(IRuntimeVersionSupport.class).toService();
-        bind(IResolvableRuntimeInstallationManager.class).toService();
-        bind(IRuntimeComponentManager.class).toService();
+        bind(IExternalObjectDumper.class).toService();
         bind(IMarkerManagerV2.class).toService();
         bind(ICheckRepository.class).toService();
         bind(CheckCatalog.class).in(Singleton.class);
@@ -158,17 +151,5 @@ public final class ToolsMdModule extends AbstractServiceAwareModule {
         bind(AddMdTemplateTool.class);
         // 2026-07-17 — Task 5 аудита: сборка .epf/.erf
         bind(BuildExternalObjectTool.class);
-    }
-
-    /**
-     * {@code RuntimeCli.DefaultExecutableResolver} — резолв 1cv8.exe по версии платформы.
-     * Через {@code @Provides}, а не {@code bind().to()}: его конструктор не помечен
-     * {@code @Inject}, и JIT-биндинг Guice его не соберёт.
-     */
-    @Provides
-    @Singleton
-    RuntimeCli.ExecutableResolver provideExecutableResolver(IResolvableRuntimeInstallationManager im,
-                                                            IRuntimeComponentManager cm) {
-        return new RuntimeCli.DefaultExecutableResolver(im, cm);
     }
 }

@@ -1,32 +1,34 @@
 package ru.fedukhin.edt.mcp.tests.tools.md;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.nio.charset.StandardCharsets;
+import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IWorkspaceRoot;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.emf.ecore.EObject;
 import org.junit.Test;
-import org.mockito.ArgumentCaptor;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.md.BuildExternalObjectTool;
 import ru.fedukhin.edt.mcp.tools.md.internal.ExternalObjectBuilder;
@@ -34,36 +36,31 @@ import ru.fedukhin.edt.mcp.tools.quality.internal.CheckMarker;
 import ru.fedukhin.edt.mcp.tools.quality.internal.MarkerReader;
 
 /**
- * {@code build_external_object} — единственный автоматический барьер между «битым BSL»
- * и собранным .epf: 1cv8 DESIGNER синтаксис не проверяет и молча кладёт сломанный
- * модуль в файл, поэтому precheck по маркерам обязателен ДО экспорта.
+ * {@code build_external_object} — сборка внешнего объекта в .epf штатным сервисом EDT
+ * {@link IExternalObjectDumper} (тот же путь, что «Экспорт» в IDE: XML-выгрузка + запуск
+ * платформы, ИБ и учётка берутся из ассоциированного с проектом приложения).
  *
- * <p>Реальную сборку тесты не гоняют: экспорт (внутренний EDT-сервис), резолв 1cv8.exe и
- * запуск процесса подменены сеймами. Проверяется оркестрация — порядок шагов, командная
- * строка, трактовка exit-кодов.
+ * <p>Инструмент отвечает за то, чего сервис не делает: precheck по маркерам (ни выгрузка,
+ * ни платформа синтаксис BSL не проверяют — сломанный модуль молча уехал бы в .epf),
+ * удаление прошлого файла, таймаут и проверку результата на диске.
+ *
+ * <p>Сам dump тесты не гоняют: сервис EDT и резолв объекта в BM подменены сеймами.
  */
 public class BuildExternalObjectToolTest {
 
-    private static final String EXE = "C:\\1cv8\\bin\\1cv8.exe";
-    private static final String IB  = "/FC:\\ib\\service";
-
-    private MarkerReader               markerReader;
-    private ExternalObjectBuilder.ProjectExporter exporter;
-    private ExternalObjectBuilder.ProcessFactory  processFactory;
-    private Process                    process;
-    private Path                       outFile;
-    private Path                       exportDir;
+    private MarkerReader                        markerReader;
+    private IExternalObjectDumper               dumper;
+    private ExternalObjectBuilder.ObjectResolver resolver;
+    private Path                                outFile;
+    private EObject                             externalObject;
 
     /**
      * Собирает инструмент на моках. {@code markers} — что вернёт MarkerReader;
-     * {@code exitCode} — с чем завершится 1cv8; {@code producesEpf} — создаст ли он выходной файл.
+     * {@code producesEpf} — создаст ли dump выходной файл.
      */
-    private BuildExternalObjectTool toolFor(List<CheckMarker> markers, int exitCode, boolean producesEpf)
+    private BuildExternalObjectTool toolFor(List<CheckMarker> markers, boolean producesEpf)
             throws Exception {
-        outFile   = Files.createTempDirectory("edt-mcp-test-out-").resolve("Печать.epf");
-        exportDir = Files.createTempDirectory("edt-mcp-test-xml-");
-        // Экспортёр обязан положить корневой .xml объекта — по нему строится команда 1cv8.
-        Files.writeString(exportDir.resolve("Печать.xml"), "<x/>");
+        outFile = Files.createTempDirectory("edt-mcp-test-out-").resolve("Печать.epf");
 
         markerReader = mock(MarkerReader.class);
         when(markerReader.read(any(IProject.class), isNull(), isNull(), anySet(), isNull()))
@@ -71,28 +68,28 @@ public class BuildExternalObjectToolTest {
         when(markerReader.read(any(IProject.class), isNull(), isNull(), isNull(), isNull()))
             .thenReturn(markers);
 
-        exporter = mock(ExternalObjectBuilder.ProjectExporter.class);
+        externalObject = mock(EObject.class);
+        resolver = mock(ExternalObjectBuilder.ObjectResolver.class);
+        when(resolver.resolve(any(IProject.class), anyString())).thenReturn(externalObject);
 
-        process = mock(Process.class);
-        when(process.waitFor(anyLong(), any(TimeUnit.class))).thenAnswer(inv -> {
-            if (producesEpf) {
-                Files.createDirectories(outFile.getParent());
-                Files.writeString(outFile, "epf-bytes");
-            }
-            return true;
-        });
-        when(process.exitValue()).thenReturn(exitCode);
+        dumper = mock(IExternalObjectDumper.class);
+        if (producesEpf) {
+            doAnswer(inv -> {
+                Path target = inv.getArgument(2);
+                Files.createDirectories(target.getParent());
+                Files.writeString(target, "epf-bytes");
+                return null;
+            }).when(dumper).dump(any(), any(), any(), any());
+        }
 
-        processFactory = mock(ExternalObjectBuilder.ProcessFactory.class);
-        when(processFactory.start(any(), any())).thenReturn(process);
+        IWorkspaceRoot root = root();
+        return new BuildExternalObjectTool(() -> root, markerReader,
+            new ExternalObjectBuilder(dumper, resolver));
+    }
 
-        ExternalObjectBuilder builder = new ExternalObjectBuilder(
-            exporter, version -> new File(EXE), processFactory, () -> exportDir);
-
+    private IWorkspaceRoot root() {
         IFile mdoFile = mock(IFile.class);
         when(mdoFile.exists()).thenReturn(true);
-        when(mdoFile.getContents()).thenAnswer(inv ->
-            new ByteArrayInputStream("<x/>".getBytes(StandardCharsets.UTF_8)));
         IProject project = mock(IProject.class);
         when(project.exists()).thenReturn(true);
         when(project.isOpen()).thenReturn(true);
@@ -100,69 +97,60 @@ public class BuildExternalObjectToolTest {
         when(project.getFile("src/ExternalDataProcessors/Печать/Печать.mdo")).thenReturn(mdoFile);
         IWorkspaceRoot root = mock(IWorkspaceRoot.class);
         when(root.getProject("ВнешниеОбработки")).thenReturn(project);
-
-        return new BuildExternalObjectTool(() -> root, markerReader, builder, p -> "8.3.27");
-    }
-
-    private Map<String, Object> callOk() throws Exception {
-        return call(toolFor(List.of(), 0, true));
+        return root;
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> call(BuildExternalObjectTool tool) throws Exception {
         return (Map<String, Object>) tool.call(Map.of(
-            "project",         "ВнешниеОбработки",
-            "fqn",             "ExternalDataProcessor.Печать",
-            "outPath",         outFile.toString(),
-            "serviceInfobase", IB));
-    }
-
-    private List<String> capturedCommand() throws Exception {
-        ArgumentCaptor<List<String>> cmd = ArgumentCaptor.forClass(List.class);
-        verify(processFactory).start(cmd.capture(), any());
-        return cmd.getValue();
+            "project", "ВнешниеОбработки",
+            "fqn",     "ExternalDataProcessor.Печать",
+            "outPath", outFile.toString()));
     }
 
     // --- happy path -------------------------------------------------------
 
     @Test
-    public void buildsEpf_viaExportThenDesignerLoad() throws Exception {
-        Map<String, Object> result = callOk();
+    public void buildsEpf_viaEdtDumpService() throws Exception {
+        Map<String, Object> result = call(toolFor(List.of(), true));
 
         assertEquals(outFile.toString(), result.get("epfPath"));
-        verify(exporter).export(eq("ВнешниеОбработки"), any(Path.class));
-
-        List<String> cmd = capturedCommand();
-        assertEquals(EXE, cmd.get(0));
-        assertEquals("DESIGNER", cmd.get(1));
-        assertTrue("строка подключения к служебной ИБ обязана быть в команде", cmd.contains(IB));
-
-        int load = cmd.indexOf("/LoadExternalDataProcessorOrReportFromFiles");
-        assertTrue("нужен /LoadExternalDataProcessorOrReportFromFiles", load > 0);
-        assertEquals("первый аргумент — корневой .xml объекта",
-            exportDir.resolve("Печать.xml").toString(), cmd.get(load + 1));
-        assertEquals("второй аргумент — выходной .epf", outFile.toString(), cmd.get(load + 2));
+        assertEquals("ExternalDataProcessor.Печать", result.get("fqn"));
+        verify(resolver).resolve(any(IProject.class), eq("ExternalDataProcessor.Печать"));
+        verify(dumper).dump(any(IProject.class), eq(externalObject), eq(outFile),
+            any(IProgressMonitor.class));
     }
 
-    /** 1cv8 при ошибке ничего не пишет в stderr — без /Out диагностики не будет вовсе. */
+    /**
+     * Файл мог остаться от прошлой сборки: без удаления «dump отработал вхолостую»
+     * выглядел бы как успех.
+     */
     @Test
-    public void commandLine_capturesDesignerLogViaOut() throws Exception {
-        callOk();
+    public void staleOutputFile_isRemovedBeforeDump() throws Exception {
+        BuildExternalObjectTool tool = toolFor(List.of(), false);
+        Files.createDirectories(outFile.getParent());
+        Files.writeString(outFile, "старый epf");
 
-        List<String> cmd = capturedCommand();
-        int out = cmd.indexOf("/Out");
-        assertTrue("нужен /Out для диагностики", out > 0);
-        assertTrue(cmd.contains("/DisableStartupDialogs"));
-        assertTrue(cmd.contains("/DisableStartupMessages"));
+        doAnswer(inv -> {
+            assertFalse("прошлый .epf обязан быть удалён до dump", Files.exists(outFile));
+            return null;
+        }).when(dumper).dump(any(), any(), any(), any());
+
+        try {
+            call(tool);
+            fail("dump не создал файл — обязана быть ошибка");
+        } catch (ToolException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("не создан"));
+        }
     }
 
     // --- precheck ---------------------------------------------------------
 
     @Test
-    public void precheck_blocksOnBslCompileError_andSkipsExportAndProcess() throws Exception {
+    public void precheck_blocksOnBslCompileError_andSkipsDump() throws Exception {
         BuildExternalObjectTool tool = toolFor(
             List.of(new CheckMarker("m1", "ВнешниеОбработки", "", 12, "error", "BslEditor",
-                "edt", "Ожидается выражение", null)), 0, true);
+                "edt", "Ожидается выражение", null)), true);
 
         try {
             call(tool);
@@ -172,15 +160,14 @@ public class BuildExternalObjectToolTest {
             assertTrue(expected.getMessage(), expected.getMessage().contains("check_list_markers"));
         }
 
-        verify(exporter, never()).export(anyString(), any(Path.class));
-        verify(processFactory, never()).start(any(), any());
+        verify(dumper, never()).dump(any(), any(), any(), any());
     }
 
     @Test
     public void precheck_nonBlockingMarkers_landInWarnings() throws Exception {
         BuildExternalObjectTool tool = toolFor(
             List.of(new CheckMarker("m1", "ВнешниеОбработки", "", 3, "error", "MdValidationChecker",
-                "edt", "orphan uuid", null)), 0, true);
+                "edt", "orphan uuid", null)), true);
 
         Map<String, Object> result = call(tool);
 
@@ -191,105 +178,104 @@ public class BuildExternalObjectToolTest {
                                          && w.contains("MdValidationChecker")));
     }
 
-    /** Мгновенный «успех» 1cv8 — класс BUG-18: сборка не могла отработать за 0 мс. */
+    // --- результат dump ---------------------------------------------------
+
+    /**
+     * Сервис бросает CoreException, когда у проекта нет ИБ для сборки. Текст статуса —
+     * единственная диагностика, и без подсказки про associate_infobase он необъясним.
+     */
     @Test
-    public void suspiciouslyFastSuccess_addsWarning() throws Exception {
-        Map<String, Object> result = callOk();
-
-        @SuppressWarnings("unchecked")
-        List<String> warnings = (List<String>) result.get("warnings");
-        assertTrue(warnings.toString(), warnings.stream().anyMatch(w -> w.contains("BUG-18")));
-    }
-
-    // --- exit codes -------------------------------------------------------
-
-    @Test
-    public void nonZeroExit_isReported() throws Exception {
-        BuildExternalObjectTool tool = toolFor(List.of(), 1, false);
+    public void dumpFailure_reportsStatusAndSuggestsInfobaseAssociation() throws Exception {
+        BuildExternalObjectTool tool = toolFor(List.of(), false);
+        doThrow(new CoreException(Status.error(
+                "Не найдено разрабатываемых приложений информационной базы для проекта \"Демо\"")))
+            .when(dumper).dump(any(), any(), any(), any());
 
         try {
             call(tool);
-            fail("ненулевой exit 1cv8 обязан быть ошибкой");
+            fail("провал dump обязан быть ошибкой");
         } catch (ToolException expected) {
-            assertTrue(expected.getMessage(), expected.getMessage().contains("1cv8"));
-            assertTrue(expected.getMessage(), expected.getMessage().contains("exit"));
+            assertTrue(expected.getMessage(),
+                expected.getMessage().contains("Не найдено разрабатываемых приложений"));
+            assertTrue(expected.getMessage(), expected.getMessage().contains("associate_infobase"));
         }
     }
 
-    /** BUG-18-класс: 1cv8 умеет вернуть 0, не сделав ничего. Верим файлу, а не exit-коду. */
+    /** Сервис вернулся без ошибки, файла нет — верим диску, а не отсутствию исключения. */
     @Test
-    public void zeroExitWithoutEpf_isReported() throws Exception {
-        BuildExternalObjectTool tool = toolFor(List.of(), 0, false);
+    public void silentSuccessWithoutFile_isReported() throws Exception {
+        BuildExternalObjectTool tool = toolFor(List.of(), false);
 
         try {
             call(tool);
-            fail("exit=0 без выходного файла обязан быть ошибкой");
+            fail("dump без выходного файла обязан быть ошибкой");
         } catch (ToolException expected) {
-            assertTrue(expected.getMessage(), expected.getMessage().contains("exit=0"));
+            assertTrue(expected.getMessage(), expected.getMessage().contains("не создан"));
         }
     }
 
     @Test
-    public void timeout_killsProcess() throws Exception {
-        BuildExternalObjectTool tool = toolFor(List.of(), 0, false);
-        when(process.waitFor(anyLong(), any(TimeUnit.class))).thenReturn(false);
+    public void emptyOutputFile_isReported() throws Exception {
+        BuildExternalObjectTool tool = toolFor(List.of(), false);
+        doAnswer(inv -> {
+            Path target = inv.getArgument(2);
+            Files.createDirectories(target.getParent());
+            Files.writeString(target, "");
+            return null;
+        }).when(dumper).dump(any(), any(), any(), any());
 
         try {
             call(tool);
+            fail("пустой .epf обязан быть ошибкой");
+        } catch (ToolException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("пуст"));
+        }
+    }
+
+    /**
+     * Платформа умеет зависнуть на занятой ИБ — таймаут обязан отменить операцию, а не ждать вечно.
+     * Проверяется на builder'е: минимальный таймаут инструмента (30 с) тест бы просто прождал.
+     */
+    @Test
+    public void timeout_cancelsMonitorAndReports() throws Exception {
+        toolFor(List.of(), false);
+        IProgressMonitor[] seen = new IProgressMonitor[1];
+        doAnswer(inv -> {
+            seen[0] = inv.getArgument(3);
+            for (int i = 0; i < 200 && !seen[0].isCanceled(); i++) Thread.sleep(50);
+            return null;
+        }).when(dumper).dump(any(), any(), any(), any());
+
+        ExternalObjectBuilder builder = new ExternalObjectBuilder(dumper, resolver);
+        try {
+            builder.build(new ExternalObjectBuilder.BuildRequest(
+                mock(IProject.class), "ExternalDataProcessor.Печать", outFile, 1));
             fail("таймаут обязан быть ошибкой");
         } catch (ToolException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains("timeout"));
         }
-        verify(process).destroyForcibly();
+        assertTrue("монитор обязан быть отменён", seen[0].isCanceled());
     }
 
     // --- argument validation ----------------------------------------------
 
     @Test
     public void unsupportedFqnKind_isRejected() throws Exception {
-        BuildExternalObjectTool tool = toolFor(List.of(), 0, true);
+        BuildExternalObjectTool tool = toolFor(List.of(), true);
 
         try {
             tool.call(Map.of("project", "ВнешниеОбработки", "fqn", "Catalog.Товары",
-                "outPath", outFile.toString(), "serviceInfobase", IB));
+                "outPath", outFile.toString()));
             fail("build_external_object применим только к внешним объектам");
         } catch (ToolException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains("ExternalDataProcessor"));
         }
-        verify(processFactory, never()).start(any(), any());
-    }
-
-    @Test
-    public void malformedServiceInfobase_isRejected() throws Exception {
-        BuildExternalObjectTool tool = toolFor(List.of(), 0, true);
-
-        try {
-            tool.call(Map.of("project", "ВнешниеОбработки", "fqn", "ExternalDataProcessor.Печать",
-                "outPath", outFile.toString(), "serviceInfobase", "C:\\ib\\service"));
-            fail("строка подключения обязана быть в форме /F… или /S…");
-        } catch (ToolException expected) {
-            assertTrue(expected.getMessage(), expected.getMessage().contains("/F"));
-        }
-    }
-
-    @Test
-    public void missingServiceInfobase_isRejectedWithActionableMessage() throws Exception {
-        BuildExternalObjectTool tool = toolFor(List.of(), 0, true);
-
-        try {
-            tool.call(Map.of("project", "ВнешниеОбработки", "fqn", "ExternalDataProcessor.Печать",
-                "outPath", outFile.toString()));
-            fail("без служебной ИБ собрать нечем");
-        } catch (ToolException expected) {
-            assertTrue(expected.getMessage(), expected.getMessage().contains("serviceInfobase"));
-        }
-        verify(processFactory, never()).start(any(), any());
+        verify(dumper, never()).dump(any(), any(), any(), any());
     }
 
     @Test
     public void unknownObject_isRejectedBeforePrecheck() throws Exception {
-        BuildExternalObjectTool tool = toolFor(List.of(), 0, true);
-        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        toolFor(List.of(), true);
         IProject project = mock(IProject.class);
         when(project.exists()).thenReturn(true);
         when(project.isOpen()).thenReturn(true);
@@ -297,15 +283,14 @@ public class BuildExternalObjectToolTest {
         IFile absent = mock(IFile.class);
         when(absent.exists()).thenReturn(false);
         when(project.getFile(anyString())).thenReturn(absent);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
         when(root.getProject("ВнешниеОбработки")).thenReturn(project);
 
-        BuildExternalObjectTool t2 = new BuildExternalObjectTool(
-            () -> root, markerReader,
-            new ExternalObjectBuilder(exporter, v -> new File(EXE), processFactory, () -> exportDir),
-            p -> "8.3.27");
+        BuildExternalObjectTool tool = new BuildExternalObjectTool(
+            () -> root, markerReader, new ExternalObjectBuilder(dumper, resolver));
 
         try {
-            call(t2);
+            call(tool);
             fail("несуществующий объект обязан отбиваться");
         } catch (ToolException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains(".mdo"));
@@ -316,7 +301,7 @@ public class BuildExternalObjectToolTest {
 
     @Test
     public void schema_declaresContract() throws Exception {
-        BuildExternalObjectTool tool = toolFor(List.of(), 0, true);
+        BuildExternalObjectTool tool = toolFor(List.of(), true);
         Map<String, Object> schema = tool.inputSchema();
 
         assertEquals("build_external_object", tool.name());
@@ -324,6 +309,9 @@ public class BuildExternalObjectToolTest {
         assertEquals(Boolean.FALSE, schema.get("additionalProperties"));
         @SuppressWarnings("unchecked")
         Map<String, Object> props = (Map<String, Object>) schema.get("properties");
-        assertTrue(props.containsKey("serviceInfobase"));
+        assertEquals(List.of("project", "fqn", "outPath", "timeoutSeconds"),
+            List.copyOf(props.keySet()));
+        assertFalse("служебная ИБ больше не параметр: её даёт ассоциация проекта",
+            props.containsKey("serviceInfobase"));
     }
 }

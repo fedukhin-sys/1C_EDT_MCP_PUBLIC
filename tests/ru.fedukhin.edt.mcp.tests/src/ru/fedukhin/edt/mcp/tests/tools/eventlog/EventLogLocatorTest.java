@@ -51,7 +51,7 @@ public class EventLogLocatorTest {
         Path srvinfo = tmp.newFolder("srvinfo").toPath();
         Path reg = srvinfo.resolve("reg_1541");
         Files.createDirectory(reg);
-        String ibUuid = "04c66542-e27a-478f-b49f-8144e410edf2";
+        String ibUuid = "11111111-1111-1111-1111-111111111111";
         Path ibDir = reg.resolve(ibUuid);
         Files.createDirectory(ibDir);
         Path logDir = ibDir.resolve("1Cv8Log");

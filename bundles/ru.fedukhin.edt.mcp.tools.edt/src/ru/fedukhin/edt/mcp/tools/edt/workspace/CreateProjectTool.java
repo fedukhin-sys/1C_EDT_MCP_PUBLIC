@@ -4,7 +4,11 @@ import com._1c.g5.v8.dt.core.platform.IConfigurationProjectManager;
 import com._1c.g5.v8.dt.core.platform.IExtensionProjectManager;
 import com._1c.g5.v8.dt.core.platform.IExternalObjectProjectManager;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
+import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.Language;
+import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
+import com._1c.g5.v8.dt.metadata.mdclass.ScriptVariant;
 import com._1c.g5.v8.dt.platform.IRuntime;
 import com._1c.g5.v8.dt.platform.IRuntimeRegistry;
 import com._1c.g5.v8.dt.platform.version.Version;
@@ -137,7 +141,8 @@ public class CreateProjectTool implements IMcpTool {
             workspace.run((IWorkspaceRunnable) monitor -> {
                 switch (type) {
                     case "configuration":
-                        createdHolder[0] = cpm.create(name, versionFinal, null, new NullProgressMonitor());
+                        createdHolder[0] = cpm.create(name, versionFinal,
+                                newConfigurationSeed(configurationName(name)), new NullProgressMonitor());
                         break;
                     case "extension":
                         createdHolder[0] = epm.create(name, versionFinal, null, parentFinal, new NullProgressMonitor());
@@ -179,8 +184,36 @@ public class CreateProjectTool implements IMcpTool {
             if (configWarning != null) {
                 out.put("warning", configWarning);
             }
+        } else if ("configuration".equals(type)) {
+            // EDT записал Configuration.mdo сам (из seed) и активирует BM-namespace
+            // асинхронно — немедленный create_md_object может ещё не найти namespace.
+            out.put("note", "the BM namespace may take a few seconds to activate — "
+                    + "poll list_md_objects until it succeeds before create_md_object.");
         }
         return out;
+    }
+
+    /**
+     * Builds the seed {@link Configuration} EDT persists into {@code src/Configuration/Configuration.mdo}.
+     *
+     * <p>Passing {@code null} (as this tool did until BUG-NEW-B) makes
+     * {@code IConfigurationProjectManager.create} skip context creation entirely — the branch
+     * {@code seed == null && library == null} in {@code ConfigurationProjectManager.startProjectContext}
+     * writes no {@code Configuration.mdo}, so the BM namespace never activates and later
+     * {@code create_md_object} fails with «namespace may not be null». The IDE's New-Configuration
+     * wizard always supplies a seed; we mirror the minimum it does: a name, the Russian script variant
+     * and exactly one language set as the default.
+     */
+    private static Configuration newConfigurationSeed(String configName) {
+        Configuration cfg = MdClassFactory.eINSTANCE.createConfiguration();
+        cfg.setName(configName);
+        cfg.setScriptVariant(ScriptVariant.RUSSIAN);
+        Language lang = MdClassFactory.eINSTANCE.createLanguage();
+        lang.setName("Русский");
+        lang.setLanguageCode("ru");
+        cfg.getLanguages().add(lang);
+        cfg.setDefaultLanguage(lang);
+        return cfg;
     }
 
     /** 1C configuration name (no dots) derived from the project name. */

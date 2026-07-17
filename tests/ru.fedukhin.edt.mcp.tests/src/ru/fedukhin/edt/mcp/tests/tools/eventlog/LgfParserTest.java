@@ -24,7 +24,7 @@ public class LgfParserTest {
         + "{3,\"BackgroundJob\",2},\n"
         + "{4,\"_$Transaction$_.Begin\",2},\n"
         + "{5,041cecfd-cef2-45d9-90e8-afe0d97d2d95,\"ПараметрСеанса.ОбластьДанныхИспользование\",1},\n"
-        + "{1,61325421-dc2a-4613-b463-50312df65072,\"ФедухинАА\",4},\n"
+        + "{1,22222222-2222-2222-2222-222222222222,\"ИвановИИ\",4},\n"
         + "{3,\"1CV8C\",6}\n";
 
     @Test
@@ -32,8 +32,8 @@ public class LgfParserTest {
         EventLogReferences refs = new LgfParser().parse(new BufferedReader(new StringReader(SAMPLE)));
 
         assertEquals(2, refs.users.size());
-        assertEquals("ФедухинАА", refs.users.get(4).name);
-        assertEquals("61325421-dc2a-4613-b463-50312df65072", refs.users.get(4).uuid);
+        assertEquals("ИвановИИ", refs.users.get(4).name);
+        assertEquals("22222222-2222-2222-2222-222222222222", refs.users.get(4).uuid);
         assertEquals("", refs.users.get(1).name);
 
         assertEquals("ASUS-TUF", refs.computers.get(1));

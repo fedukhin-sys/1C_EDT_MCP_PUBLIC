@@ -150,7 +150,7 @@ grep -c "<tool " bundles/*/plugin.xml
 | `add_dcs_setting_filter` | Добавить условие фильтра в `settingsVariant` схемы `.dcs`. |
 | `set_dcs_setting_parameter_value` | Установить (или переопределить) значение параметра в `settingsVariant` схемы `.dcs`. |
 | `create_external_object` | Создать внешний объект (`ExternalDataProcessor` / `ExternalReport`) в external-object проекте: `src/<Folder>/<Name>/<Name>.mdo` + пустой `ObjectModule.bsl`. |
-| `build_external_object` | Собрать внешний объект в файл `.epf` / `.erf` (EDT-проект → Designer XML → `1cv8 DESIGNER /LoadExternalDataProcessorOrReportFromFiles`). Отказывается собирать при BSL-ошибках компиляции — ни один из шагов синтаксис не проверяет. |
+| `build_external_object` | Собрать внешний объект в файл `.epf` / `.erf` штатным сервисом EDT (`IExternalObjectDumper` — тот же, что за «Экспортом» в IDE): ИБ, учётку и версию платформы он берёт из приложения, связанного с проектом, поэтому оно должно быть (`associate_infobase`). Отказывается собирать при BSL-ошибках компиляции — синтаксис не проверяет никто. |
 | `add_md_template` | Сгенерировать макет печатной формы (`.mxlx`) по спецификации колонок/строк и зарегистрировать его в `.mdo` владельца. |
 
 ## Формы (`tools.form`, 11)

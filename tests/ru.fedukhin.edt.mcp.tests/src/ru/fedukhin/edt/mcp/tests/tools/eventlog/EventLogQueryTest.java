@@ -42,9 +42,9 @@ public class EventLogQueryTest {
     @Test
     public void user_exactMatch() {
         EventLogQuery q = new EventLogQuery();
-        q.user(List.of("ФедухинАА"));
+        q.user(List.of("ИвановИИ"));
         var p = q.asPredicate();
-        assertTrue(p.test(rec(20260415120000L, "I", "ФедухинАА", "e", "")));
+        assertTrue(p.test(rec(20260415120000L, "I", "ИвановИИ", "e", "")));
         assertFalse(p.test(rec(20260415120000L, "I", "Other", "e", "")));
         assertFalse(p.test(rec(20260415120000L, "I", null, "e", "")));
     }
@@ -52,10 +52,10 @@ public class EventLogQueryTest {
     @Test
     public void commentContains_caseInsensitive() {
         EventLogQuery q = new EventLogQuery();
-        q.commentContains = "ессКонтракты";
+        q.commentContains = "демоРасширение";
         var p = q.asPredicate();
         assertTrue(p.test(rec(20260415120000L, "E", "u", "_$InfoBase$_.ConfigExtensionApplyError",
-            "Расширение ЕССКонтракты не применилось")));
+            "Расширение ДемоРасширение не применилось")));
         assertFalse(p.test(rec(20260415120000L, "E", "u", "x", "Другое расширение")));
     }
 

@@ -2,6 +2,19 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [1.19.0] — 2026-07-17
+
+Завершение работ по итогам аудита: `build_external_object` переведён на штатное
+API EDT, устранён дефект `create_project` для конфигураций.
+
+### Изменено
+
+- **`build_external_object` — на штатный сервис EDT вместо спавна `1cv8 DESIGNER`.** Сборку `.epf`/`.erf` теперь делает `IExternalObjectDumper` (пакет `com._1c.g5.v8.dt.platform.services.core.dump`) — тот же путь, что за «Экспортом» в IDE: он сам выгружает Designer-XML, находит информационную базу через связанное с проектом приложение, подставляет учётку и версию платформы и убирает временный каталог. Прежний костыль (экспорт в XML + резолв `1cv8.exe` + запуск `DESIGNER /LoadExternalDataProcessorOrReportFromFiles` + разбор `/Out`-лога) требовал свободной служебной ИБ. Из схемы инструмента убраны параметры `serviceInfobase` и `platformVersion` — информационная база берётся из ассоциации проекта (`associate_infobase`); её отсутствие диагностируется с подсказкой. Precheck по маркерам, таймаут и проверка результата на диске сохранены.
+
+### Исправлено
+
+- **`create_project type=configuration` создавал проект без `Configuration.mdo`.** Вызов шёл с пустым seed (`cpm.create(name, version, null, …)`), а EDT в этом случае пропускает создание контекста конфигурации — файл `Configuration.mdo` не писался, BM-namespace не активировался, и последующий `create_md_object` падал «namespace may not be null». Теперь инструмент передаёт seed `Configuration` (имя, вариант языка Russian, один язык по умолчанию), как это делает мастер «Новая конфигурация» в IDE.
+
 ## [1.18.1] — 2026-07-17
 
 Правки по итогам live-smoke версии 1.18.0 на рабочем workspace.

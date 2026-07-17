@@ -1,12 +1,11 @@
 package ru.fedukhin.edt.mcp.tools.md;
 
-import com._1c.g5.v8.dt.platform.version.IRuntimeVersionSupport;
 import jakarta.inject.Inject;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
@@ -25,12 +24,16 @@ import ru.fedukhin.edt.mcp.tools.quality.internal.MarkerReader;
  * {@code build_external_object} — собирает внешний объект проекта external-object
  * в {@code .epf}/{@code .erf}.
  *
- * <p>Args: {@code { project, fqn, outPath, serviceInfobase?, platformVersion?, timeoutSeconds? }}
+ * <p>Args: {@code { project, fqn, outPath, timeoutSeconds? }}
  * <p>Result: {@code { epfPath, fqn, durationMs, warnings[] }}
  *
+ * <p>Сборку делает штатный сервис EDT ({@code IExternalObjectDumper}) — тот же, что за
+ * «Экспортом» в IDE: ИБ, учётку и версию платформы он берёт из приложения, ассоциированного
+ * с проектом, поэтому в аргументах их нет.
+ *
  * <p>Порядок шагов важен: сначала <b>precheck</b> по EDT-маркерам ({@link BuildPrecheck}),
- * и только потом экспорт + 1cv8. Ни экспорт, ни {@code DESIGNER} синтаксис BSL не проверяют,
- * поэтому без precheck сломанный модуль молча оказался бы в готовом файле.
+ * и только потом сборка. Синтаксис BSL не проверяет ни выгрузка, ни платформа, поэтому без
+ * precheck сломанный модуль молча оказался бы в готовом файле.
  *
  * <p>Маркеры читаются как есть (как в {@code check_list_markers}), без перезапуска проверок:
  * если валидация в проекте ни разу не отрабатывала, барьер пропустит всё — в этом случае
@@ -47,38 +50,32 @@ public final class BuildExternalObjectTool implements IMcpTool {
     private static final int MIN_TIMEOUT_SECONDS     = 30;
     private static final int MAX_TIMEOUT_SECONDS     = 3600;
 
-    private final Supplier<IWorkspaceRoot>   rootSupplier;
-    private final MarkerReader               markerReader;
-    private final ExternalObjectBuilder      builder;
-    private final Function<IProject, String> versionResolver;
+    private final Supplier<IWorkspaceRoot> rootSupplier;
+    private final MarkerReader             markerReader;
+    private final ExternalObjectBuilder    builder;
 
     @Inject
-    public BuildExternalObjectTool(MarkerReader markerReader, ExternalObjectBuilder builder,
-                                   IRuntimeVersionSupport versionSupport) {
-        this(() -> ResourcesPlugin.getWorkspace().getRoot(), markerReader, builder,
-             // getRuntimeVersion возвращает Version (не String); его toString даёт "8.3.27".
-             p -> String.valueOf(versionSupport.getRuntimeVersion(p)));
+    public BuildExternalObjectTool(MarkerReader markerReader, ExternalObjectBuilder builder) {
+        this(() -> ResourcesPlugin.getWorkspace().getRoot(), markerReader, builder);
     }
 
     /** Test seam. */
     public BuildExternalObjectTool(Supplier<IWorkspaceRoot> rootSupplier, MarkerReader markerReader,
-                                   ExternalObjectBuilder builder,
-                                   Function<IProject, String> versionResolver) {
-        this.rootSupplier    = rootSupplier;
-        this.markerReader    = markerReader;
-        this.builder         = builder;
-        this.versionResolver = versionResolver;
+                                   ExternalObjectBuilder builder) {
+        this.rootSupplier = rootSupplier;
+        this.markerReader = markerReader;
+        this.builder      = builder;
     }
 
     @Override public String name() { return "build_external_object"; }
 
     @Override public String description() {
-        return "Build an external object (ExternalDataProcessor/ExternalReport) into an .epf/.erf file: "
-             + "EDT project → Designer XML (internal export service) → 1cv8 DESIGNER "
-             + "/LoadExternalDataProcessorOrReportFromFiles. Refuses to build while the project has BSL "
-             + "compile errors (same markers as check_list_markers) — neither step validates BSL syntax. "
-             + "serviceInfobase is a free 1cv8 connection string ('/F<path>' or '/S<server>\\<base>'); "
-             + "DESIGNER locks it for the duration of the build.";
+        return "Build an external object (ExternalDataProcessor/ExternalReport) into an .epf/.erf file "
+             + "using EDT's own export service — the same one behind 'Export' in the IDE. The infobase, "
+             + "credentials and platform version come from the application associated with the project, "
+             + "so the project must have one (see associate_infobase); the infobase is locked for the "
+             + "duration of the build. Refuses to build while the project has BSL compile errors (same "
+             + "markers as check_list_markers) — nothing else validates BSL syntax.";
     }
 
     @Override
@@ -92,12 +89,10 @@ public final class BuildExternalObjectTool implements IMcpTool {
         timeout.put("minimum", MIN_TIMEOUT_SECONDS);
         timeout.put("maximum", MAX_TIMEOUT_SECONDS);
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("project",         str);
-        props.put("fqn",             fqnProp);
-        props.put("outPath",         str);
-        props.put("serviceInfobase", str);
-        props.put("platformVersion", str);
-        props.put("timeoutSeconds",  timeout);
+        props.put("project",        str);
+        props.put("fqn",            fqnProp);
+        props.put("outPath",        str);
+        props.put("timeoutSeconds", timeout);
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", props);
@@ -111,8 +106,6 @@ public final class BuildExternalObjectTool implements IMcpTool {
         String projectName = requireString(args, "project");
         String fqn         = requireString(args, "fqn");
         String outPath     = requireString(args, "outPath");
-        String infobaseArg = optString(args, "serviceInfobase");
-        String version     = optString(args, "platformVersion");
         int timeoutSeconds = optTimeout(args);
 
         int dot = fqn.indexOf('.');
@@ -125,17 +118,6 @@ public final class BuildExternalObjectTool implements IMcpTool {
         if (folder == null) {
             throw new ToolException("kind '" + kind + "' is not buildable; supported: "
                     + KIND_FOLDER.keySet());
-        }
-
-        if (infobaseArg == null) {
-            throw new ToolException("'serviceInfobase' is required: 1cv8 DESIGNER needs a free service "
-                    + "infobase to load the object into. Pass '/F<path>' for a file infobase or "
-                    + "'/S<server>\\<base>' for a server one. Auto-creating a temporary infobase is "
-                    + "not implemented — use create_infobase first if you have none.");
-        }
-        if (!infobaseArg.startsWith("/F") && !infobaseArg.startsWith("/S")) {
-            throw new ToolException("'serviceInfobase' must be a 1cv8 connection string: '/F<path>' "
-                    + "or '/S<server>\\<base>', got: '" + infobaseArg + "'");
         }
 
         IProject project = rootSupplier.get().getProject(projectName);
@@ -156,13 +138,11 @@ public final class BuildExternalObjectTool implements IMcpTool {
             throw new ToolException(blockerMessage(projectName, verdict.blockers()));
         }
 
-        if (version == null) version = versionResolver.apply(project);
-
         ExternalObjectBuilder.BuildOutcome outcome = builder.build(
-                new ExternalObjectBuilder.BuildRequest(projectName, name, Path.of(outPath),
-                        infobaseArg, version, timeoutSeconds));
+                new ExternalObjectBuilder.BuildRequest(project, fqn, Path.of(outPath),
+                        timeoutSeconds));
 
-        List<String> warnings = new java.util.ArrayList<>(verdict.warnings());
+        List<String> warnings = new ArrayList<>(verdict.warnings());
         warnings.addAll(outcome.warnings());
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -176,7 +156,7 @@ public final class BuildExternalObjectTool implements IMcpTool {
     private static String blockerMessage(String projectName, List<CheckMarker> blockers) {
         StringBuilder sb = new StringBuilder("precheck failed: project '").append(projectName)
                 .append("' has ").append(blockers.size())
-                .append(" BSL compile error(s); 1cv8 DESIGNER would silently pack broken code into the "
+                .append(" BSL compile error(s); the build would silently pack broken code into the "
                         + "output file:");
         for (CheckMarker m : blockers) {
             sb.append("\n  - ").append(BuildPrecheck.format(m));
@@ -196,10 +176,6 @@ public final class BuildExternalObjectTool implements IMcpTool {
                     + MIN_TIMEOUT_SECONDS + ", " + MAX_TIMEOUT_SECONDS + "]");
         }
         return seconds;
-    }
-
-    private static String optString(Map<String, Object> args, String key) {
-        return args.get(key) instanceof String s && !s.isEmpty() ? s : null;
     }
 
     private static String requireString(Map<String, Object> args, String key) throws ToolException {

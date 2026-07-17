@@ -93,6 +93,54 @@ public class CreateProjectToolTest {
         assertEquals(String.valueOf(Version.V8_3_22), result.get("version"));
     }
 
+    /**
+     * BUG-NEW-B: {@code cpm.create(name, version, null, monitor)} со {@code seed == null}
+     * оставляет проект без {@code Configuration.mdo} — EDT пропускает создание контекста
+     * конфигурации (ветка {@code seed==null && library==null}), namespace не активируется, и
+     * последующие {@code create_md_object} падают «namespace may not be null». Инструмент
+     * обязан передать непустой seed {@link Configuration} — имя без точек, {@code Russian},
+     * ровно один язык, назначенный языком по умолчанию.
+     */
+    @Test
+    public void call_configurationProject_passesNonNullConfigurationSeed() throws Exception {
+        IWorkspace ws = workspaceThatRunsRunnable();
+        IConfigurationProjectManager cpm = mock(IConfigurationProjectManager.class);
+        IProject created = mock(IProject.class);
+        when(created.getName()).thenReturn("Мояконфигурация");
+        when(created.getLocation()).thenReturn(new org.eclipse.core.runtime.Path("C:/ws/Cfg"));
+        when(cpm.create(any(String.class), eq(Version.V8_3_22), (Configuration) any(),
+                any(IProgressMonitor.class))).thenReturn(created);
+
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        IProject placeholder = mock(IProject.class);
+        when(placeholder.exists()).thenReturn(false);
+        when(root.getProject("Прайс.Мояконфигурация")).thenReturn(placeholder);
+
+        CreateProjectTool tool = new CreateProjectTool(
+            ws, () -> root, registryWith(Version.V8_3_22),
+            cpm, mock(IExtensionProjectManager.class), mock(IExternalObjectProjectManager.class),
+            mock(IV8ProjectManager.class));
+
+        Map<String, Object> args = new HashMap<>();
+        args.put("name", "Прайс.Мояконфигурация");
+        args.put("type", "configuration");
+        args.put("version", String.valueOf(Version.V8_3_22));
+        tool.call(args);
+
+        ArgumentCaptor<Configuration> seed = ArgumentCaptor.forClass(Configuration.class);
+        verify(cpm).create(any(String.class), eq(Version.V8_3_22), seed.capture(),
+            any(IProgressMonitor.class));
+        Configuration cfg = seed.getValue();
+        assertTrue("seed конфигурации не должен быть null — иначе .mdo не создаётся", cfg != null);
+        assertEquals("имя конфигурации — без точек проекта", "Мояконфигурация", cfg.getName());
+        assertEquals("вариант встроенного языка — русский",
+            com._1c.g5.v8.dt.metadata.mdclass.ScriptVariant.RUSSIAN, cfg.getScriptVariant());
+        assertEquals("ровно один язык", 1, cfg.getLanguages().size());
+        assertTrue("язык по умолчанию — назначен", cfg.getDefaultLanguage() != null);
+        assertEquals("язык по умолчанию — это единственный язык конфигурации",
+            cfg.getLanguages().get(0), cfg.getDefaultLanguage());
+    }
+
     /** A minimal parent configuration Configuration.mdo with one Russian language. */
     private static final String PARENT_CONFIG_MDO =
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"

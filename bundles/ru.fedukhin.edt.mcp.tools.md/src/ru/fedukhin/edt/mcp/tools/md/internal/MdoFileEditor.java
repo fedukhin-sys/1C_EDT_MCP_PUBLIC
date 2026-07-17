@@ -573,7 +573,7 @@ public class MdoFileEditor {
      *
      * <p>В отличие от {@link #addReportDcsTemplate} (DCS-схема) — здесь
      * {@code <templateType>} НЕ пишется: для spreadsheet-макета это default,
-     * и в каноне EDT тег отсутствует (проверено по эталонным внешним обработкам Upiter).
+     * и в каноне EDT тег отсутствует (проверено по эталонным внешним обработкам).
      *
      * <p>Идемпотентно: если {@code <templates>} с таким именем уже есть — no-op,
      * возвращает {@code false}.
