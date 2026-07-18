@@ -212,7 +212,20 @@ public final class MdObjectFactory {
         switch (kindName) {
             case "AccumulationRegister" -> setEnumDefault(obj, "registerType", "Turnovers");
             case "InformationRegister" -> setEnumDefault(obj, "writeMode", "Independent");
+            // thisNode (uuid предопределённого узла «ЭтотУзел») обязателен — без него
+            // MdValidationChecker даёт error «Должна быть задана сущность 'thisNode'».
+            // Designer создаёт узел сам; повторяем: атрибут thisNode="<uuid>" на корне .mdo.
+            case "ExchangePlan" -> setThisNodeDefault(obj);
             default -> { /* no kind-specific extras yet */ }
+        }
+    }
+
+    private static void setThisNodeDefault(EObject obj) {
+        try {
+            obj.getClass().getMethod("setThisNode", java.util.UUID.class)
+                    .invoke(obj, java.util.UUID.randomUUID());
+        } catch (ReflectiveOperationException e) {
+            // нет такого сеттера — не ExchangePlan этой метамодели, skip
         }
     }
 

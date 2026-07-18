@@ -139,6 +139,14 @@ public class CreateProjectToolTest {
         assertTrue("язык по умолчанию — назначен", cfg.getDefaultLanguage() != null);
         assertEquals("язык по умолчанию — это единственный язык конфигурации",
             cfg.getLanguages().get(0), cfg.getDefaultLanguage());
+        // Live-smoke 1.20.0: без этих полей валидатор даёт 4 error'а на свежем проекте.
+        assertTrue("uuid конфигурации обязан быть задан", cfg.getUuid() != null);
+        assertTrue("uuid языка обязан быть задан", cfg.getLanguages().get(0).getUuid() != null);
+        assertEquals("управляемый режим блокировки данных",
+            com._1c.g5.v8.dt.metadata.mdclass.DefaultDataLockControlMode.MANAGED,
+            cfg.getDataLockControlMode());
+        assertEquals("режим совместимости — по runtime-версии проекта",
+            "8.3.22", cfg.getCompatibilityMode().getLiteral());
     }
 
     /** A minimal parent configuration Configuration.mdo with one Russian language. */

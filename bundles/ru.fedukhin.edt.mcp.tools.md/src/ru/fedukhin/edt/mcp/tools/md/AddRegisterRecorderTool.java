@@ -41,12 +41,13 @@ import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
  */
 public final class AddRegisterRecorderTool implements IMcpTool {
 
-    /** Register-kinds, поддерживаемые на v1.10.2. */
+    /** Kinds, принимаемые аргументом {@code register}. DocumentJournal — с 1.20.x. */
     private static final Map<String, String> REGISTER_FOLDER = Map.of(
             "AccumulationRegister", "AccumulationRegisters",
             "AccountingRegister",   "AccountingRegisters",
             "CalculationRegister",  "CalculationRegisters",
-            "InformationRegister",  "InformationRegisters"
+            "InformationRegister",  "InformationRegisters",
+            "DocumentJournal",      "DocumentJournals"
     );
     /** Document folder. */
     private static final String DOCUMENT_FOLDER = "Documents";
@@ -77,7 +78,9 @@ public final class AddRegisterRecorderTool implements IMcpTool {
     @Override public String description() {
         return "Link a Document as a recorder of an AccumulationRegister / AccountingRegister / "
              + "CalculationRegister / InformationRegister (writes both <recorders> on register and "
-             + "<registerRecords> on document; idempotent).";
+             + "<registerRecords> on document; idempotent). Also accepts a DocumentJournal as "
+             + "'register' — registers the document in the journal (<registeredDocuments>, "
+             + "one-way link, the document side is untouched).";
     }
 
     @Override
@@ -133,8 +136,16 @@ public final class AddRegisterRecorderTool implements IMcpTool {
             throw new ToolException("document .mdo not found at " + docMdoPath);
         }
 
-        boolean recorderAdded       = mdoEditor.addRecorder(regMdo, documentFqn);
-        boolean registerRecordAdded = mdoEditor.addRegisterRecord(docMdo, registerFqn);
+        boolean recorderAdded;
+        boolean registerRecordAdded;
+        if ("DocumentJournal".equals(regKind)) {
+            // Журнал ссылается на документы сам; на стороне документа записи нет.
+            recorderAdded       = mdoEditor.addRegisteredDocument(regMdo, documentFqn);
+            registerRecordAdded = false;
+        } else {
+            recorderAdded       = mdoEditor.addRecorder(regMdo, documentFqn);
+            registerRecordAdded = mdoEditor.addRegisterRecord(docMdo, registerFqn);
+        }
 
         if (bmModelManager != null) {
             try { bmModelManager.waitModelSynchronization(project); }

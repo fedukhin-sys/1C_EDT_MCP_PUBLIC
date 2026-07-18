@@ -2,6 +2,26 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [1.20.1] — 2026-07-18
+
+Правки по итогам live-smoke 1.20.0: создание «второй волны» kind'ов подтверждено
+(ChartOfCharacteristicTypes/Task/ChartOfAccounts/ChartOfCalculationTypes — чистые),
+три kind'а и seed конфигурации доведены до валидного состояния.
+
+### Исправлено
+
+- **`create_md_object kind=ExchangePlan` — план обмена без `thisNode`.** Валидатор давал error «Должна быть задана сущность 'thisNode'»: Designer создаёт uuid предопределённого узла «ЭтотУзел» сам, EMF-фабрика — нет. Теперь фабрика проставляет `thisNode` при создании.
+- **Seed `create_project type=configuration` — 4 error'а валидатора на свежем проекте.** Configuration и Language создавались без `uuid`, без `dataLockControlMode=Managed` и с дефолтным режимом совместимости метамодели 8.5.1. Seed дополнен; `compatibilityMode` ставится по runtime-версии проекта.
+
+### Добавлено
+
+- **`add_register_recorder` принимает `DocumentJournal` в аргументе `register`** — регистрирует документ в журнале (`<registeredDocuments>`, односторонняя связь).
+- **`set_md_property property=task` для BusinessProcess** — значение `Task.X` (FQN), резолвится в Task-объект.
+
+### Проверено live (1.20.0)
+
+Авто-ретрай «already connected» (первая сборка `.epf` свежего сеанса — без ошибки); `anyOf`/`oneOf` доезжают до клиента; `run_tests` без раннера — мгновенный отказ; все 7 новых kind'ов создаются, `CommonForm` корректно отбивается.
+
 ## [1.20.0] — 2026-07-17
 
 Устранение исправимых пунктов из списка «Что НЕ работает» скилла: два ограничения

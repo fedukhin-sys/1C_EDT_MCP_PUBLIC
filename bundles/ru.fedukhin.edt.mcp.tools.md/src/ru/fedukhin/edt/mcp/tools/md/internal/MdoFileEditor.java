@@ -264,6 +264,52 @@ public class MdoFileEditor {
     }
 
     /**
+     * Добавить {@code <registeredDocuments>Document.X</registeredDocuments>} в DocumentJournal
+     * .mdo. Связь односторонняя — документ на журнал не ссылается. Идемпотентно.
+     *
+     * <p>Журнал без регистрируемых документов валиден структурно, но MdValidationChecker даёт
+     * error «Для журнала не заданы регистрируемые документы» — этим методом create-пайплайн
+     * доводит журнал до полноценного.
+     *
+     * @param mdoFile     .mdo журнала документов
+     * @param documentFqn fqn документа вида {@code "Document.X"}
+     */
+    public boolean addRegisteredDocument(IFile mdoFile, String documentFqn) throws ToolException {
+        if (documentFqn == null || documentFqn.isEmpty()) {
+            throw new ToolException("document fqn is required");
+        }
+        Document doc = load(mdoFile);
+        boolean changed = addRegisteredDocumentToDoc(doc, documentFqn);
+        if (changed) {
+            save(mdoFile, doc);
+        }
+        return changed;
+    }
+
+    /** DOM-часть {@link #addRegisteredDocument} — выделена для юнит-тестов. */
+    public static boolean addRegisteredDocumentToDoc(Document doc, String documentFqn) {
+        Element root = doc.getDocumentElement();
+        NodeList existing = root.getElementsByTagName("registeredDocuments");
+        for (int i = 0; i < existing.getLength(); i++) {
+            Element r = (Element) existing.item(i);
+            if (r.getParentNode() != root) continue;
+            if (documentFqn.equals(r.getTextContent())) {
+                return false; // already present — no-op
+            }
+        }
+        Element el = doc.createElement("registeredDocuments");
+        el.setTextContent(documentFqn);
+        // Канон: registeredDocuments после name/synonym/useStandardCommands/defaultForm,
+        // перед standardAttributes/columns/forms.
+        Node anchor = firstChildByName(root, "standardAttributes");
+        if (anchor == null) anchor = firstChildByName(root, "columns");
+        if (anchor == null) anchor = firstChildByName(root, "forms");
+        if (anchor != null) root.insertBefore(el, anchor);
+        else                root.appendChild(el);
+        return true;
+    }
+
+    /**
      * Добавить {@code <recorders>Document.X</recorders>} в AccumulationRegister .mdo
      * (или AccountingRegister/CalculationRegister в будущем). Идемпотентно: если такая
      * recorder-строка уже есть — no-op.

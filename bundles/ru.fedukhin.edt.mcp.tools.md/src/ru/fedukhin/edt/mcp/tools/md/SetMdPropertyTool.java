@@ -49,7 +49,11 @@ public final class SetMdPropertyTool implements IMcpTool {
     }
 
     @Override public String name()        { return "set_md_property"; }
-    @Override public String description() { return "Set a property on an MdObject or its attribute"; }
+    @Override public String description() {
+        return "Set a property on an MdObject or its attribute. Whitelisted: synonym/comment "
+             + "(any), CommonModule flags, writeMode (InformationRegister), defaultForm "
+             + "(value = form FQN), task (BusinessProcess; value = 'Task.X' FQN).";
+    }
 
     @Override
     public Map<String, Object> inputSchema() {
@@ -134,6 +138,20 @@ public final class SetMdPropertyTool implements IMcpTool {
                     }
 
                     Object effectiveValue = value;
+                    if ("task".equals(property) && path == null) {
+                        // 1.20.x: задача бизнес-процесса — резолвим Task.X до EObject,
+                        // PropertyAccessor ожидает уже отрезолвленный объект.
+                        if (!(value instanceof String taskFqn) || !taskFqn.startsWith("Task.")) {
+                            throw new ToolException(
+                                    "'task' expects a Task FQN string (e.g. 'Task.МояЗадача')");
+                        }
+                        Object taskObj = locator.findTop(txn, taskFqn, projectName);
+                        if (taskObj == null) {
+                            throw new ToolException("task '" + taskFqn + "' not found in project '"
+                                    + projectName + "'");
+                        }
+                        effectiveValue = taskObj;
+                    }
                     if ("defaultForm".equals(property) && path == null) {
                         // BUG-07: resolve form FQN to the form EObject before delegating
                         // to PropertyAccessor, which expects an already-resolved EObject.

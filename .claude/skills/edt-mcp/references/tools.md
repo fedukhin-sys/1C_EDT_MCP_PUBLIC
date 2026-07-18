@@ -38,7 +38,7 @@ Required помечены `*`.
 | `build_external_object` | `project*`, `fqn*`, `outPath*`, `timeoutSeconds`. Сборка `.epf`/`.erf` штатным экспорт-сервисом EDT (`IExternalObjectDumper`); ИБ/учётка/версия платформы — из ассоциированного приложения проекта (`associate_infobase` обязателен), на время сборки ИБ блокируется. **Отказывается собирать при BSL-ошибках компиляции целевой обработки** (те же маркеры, что у `check_list_markers`); транзиентный «already connected» первым вызовом ретраит сам |
 | `add_md_template` | `project*`, `ownerFqn*` (`<Kind>.<Name>`), `templateName*`, `synonym`, `areaName` (default = templateName), `columns` (массив ширин), `rows` (массив строк), `overwrite` (default false) |
 | `rename_md_object` | `project*`, `fqn*`, `newName*` |
-| `set_md_property` | `project*`, `fqn*`, `property*`, `value*`, `path` |
+| `set_md_property` | `project*`, `fqn*`, `property*`, `value*`, `path`. Whitelist: synonym/comment (все), флаги CommonModule, writeMode (InfReg), defaultForm (значение — FQN формы), с 1.20.1 `task` у BusinessProcess (значение — FQN `Task.X`) |
 | `list_attributes` | `project*`, `fqn*`. Кроме `attributes`/`dimensions`/`resources` отдаёт `tabularSections` и `values` |
 | `add_attribute` | `project*`, `fqn*` (owner FQN), `name*`, `type*` (строка или массив — составной тип), `role` (`Attribute`/`Dimension`/`Resource`), `synonym`, `comment` |
 | `rename_attribute` | `project*`, `fqn*`, `oldName*`, `newName*`, `role` |
@@ -49,7 +49,7 @@ Required помечены `*`.
 | `add_tabular_section` | `project*`, `ownerFqn*`, `name*` |
 | `add_tabular_section_attribute` | `project*`, `tsFqn*` (`Catalog.X.TabularSection.Y`), `name*`, `type*` |
 | `add_extension_method_override` | `project*`, `modulePath*`, `source*` (полный текст процедуры с аннотацией `&Перед/&После/&ИзменениеИКонтроль`) |
-| `add_register_recorder` | `project*`, `register*` (`AccumulationRegister.X`), `document*` (`Document.Y`) |
+| `add_register_recorder` | `project*`, `register*` (`AccumulationRegister.X`; с 1.20.1 и `DocumentJournal.X` — регистрирует документ в журнале, односторонне), `document*` (`Document.Y`) |
 | `add_subsystem_content` | `project*`, `subsystemFqn*`, `contentFqn*` |
 | `set_constant_type` | `project*`, `fqn*`, `type*` |
 | `set_md_type` | `project*`, `fqn*` (`Kind.Owner.Attribute/Dimension/Resource.Name`), `type*` (string или массив) |

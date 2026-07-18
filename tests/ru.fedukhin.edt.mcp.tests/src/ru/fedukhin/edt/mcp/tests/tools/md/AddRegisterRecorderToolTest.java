@@ -88,6 +88,39 @@ public class AddRegisterRecorderToolTest {
         assertEquals(false, result.get("registerRecordAdded"));
     }
 
+    /** 1.20.x: DocumentJournal как «register» — односторонняя запись registeredDocuments. */
+    @Test
+    public void linksDocumentToJournal_oneWay() throws Exception {
+        IFile jrnMdo = mock(IFile.class);
+        IFile docMdo = mock(IFile.class);
+        when(jrnMdo.exists()).thenReturn(true);
+        when(docMdo.exists()).thenReturn(true);
+        IProject project = mock(IProject.class);
+        when(project.exists()).thenReturn(true);
+        when(project.isOpen()).thenReturn(true);
+        when(project.getFile("src/DocumentJournals/Журнал/Журнал.mdo")).thenReturn(jrnMdo);
+        when(project.getFile("src/Documents/Order/Order.mdo")).thenReturn(docMdo);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getProject("Demo")).thenReturn(project);
+
+        MdoFileEditor mdoEditor = mock(MdoFileEditor.class);
+        when(mdoEditor.addRegisteredDocument(eq(jrnMdo), eq("Document.Order"))).thenReturn(true);
+
+        AddRegisterRecorderTool tool = new AddRegisterRecorderTool(() -> root, mdoEditor);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) tool.call(Map.of(
+                "project",  "Demo",
+                "register", "DocumentJournal.Журнал",
+                "document", "Document.Order"));
+
+        assertEquals(true,  result.get("recorderAdded"));
+        assertEquals(false, result.get("registerRecordAdded"));
+        verify(mdoEditor).addRegisteredDocument(jrnMdo, "Document.Order");
+        verify(mdoEditor, never()).addRecorder(any(), any());
+        verify(mdoEditor, never()).addRegisterRecord(any(), any());
+    }
+
     @Test(expected = ToolException.class)
     public void rejectsCatalogAsDocument() throws Exception {
         IProject project = mock(IProject.class);

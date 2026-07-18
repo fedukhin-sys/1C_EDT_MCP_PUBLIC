@@ -82,10 +82,12 @@ public final class PropertyAccessor {
         boolean isCommonModule = "CommonModule".equals(kind);
         boolean isInformationRegister = "InformationRegister".equals(kind);
         boolean isDefaultForm = "defaultForm".equals(property) && DEFAULT_FORM_KINDS.contains(kind);
+        boolean isBusinessProcessTask = "task".equals(property) && "BusinessProcess".equals(kind);
         if (!allowed.contains(property)
                 && !(isCommonModule && COMMON_MODULE_FLAGS.contains(property))
                 && !(isInformationRegister && INFORMATION_REGISTER_PROPS.contains(property))
-                && !isDefaultForm) {
+                && !isDefaultForm
+                && !isBusinessProcessTask) {
             throw new ToolException("property '" + property + "' is not whitelisted for kind " + kind);
         }
         try {
@@ -122,6 +124,17 @@ public final class PropertyAccessor {
                                 + "callers must resolve the FQN before invoking the accessor");
                     }
                     setDefaultForm(target, kind, formObj);
+                    break;
+                case "task":
+                    // 1.20.x: задача бизнес-процесса. value — уже отрезолвленный Task-EObject
+                    // (SetMdPropertyTool делает FQN lookup); без задачи БП несёт error
+                    // MdValidationChecker «Не выбрана задача бизнес-процесса».
+                    if (!(value instanceof EObject taskObj)) {
+                        throw new ToolException("'task' expects a resolved Task EObject; "
+                                + "callers must resolve the FQN before invoking the accessor");
+                    }
+                    invoke(target, "setTask",
+                            com._1c.g5.v8.dt.metadata.mdclass.Task.class, taskObj);
                     break;
                 case "server":
                 case "externalConnection":

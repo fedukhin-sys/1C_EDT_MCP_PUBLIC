@@ -4,7 +4,9 @@ import com._1c.g5.v8.dt.core.platform.IConfigurationProjectManager;
 import com._1c.g5.v8.dt.core.platform.IExtensionProjectManager;
 import com._1c.g5.v8.dt.core.platform.IExternalObjectProjectManager;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
+import com._1c.g5.v8.dt.metadata.mdclass.CompatibilityMode;
 import com._1c.g5.v8.dt.metadata.mdclass.Configuration;
+import com._1c.g5.v8.dt.metadata.mdclass.DefaultDataLockControlMode;
 import com._1c.g5.v8.dt.metadata.mdclass.Language;
 import com._1c.g5.v8.dt.metadata.mdclass.MdClassFactory;
 import com._1c.g5.v8.dt.metadata.mdclass.MdObject;
@@ -142,7 +144,8 @@ public class CreateProjectTool implements IMcpTool {
                 switch (type) {
                     case "configuration":
                         createdHolder[0] = cpm.create(name, versionFinal,
-                                newConfigurationSeed(configurationName(name)), new NullProgressMonitor());
+                                newConfigurationSeed(configurationName(name), versionStr),
+                                new NullProgressMonitor());
                         break;
                     case "extension":
                         createdHolder[0] = epm.create(name, versionFinal, null, parentFinal, new NullProgressMonitor());
@@ -203,12 +206,26 @@ public class CreateProjectTool implements IMcpTool {
      * {@code create_md_object} fails with «namespace may not be null». The IDE's New-Configuration
      * wizard always supplies a seed; we mirror the minimum it does: a name, the Russian script variant
      * and exactly one language set as the default.
+     *
+     * <p>Live-smoke 1.20.0 добавил недостающее — без этого валидатор давал 4 error'а на свежем
+     * проекте: {@code uuid} у Configuration и Language («Должна быть задана сущность 'uuid'»),
+     * {@code dataLockControlMode=Managed} («Приложение должно использовать управляемый режим»),
+     * {@code compatibilityMode} по runtime-версии проекта (иначе остаётся дефолт метамодели —
+     * на EDT 2026.x это 8.5.1 — и валидатор ругается «Неподдерживаемый режим совместимости»
+     * на проектах с меньшим runtime).
      */
-    private static Configuration newConfigurationSeed(String configName) {
+    static Configuration newConfigurationSeed(String configName, String runtimeVersion) {
         Configuration cfg = MdClassFactory.eINSTANCE.createConfiguration();
+        cfg.setUuid(UUID.randomUUID());
         cfg.setName(configName);
         cfg.setScriptVariant(ScriptVariant.RUSSIAN);
+        cfg.setDataLockControlMode(DefaultDataLockControlMode.MANAGED);
+        CompatibilityMode cm = CompatibilityMode.get(runtimeVersion);
+        if (cm != null) {
+            cfg.setCompatibilityMode(cm);
+        }
         Language lang = MdClassFactory.eINSTANCE.createLanguage();
+        lang.setUuid(UUID.randomUUID());
         lang.setName("Русский");
         lang.setLanguageCode("ru");
         cfg.getLanguages().add(lang);
