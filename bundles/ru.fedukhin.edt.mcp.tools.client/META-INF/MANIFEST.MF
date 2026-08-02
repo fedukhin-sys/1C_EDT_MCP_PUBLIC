@@ -8,6 +8,7 @@ Bundle-RequiredExecutionEnvironment: JavaSE-17
 Require-Bundle: ru.fedukhin.edt.mcp.core,
  org.eclipse.core.runtime,
  org.eclipse.core.resources,
+ org.eclipse.debug.core,
  com._1c.g5.wiring,
  com._1c.g5.v8.dt.platform.services.core,
  com._1c.g5.v8.dt.platform.services.model,

@@ -11,5 +11,11 @@
       <tool class="ru.fedukhin.edt.mcp.tools.client.di.ToolsClientExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.client.StopClientTool"
             name="stop_client"
             description="Stop a running 1С client session by sessionId (graceful → force-kill on timeout)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.client.di.ToolsClientExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.client.ListLaunchConfigurationsTool"
+            name="list_launch_configurations"
+            description="List EDT launch configurations of type 'Клиент 1С:Предприятия': name, project, infobase, client type, user (passwords never returned)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.client.di.ToolsClientExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.client.RunLaunchConfigurationTool"
+            name="run_launch_configuration"
+            description="Launch an EDT launch configuration (1С client or debug) exactly like the IDE run/debug button — credentials and platform version come from the configuration"/>
    </extension>
 </plugin>

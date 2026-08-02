@@ -20,7 +20,7 @@
 <!-- 1C:EDT 2026.1 + Eclipse 2023-12 — local p2 pool (used by the installed IDE).
      Directory location: Tycho indexes every JAR in the directory, no provisioning step, no version conflicts.
      Pool contents: dt.core 27.0.0, dt.platform 12.2.0, wiring 2.5.0, xtext.ui 2.33, e4.* 2.4, ui.* 3.131, jakarta.servlet-api 4.0, com.google.inject 7.0, plus full Eclipse 2023-12 platform & PDE. -->
-<location path="C:/Users/User/.p2/pool/plugins" type="Directory"/>
+<location path="C:/Users/yarli/.p2/pool/plugins" type="Directory"/>
 
 <!-- License feature (matches upstream template) -->
 <location includeAllPlatforms="false" includeConfigurePhase="true" includeMode="planner" includeSource="true" type="InstallableUnit">

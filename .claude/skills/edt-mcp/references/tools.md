@@ -1,4 +1,4 @@
-# Полный список инструментов EDT_MCP (97)
+# Полный список инструментов EDT_MCP (99)
 
 Точные имена аргументов получены из `tools/list` и сверены с `inputSchema()` в коде.
 Если параметра нет в списке — он будет отвергнут (`additionalProperties: false`).
@@ -137,12 +137,14 @@ Required помечены `*`.
 | `run_tests` | `project*`, `infobase*`, `moduleFqn`, `user`, `password`, `timeoutSeconds`. Без установленного раннера (`install_test_runner`) — отказ сразу с подсказкой (1.20.0). `user`/`password` → `/N /P` для 1cv8 (без них — OS-аутентификация, иначе висит на диалоге логина). По таймауту процесс убивается принудительно → в результате `killed` |
 | `run_test_method` | `project*`, `infobase*`, `moduleFqn*`, `methodName*`, `user`, `password`, `timeoutSeconds` |
 
-## Client + debug (17)
+## Client + debug (19)
 | Tool | Args |
 |---|---|
 | `run_client` | `infobase*`, `clientType` (`thin`/`thick`), `user`, `password` |
 | `list_running_clients` | `infobase`, `clientType` |
 | `stop_client` | `sessionId*`, `force`, `gracefulTimeoutSeconds` |
+| `list_launch_configurations` | `project` (фильтр). Конфигурации EDT типа «Клиент 1С:Предприятия»: имя, проект, ИБ, `clientType` (`thin`/`thick`/`web`/`auto`), `user`, `hasPassword` (сам пароль не возвращается), версия платформы (1.21.0) |
+| `run_launch_configuration` | `name*` (точное имя конфигурации), `mode` (`run`/`debug`, default `run`), `timeoutSeconds` (30–3600, default 300). Запуск тем же кодом, что кнопка в IDE, — учётка/тип клиента/версия из конфигурации. Предпочтительный способ запуска клиента, когда конфигурация в EDT настроена. Таймаут НЕ прерывает запуск (`completed=false`); мгновенно умерший процесс → `warning` с exit-кодом (1.21.0) |
 | `debug_client` | `infobase*`, `clientType`, `user`, `password`, `stopOnError` |
 | `stop_debug` | `debugSessionId*` |
 | `list_debug_sessions` | — |
