@@ -109,20 +109,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # checkout-папку мог создать прежний аккаунт службы → git ругается
-          # dubious ownership при любом git-вызове gh. Помечаем безопасной.
+          # checkout mog sozdat prezhnij akkaunt sluzhby -> git rugaetsya
+          # dubious ownership pri lyubom git-vyzove gh. Pomechaem bezopasnoj.
+          #
+          # VAZHNO: v etom inline-skripte TOLKO ASCII. Runner pishet step-skript
+          # v UTF-8 bez BOM, a Windows PowerShell 5.1 chitaet ego kak ANSI ->
+          # kirillica prevrashchaetsya v mojibake (tak slomalis notes v v1.21.0).
+          # Russkij tekst dlya release notes lezhit v scripts/release-notes.md
+          # (fajl chitaetsya po bajtam kak UTF-8 -> kodirovka ne stradaet).
           git config --global --add safe.directory "$($PWD.Path)"
           $pages = "https://fedukhin-sys.github.io/1C_EDT_MCP_PUBLIC"
-          $notes = @"
-          p2 update site (установка/обновление в 1C:EDT через Help -> Install New Software):
-
-              $pages/
-
-          ZIP ниже — для офлайн-установки (Add -> Archive).
-          "@
-          # -R фиксирует репозиторий явно (gh не угадывает из локального git);
-          # без --verify-tag — тег уже на remote (push его и запустил).
+          $notes = [System.IO.File]::ReadAllText("scripts/release-notes.md", [System.Text.Encoding]::UTF8)
+          $notes = $notes.Replace('{PAGES_URL}', $pages)
+          $notesFile = "release-notes-generated.md"
+          [System.IO.File]::WriteAllText($notesFile, $notes, (New-Object System.Text.UTF8Encoding($false)))
+          # -R fiksiruet repozitorij yavno (gh ne ugadyvaet iz lokalnogo git);
+          # bez --verify-tag -- teg uzhe na remote (push ego i zapustil).
           gh release create "${{ github.ref_name }}" "${{ steps.pack.outputs.zip }}" `
             -R "${{ github.repository }}" `
             --title "EDT MCP ${{ steps.ver.outputs.version }}" `
-            --notes "$notes"
+            --notes-file $notesFile
