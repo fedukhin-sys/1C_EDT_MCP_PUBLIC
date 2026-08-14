@@ -90,9 +90,10 @@ public class ImportExternalObjectToolTest {
         doAnswer(inv -> {
             capturedTempDir = inv.getArgument(2);
             if (unpacked != null) {
-                // Платформа кладёт <корень>.xml рядом с каталогом <корень>/.
-                Files.writeString(capturedTempDir.resolve("АРМ_150626.xml"), unpacked);
-                Files.createDirectories(capturedTempDir.resolve("АРМ_150626"));
+                // Так выгружает платформа: дерево — внутрь каталога выгрузки, а описание
+                // обработки — файлом <каталог>.xml рядом с ним, уровнем выше.
+                Files.createDirectories(capturedTempDir.resolve("Forms"));
+                Files.writeString(siblingXml(capturedTempDir), unpacked);
             }
             return null;
         }).when(restorer).restore(any(), any(), any(), any());
@@ -114,6 +115,11 @@ public class ImportExternalObjectToolTest {
             project -> new ExternalObjectImporter.ProjectContext(
                 Version.V8_5_1, mock(IConfigurationProject.class)));
         return new ImportExternalObjectTool(() -> root, () -> importer);
+    }
+
+    /** Корневой XML платформа кладёт рядом с каталогом выгрузки, а не внутрь него. */
+    private static Path siblingXml(Path dumpDir) {
+        return dumpDir.resolveSibling(dumpDir.getFileName() + ".xml");
     }
 
     private IWorkspaceRoot root(boolean collision) {
@@ -167,16 +173,65 @@ public class ImportExternalObjectToolTest {
     }
 
     /**
-     * Фабрика импорта получает корень выгрузки без расширения ({@code tmp/<имя файла>}) —
-     * именно так считает мастер IDE, а платформа рядом кладёт {@code <корень>.xml}.
+     * Фабрика импорта получает найденный корневой XML: подчинённые объекты она берёт из
+     * одноимённого каталога рядом с ним.
      */
     @Test
-    public void passesExtensionlessDumpRoot_toImportFactory() throws Exception {
+    public void passesRootXml_toImportFactory() throws Exception {
         ImportExternalObjectTool tool = toolFor(ROOT_XML, false, true, Status.OK_STATUS);
         call(tool);
 
         verify(factory).createImportExternalObjectOperation(eq(PROJECT_NAME), eq(Version.V8_5_1),
-            eq(capturedTempDir.resolve("АРМ_150626")), any(IConfigurationProject.class));
+            eq(siblingXml(capturedTempDir)), any(IConfigurationProject.class));
+    }
+
+    /**
+     * Для серверной ИБ EDT гоняет платформу через агент конфигуратора: дерево выгрузки он
+     * возвращает в наш временный каталог, а {@code <каталог>.xml} остаётся в песочнице
+     * {@code %TEMP%\1cedt\ssh-*\0\}. Импорт обязан забрать файл оттуда, иначе описания
+     * обработки нет и импортировать нечего (live-отказ 2026-08-14).
+     */
+    @Test
+    public void rootXml_leftInAgentSandbox_isPickedUp() throws Exception {
+        Path fakeTmp = Files.createTempDirectory("edt-mcp-test-agenttmp-");
+        String realTmp = System.getProperty("java.io.tmpdir");
+        System.setProperty("java.io.tmpdir", fakeTmp.toString());
+        try {
+            ImportExternalObjectTool tool = toolFor(null, false, true, Status.OK_STATUS);
+            doAnswer(inv -> {
+                capturedTempDir = inv.getArgument(2);
+                Files.createDirectories(capturedTempDir.resolve("Forms"));
+                Path sandbox = fakeTmp.resolve("1cedt").resolve("ssh-42").resolve("0");
+                Files.createDirectories(sandbox);
+                Files.writeString(sandbox.resolve(capturedTempDir.getFileName() + ".xml"), ROOT_XML);
+                return null;
+            }).when(restorer).restore(any(), any(), any(), any());
+
+            Map<String, Object> result = call(tool);
+
+            assertEquals("ExternalDataProcessor.АРМ", result.get("fqn"));
+            verify(factory).createImportExternalObjectOperation(eq(PROJECT_NAME), eq(Version.V8_5_1),
+                eq(siblingXml(capturedTempDir)), any(IConfigurationProject.class));
+            assertFalse("файл из песочницы обязан переезжать, а не копироваться",
+                Files.exists(fakeTmp.resolve("1cedt").resolve("ssh-42").resolve("0")
+                    .resolve(capturedTempDir.getFileName() + ".xml")));
+        } finally {
+            System.setProperty("java.io.tmpdir", realTmp);
+        }
+    }
+
+    /** Вариант, когда платформа положила корневой XML внутрь каталога выгрузки. */
+    @Test
+    public void rootXml_insideDumpDirectory_isAccepted() throws Exception {
+        ImportExternalObjectTool tool = toolFor(null, false, true, Status.OK_STATUS);
+        doAnswer(inv -> {
+            capturedTempDir = inv.getArgument(2);
+            Files.writeString(capturedTempDir.resolve("АРМ_150626.xml"), ROOT_XML);
+            Files.createDirectories(capturedTempDir.resolve("АРМ_150626"));
+            return null;
+        }).when(restorer).restore(any(), any(), any(), any());
+
+        assertEquals("ExternalDataProcessor.АРМ", call(tool).get("fqn"));
     }
 
     /** Временный каталог живёт только на время импорта. */

@@ -50,10 +50,18 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
  * ни строки подключения, ни резолва {@code 1cv8.exe}.
  *
  * <p>Платформа кладёт рядом два объекта: {@code <корень>.xml} с описанием обработки и каталог
- * {@code <корень>/} с {@code Ext/}, {@code Forms/}, {@code Templates/}. Корень — это
- * {@code tmp/<имя файла без расширения>}, ровно как считает мастер; фабрика импорта получает
- * путь без расширения. Имя объекта берётся из {@code <Name>} корневого XML, а не из имени
- * файла: {@code АРМ_150626.epf} даёт объект {@code АРМ}.
+ * {@code <корень>/} с {@code Ext/}, {@code Forms/}, {@code Templates/}. Корень здесь — сам
+ * временный каталог: дерево приезжает внутрь него, а описание оказывается файлом
+ * {@code <каталог>.xml} рядом. Имя объекта берётся из {@code <Name>} корневого XML, а не из
+ * имени файла: {@code АРМ_150626.epf} даёт объект {@code АРМ}.
+ *
+ * <p><b>Песочница агента.</b> Для серверной ИБ EDT гоняет платформу через агент конфигуратора
+ * ({@code /AgentMode}), которому файлы прокидываются в свой каталог
+ * {@code %TEMP%\1cedt\ssh-*\0\}. Обратно оттуда забирается только каталог результата, а
+ * {@code <каталог>.xml} лежит уровнем выше и остаётся в песочнице — распакованное дерево
+ * приезжает без описания обработки, и импортировать нечего. Поэтому корневой XML ищется ещё и
+ * там (см. {@link #locateRootXml}). Мастер в IDE этой развилки не знает и на серверной ИБ
+ * спотыкается так же — проверено на live-импорте 2026-08-14.
  *
  * <p>Сеймы ({@link ContextResolver}, оба сервиса EDT) позволяют тестам прогонять оркестрацию
  * без EDT и без запуска платформы.
@@ -126,7 +134,8 @@ public class ExternalObjectImporter {
             restore(req, tmpDir);
 
             Path root       = tmpDir.resolve(trimExtension(req.file().getFileName().toString()));
-            Descriptor desc = readDescriptor(locateRootXml(tmpDir, root));
+            Path rootXml    = locateRootXml(tmpDir, root);
+            Descriptor desc = readDescriptor(rootXml);
 
             // Имя известно только после распаковки, поэтому и коллизия проверяется здесь —
             // но до импорта: EDT перезаписал бы исходники молча (в IDE на этом месте диалог).
@@ -136,7 +145,7 @@ public class ExternalObjectImporter {
                     + "заменить его импортируемым");
             }
 
-            List<String> warnings = runImport(req, context, root, desc);
+            List<String> warnings = runImport(req, context, rootXml, desc);
 
             // Возврат без исключения ничего не гарантирует — верим файлу на диске.
             refreshQuietly(req.project());
@@ -148,6 +157,8 @@ public class ExternalObjectImporter {
             return new ImportOutcome(desc.fqn(), desc.objectDir(),
                 System.currentTimeMillis() - t0, List.copyOf(warnings));
         } finally {
+            // Корневой XML лежит рядом с каталогом, а не внутри — иначе он пережил бы уборку.
+            deleteRecursively(siblingRootXml(tmpDir));
             deleteRecursively(tmpDir);
         }
     }
@@ -172,11 +183,16 @@ public class ExternalObjectImporter {
         throw toToolException("распаковать внешний объект", cause);
     }
 
-    /** Импорт распакованного XML в проект. Возвращает предупреждения из статуса операции. */
-    private List<String> runImport(ImportRequest req, ProjectContext context, Path root,
+    /**
+     * Импорт распакованного XML в проект. Возвращает предупреждения из статуса операции.
+     *
+     * <p>Фабрике отдаётся найденный корневой XML: подчинённые объекты она берёт из одноимённого
+     * каталога рядом с ним.
+     */
+    private List<String> runImport(ImportRequest req, ProjectContext context, Path rootXml,
                                    Descriptor desc) throws ToolException {
         IImportOperation operation = factory.createImportExternalObjectOperation(
-                req.project().getName(), context.version(), root, context.baseProject());
+                req.project().getName(), context.version(), rootXml, context.baseProject());
         operation.setRefreshProject(true);
 
         Throwable cause = runWithTimeout("импорт " + desc.fqn(), req.timeoutSeconds(),
@@ -196,11 +212,19 @@ public class ExternalObjectImporter {
     // --- корневой XML -----------------------------------------------------
 
     /**
-     * Корень выгрузки — {@code tmp/<имя файла без расширения>}, рядом с ним платформа кладёт
-     * {@code <корень>.xml}. Если имя разошлось (файл переименовывали), берём единственный
-     * XML верхнего уровня: имя объекта всё равно живёт внутри, а не в имени файла.
+     * Ищет корневой XML распаковки. Порядок отражает то, куда платформа его реально кладёт:
+     *
+     * <ol>
+     *   <li>{@code <tmp>.xml} рядом с временным каталогом — обычный (локальный) запуск;</li>
+     *   <li>{@code tmp/<имя файла без расширения>.xml} и единственный XML внутри {@code tmp} —
+     *       на случай, если платформа посчитает корень иначе;</li>
+     *   <li>песочница агента конфигуратора — оттуда файл переносится к остальной выгрузке.</li>
+     * </ol>
      */
     private static Path locateRootXml(Path tmpDir, Path root) throws ToolException {
+        Path sibling = siblingRootXml(tmpDir);
+        if (Files.isRegularFile(sibling)) return sibling;
+
         Path expected = root.resolveSibling(root.getFileName() + ".xml");
         if (Files.isRegularFile(expected)) return expected;
 
@@ -215,13 +239,62 @@ public class ExternalObjectImporter {
                 + e.getMessage(), e);
         }
         if (xmls.size() == 1) return xmls.get(0);
-        if (xmls.isEmpty()) {
-            throw new ToolException("распаковка не дала корневого XML в " + tmpDir
-                + " — файл не похож на внешнюю обработку или отчёт");
+        if (xmls.size() > 1) {
+            throw new ToolException("в " + tmpDir + " несколько корневых XML " + xmls
+                + " — не понятно, какой объект импортировать");
         }
-        throw new ToolException("в " + tmpDir + " несколько корневых XML " + xmls
-            + " — не понятно, какой объект импортировать");
+
+        Path fromAgent = rescueRootXmlFromAgentSandbox(tmpDir, sibling);
+        if (fromAgent != null) return fromAgent;
+
+        throw new ToolException("распаковка не дала корневого XML ни в " + tmpDir
+            + ", ни рядом с ним, ни в песочнице агента конфигуратора — файл не похож на внешнюю "
+            + "обработку или отчёт");
     }
+
+    /** Описание обработки платформа кладёт файлом рядом с каталогом выгрузки, а не внутрь него. */
+    private static Path siblingRootXml(Path tmpDir) {
+        return tmpDir.resolveSibling(tmpDir.getFileName() + ".xml");
+    }
+
+    /**
+     * Забирает корневой XML из песочницы агента конфигуратора ({@code %TEMP%\1cedt\ssh-*\0\}).
+     *
+     * <p>Имя файла в песочнице совпадает с именем нашего временного каталога — агент повторяет
+     * структуру переданных ему путей, поэтому гадать не приходится. Файл переносится к дереву
+     * выгрузки: импорту нужны оба, и рядом друг с другом.
+     *
+     * @return путь к перенесённому файлу или {@code null}, если песочницы нет
+     */
+    private static Path rescueRootXmlFromAgentSandbox(Path tmpDir, Path target) throws ToolException {
+        Path agentRoot = Path.of(System.getProperty("java.io.tmpdir", ".")).resolve("1cedt");
+        if (!Files.isDirectory(agentRoot)) return null;
+
+        String wanted = tmpDir.getFileName() + ".xml";
+        Path found;
+        try (Stream<Path> tree = Files.walk(agentRoot, AGENT_SANDBOX_DEPTH)) {
+            found = tree.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().equals(wanted))
+                    .findFirst()
+                    .orElse(null);
+        } catch (IOException e) {
+            throw new ToolException("не удалось просмотреть песочницу агента " + agentRoot + ": "
+                + e.getMessage(), e);
+        }
+        if (found == null) return null;
+
+        try {
+            Files.copy(found, target);
+            Files.deleteIfExists(found);
+        } catch (IOException e) {
+            throw new ToolException("не удалось забрать корневой XML " + found + " из песочницы "
+                + "агента: " + e.getMessage(), e);
+        }
+        return target;
+    }
+
+    /** {@code 1cedt/ssh-<id>/<номер канала>/<файл>} — глубже искать незачем. */
+    private static final int AGENT_SANDBOX_DEPTH = 3;
 
     /** Вид и имя объекта из корневого XML: {@code <ExternalDataProcessor>} … {@code <Name>}. */
     private static Descriptor readDescriptor(Path rootXml) throws ToolException {
