@@ -37,6 +37,10 @@ jobs:
     runs-on: [self-hosted, windows, edt]
     env:
       MAVEN_BIN: 'E:\Tools\maven\apache-maven-3.9.9\bin'
+      # gh лежит вне системного PATH, а раннер как служба работает под LocalSystem
+      # и пользовательский PATH не наследует: релиз v1.22.1 упал на «gh is not
+      # recognized» уже после успешной сборки и публикации в Pages.
+      GH_BIN: 'E:\Tools\gh\bin'
 
     defaults:
       run:
@@ -122,6 +126,9 @@ jobs:
           # kirillica prevrashchaetsya v mojibake (tak slomalis notes v v1.21.0).
           # Russkij tekst dlya release notes lezhit v scripts/release-notes.md
           # (fajl chitaetsya po bajtam kak UTF-8 -> kodirovka ne stradaet).
+          # gh vne sistemnogo PATH, a sluzhba runner-a rabotaet pod LocalSystem:
+          # polzovatelskij PATH ej ne dostayotsya (otkaz relize v1.22.1).
+          $env:PATH = "$env:GH_BIN;$env:PATH"
           git config --global --add safe.directory "$($PWD.Path)"
           $pages = "https://fedukhin-sys.github.io/1C_EDT_MCP_PUBLIC"
           $notes = [System.IO.File]::ReadAllText("scripts/release-notes.md", [System.Text.Encoding]::UTF8)
