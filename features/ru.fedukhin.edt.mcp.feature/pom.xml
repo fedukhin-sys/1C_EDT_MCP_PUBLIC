@@ -8,6 +8,6 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
     <artifactId>ru.fedukhin.edt.mcp.feature</artifactId>
-    <version>1.21.0-SNAPSHOT</version>
+    <version>1.22.0-SNAPSHOT</version>
     <packaging>eclipse-feature</packaging>
 </project>

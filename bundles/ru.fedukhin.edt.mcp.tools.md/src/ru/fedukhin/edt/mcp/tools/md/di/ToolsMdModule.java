@@ -4,7 +4,9 @@ import com._1c.g5.v8.dt.core.platform.IBmModelManager;
 import com._1c.g5.v8.dt.core.platform.IConfigurationProvider;
 import com._1c.g5.v8.dt.core.platform.IResourceLookup;
 import com._1c.g5.v8.dt.core.platform.IV8ProjectManager;
+import com._1c.g5.v8.dt.import_.IImportOperationFactory;
 import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectDumper;
+import com._1c.g5.v8.dt.platform.services.core.dump.IExternalObjectRestorer;
 import com._1c.g5.v8.dt.validation.marker.v2.IMarkerManagerV2;
 import com._1c.g5.wiring.AbstractServiceAwareModule;
 import com.e1c.g5.v8.dt.check.settings.ICheckRepository;
@@ -36,6 +38,7 @@ import ru.fedukhin.edt.mcp.tools.md.BorrowFormTool;
 import ru.fedukhin.edt.mcp.tools.md.BorrowMdObjectTool;
 import ru.fedukhin.edt.mcp.tools.md.CreateMdObjectTool;
 import ru.fedukhin.edt.mcp.tools.md.CreateExternalObjectTool;
+import ru.fedukhin.edt.mcp.tools.md.ImportExternalObjectTool;
 import ru.fedukhin.edt.mcp.tools.md.AddMdTemplateTool;
 import ru.fedukhin.edt.mcp.tools.md.GetMdObjectTool;
 import ru.fedukhin.edt.mcp.tools.md.ListAttributesTool;
@@ -50,6 +53,7 @@ import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectBorrower;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectFactory;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectLocator;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdoFileEditor;
+import ru.fedukhin.edt.mcp.tools.md.internal.ExternalObjectImporter;
 import ru.fedukhin.edt.mcp.tools.md.internal.ModuleFileBootstrap;
 import ru.fedukhin.edt.mcp.tools.md.internal.MdObjectRegistry;
 import ru.fedukhin.edt.mcp.tools.md.internal.PropertyAccessor;
@@ -86,6 +90,13 @@ public final class ToolsMdModule extends AbstractServiceAwareModule {
         bind(ICheckRepository.class).toService();
         bind(CheckCatalog.class).in(Singleton.class);
         bind(ExternalObjectBuilder.class);
+
+        // import_external_object: зеркало сборки — распаковка .epf штатным сервисом EDT плюс
+        // импорт полученного Designer-XML. Оба сервиса регистрируются в OSGi (IExternalObjectRestorer
+        // — бандлом platform.services.core, IImportOperationFactory — бандлом dt.import).
+        bind(IExternalObjectRestorer.class).toService();
+        bind(IImportOperationFactory.class).toService();
+        bind(ExternalObjectImporter.class);
 
         // Internal singletons (Plan 1)
         bind(MdObjectRegistry.class).in(Singleton.class);
@@ -151,5 +162,7 @@ public final class ToolsMdModule extends AbstractServiceAwareModule {
         bind(AddMdTemplateTool.class);
         // 2026-07-17 — Task 5 аудита: сборка .epf/.erf
         bind(BuildExternalObjectTool.class);
+        // 2026-08-14 — v1.22.0: импорт готового .epf/.erf в проект внешних объектов
+        bind(ImportExternalObjectTool.class);
     }
 }

@@ -1,4 +1,4 @@
-# Полный список инструментов EDT_MCP (99)
+# Полный список инструментов EDT_MCP (100)
 
 Точные имена аргументов получены из `tools/list` и сверены с `inputSchema()` в коде.
 Если параметра нет в списке — он будет отвергнут (`additionalProperties: false`).
@@ -28,13 +28,14 @@ Required помечены `*`.
 | `associate_infobase` | `project*`, `infobase*`, `setDefault` |
 | `deploy_project` | `project*`, `infobase*`, `force`, `timeoutSeconds` |
 
-## Metadata (33)
+## Metadata (34)
 | Tool | Args |
 |---|---|
 | `list_md_objects` | `project*`, `kind`. Знает все 19 borrow-kind'ов; на external-object проектах читает `src/` файловым сканом |
 | `get_md_object` | `project*`, `fqn*`. Возвращает в т.ч. `tabularSections` (ТЧ с колонками) и `values` (значения Enum) |
 | `create_md_object` | `project*`, `kind*`, `name*`, `synonym`, `comment`. С 1.20.0 создаются и Task/BusinessProcess/ChartOf*/ExchangePlan/DocumentJournal; не-creatable остались CommonForm и CommonPicture (нужны Form.form/файл картинки) — отбиваются с подсказкой использовать `borrow_md_object` |
 | `create_external_object` | `project*` (проект внешних объектов), `kind*` (`ExternalDataProcessor`/`ExternalReport`), `name*`, `synonym`, `comment` |
+| `import_external_object` | `project*` (external-object проект), `file*` (`.epf`/`.erf`), `overwrite` (default `false`), `timeoutSeconds` (30–3600, default 600). Импорт готового файла тем же путём, что мастер IDE (`IExternalObjectRestorer` + `IImportOperationFactory`); версия платформы и базовый проект — из самого проекта, ИБ для распаковки — из ассоциированного приложения. Имя объекта берётся из содержимого файла, не из имени файла (1.22.0) |
 | `build_external_object` | `project*`, `fqn*`, `outPath*`, `timeoutSeconds`. Сборка `.epf`/`.erf` штатным экспорт-сервисом EDT (`IExternalObjectDumper`); ИБ/учётка/версия платформы — из ассоциированного приложения проекта (`associate_infobase` обязателен), на время сборки ИБ блокируется. **Отказывается собирать при BSL-ошибках компиляции целевой обработки** (те же маркеры, что у `check_list_markers`); транзиентный «already connected» первым вызовом ретраит сам |
 | `add_md_template` | `project*`, `ownerFqn*` (`<Kind>.<Name>`), `templateName*`, `synonym`, `areaName` (default = templateName), `columns` (массив ширин), `rows` (массив строк), `overwrite` (default false) |
 | `rename_md_object` | `project*`, `fqn*`, `newName*` |
