@@ -89,7 +89,12 @@ jobs:
           Compress-Archive -Path "$src/*" -DestinationPath $zip
           [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "zip=$zip`n")
 
+      # Артефакт дублирует ZIP, который уезжает в Release, и нужен только для
+      # ручного скачивания промежуточных сборок. Аплоад в blob storage у нас уже
+      # вставал («Upload progress stalled» через 5 минут, run 31804397590) и ронял
+      # весь job вместе с публикацией в Pages — поэтому шаг некритичный.
       - name: Upload build artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: p2-repository-${{ steps.ver.outputs.version }}
