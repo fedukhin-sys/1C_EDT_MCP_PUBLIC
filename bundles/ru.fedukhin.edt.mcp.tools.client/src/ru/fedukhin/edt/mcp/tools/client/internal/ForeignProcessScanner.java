@@ -92,17 +92,42 @@ public final class ForeignProcessScanner {
      * Командные строки процессов платформы через CIM. Вне Windows и при любой осечке —
      * пустая карта: поле {@code infobase} просто останется незаполненным.
      */
-    static Map<Long, String> windowsCommandLines() {
+    /** Строка запроса к CIM. Вынесена отдельно, чтобы её можно было проверить тестом. */
+    public static String buildScript() {
+        String filter = IMAGES.stream().map(i -> "Name=" + SQ + i + SQ)
+            .collect(java.util.stream.Collectors.joining(" or "));
+        return "[Console]::OutputEncoding=[Text.Encoding]::UTF8; "
+             + "Get-CimInstance Win32_Process -Filter " + DQ + filter + DQ + " | "
+             + "ForEach-Object { " + DQ + "$($_.ProcessId)" + TAB_PS + "$($_.CommandLine)" + DQ + " }";
+    }
+
+    private static final String SQ = "'";
+    private static final String DQ = "\"";
+    /** Табуляция в синтаксисе PowerShell: обратный апостроф + t. */
+    private static final String TAB_PS = "`t";
+
+    /**
+     * PowerShell принимает команду в Base64 от UTF-16LE. Так надо: при передаче через
+     * {@code -Command} строка со скобками и кавычками проходит через склейку аргументов
+     * {@code ProcessBuilder}, которая на Windows кавычки внутри значения не экранирует, —
+     * интерпретатор получает искажённый скрипт и молча отдаёт пустой вывод.
+     */
+    public static String encodeCommand(String script) {
+        return java.util.Base64.getEncoder().encodeToString(
+            script.getBytes(java.nio.charset.StandardCharsets.UTF_16LE));
+    }
+
+    /**
+     * Командные строки процессов платформы через CIM. Вне Windows и при любой осечке —
+     * пустая карта: поле {@code infobase} просто останется незаполненным.
+     */
+    public static Map<Long, String> windowsCommandLines() {
         String os = System.getProperty("os.name", "");
         if (!os.toLowerCase(Locale.ROOT).startsWith("windows")) return Map.of();
-        String filter = IMAGES.stream().map(i -> "Name='" + i + "'")
-            .collect(java.util.stream.Collectors.joining(" or "));
-        String script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; "
-            + "Get-CimInstance Win32_Process -Filter \"" + filter + "\" | "
-            + "ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }";
         Process p = null;
         try {
-            p = new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+            p = new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive",
+                    "-EncodedCommand", encodeCommand(buildScript()))
                 .redirectErrorStream(false)
                 .start();
             Map<Long, String> byPid = new LinkedHashMap<>();

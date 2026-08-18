@@ -3,6 +3,7 @@ package ru.fedukhin.edt.mcp.tests.client;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.util.Set;
 import org.junit.Test;
@@ -99,5 +100,52 @@ public class ForeignProcessScannerTest {
     @Test
     public void scan_withoutFallback_doesNotThrow() {
         assertNotNull(ForeignProcessScanner.scan(Set.of(), null));
+    }
+
+    /**
+     * Скрипт уходит в PowerShell в Base64 от UTF-16LE. Через {@code -Command} он не
+     * проходит: склейка аргументов ProcessBuilder на Windows не экранирует кавычки
+     * внутри значения, интерпретатор получает искажённую строку и молча отдаёт пустой
+     * вывод — ровно так фикс 1.23.2 и оказался нерабочим на живых процессах.
+     */
+    @Test
+    public void encodeCommand_roundTripsAsUtf16Le() {
+        String script = ForeignProcessScanner.buildScript();
+
+        String decoded = new String(java.util.Base64.getDecoder().decode(
+            ForeignProcessScanner.encodeCommand(script)),
+            java.nio.charset.StandardCharsets.UTF_16LE);
+
+        assertEquals(script, decoded);
+    }
+
+    @Test
+    public void buildScript_queriesPlatformProcessesAndEmitsTabSeparatedPairs() {
+        String script = ForeignProcessScanner.buildScript();
+
+        assertTrue("должен спрашивать Win32_Process, было: " + script,
+            script.contains("Win32_Process"));
+        assertTrue("должен фильтровать по имени образа, было: " + script,
+            script.contains("Name='1cv8.exe'"));
+        assertTrue("разделитель — табуляция PowerShell, было: " + script,
+            script.contains("`t"));
+    }
+
+    /**
+     * Живая проверка: именно её отсутствие пропустило нерабочий запрос в релиз —
+     * прежние тесты подменяли источник данных и настоящий вызов не выполняли.
+     */
+    @Test
+    public void windowsCommandLines_actuallyRunsAndParses() {
+        org.junit.Assume.assumeTrue("тест только для Windows",
+            System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).startsWith("windows"));
+
+        java.util.Map<Long, String> byPid = ForeignProcessScanner.windowsCommandLines();
+
+        assertNotNull("запрос не должен падать", byPid);
+        for (java.util.Map.Entry<Long, String> e : byPid.entrySet()) {
+            assertTrue("ключ — валидный pid: " + e.getKey(), e.getKey() > 0);
+            assertNotNull("значение — командная строка", e.getValue());
+        }
     }
 }

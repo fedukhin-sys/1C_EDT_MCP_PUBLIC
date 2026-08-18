@@ -10,6 +10,6 @@
     <artifactId>ru.fedukhin.edt.mcp.core</artifactId>
     <!-- Версия ядра = версия релиза плагина: именно её сервер отдаёт клиенту
          в serverInfo ответа initialize и пишет в маячок инстанции. -->
-    <version>1.23.2-SNAPSHOT</version>
+    <version>1.23.3-SNAPSHOT</version>
     <packaging>eclipse-plugin</packaging>
 </project>

@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: EDT MCP Core
 Bundle-SymbolicName: ru.fedukhin.edt.mcp.core;singleton:=true
-Bundle-Version: 1.23.2.qualifier
+Bundle-Version: 1.23.3.qualifier
 Bundle-Vendor: Fedukhin
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Bundle-ActivationPolicy: lazy
