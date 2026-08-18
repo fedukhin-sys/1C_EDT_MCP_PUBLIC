@@ -104,11 +104,22 @@ public class DebugLauncher {
         // "Не найден свободный порт на сервере отладки"). Passing any non-(-1) port skips the
         // buggy branch (iload_3 != -1 → jump-to-152 path in the bytecode). EDT UI debug doesn't
         // hit this because its launch config sets ATTR_DEBUG_SERVER_PORT to an explicit port.
-        int port = findFreePort();
+        // Между close() пробного сокета и биндом dbgs.exe есть окно. С одной инстанцией
+        // EDT это редкая гонка, с несколькими — регулярная, и отказ маскируется под тот
+        // самый баг EDT «Не найден свободный порт на сервере отладки». Замок машинного
+        // уровня закрывает окно между подбором порта и его занятием.
+        String portHolder = "debug_client infobase=" + infobase.getName()
+                + " pid=" + ProcessHandle.current().pid();
+        int port;
         IRuntimeDebugClientTarget target;
-        try {
+        try (ru.fedukhin.edt.mcp.core.ipc.InterProcessLock portLock =
+                     ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
+                             "debug-port", portHolder, java.time.Duration.ofSeconds(30))) {
+            port = findFreePort();
             // EDT then runs dbgs.exe on `port`, wraps it in an IProcess, and connect()s.
             target = debugTargetManager.createLocal(installation, infobase, port, launch);
+        } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
+            throw new ToolException(e.getMessage());
         } catch (Exception e) {
             // DIAGNOSTIC (temporary): dump the full EDT-internal stack to .metadata/.log so we can
             // see which method actually threw — the surface message ("Не найден свободный порт на

@@ -39,4 +39,16 @@ public class EquinoxSecureStringStore implements ISecureStringStore {
         try { node.put(key, value, true); }
         catch (StorageException e) { throw new IllegalStateException("Cannot persist secure value", e); }
     }
+
+    /**
+     * Без явного сброса Equinox пишет файл только при остановке фреймворка. При
+     * нескольких инстанциях EDT это означает, что сгенерированный секрет невидим
+     * соседям и может быть перетёрт тем, кто выключится последним.
+     */
+    @Override public void flush() {
+        try { node.flush(); }
+        catch (java.io.IOException e) {
+            throw new IllegalStateException("Cannot flush secure storage", e);
+        }
+    }
 }

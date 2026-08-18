@@ -10,7 +10,7 @@ public final class BslRunnerTemplates {
 
     private BslRunnerTemplates() {}
 
-    public static String clientModuleBody() {
+    public static String clientModuleBody(String serverModuleName) {
         return ""
             + "#Область ПрограммныйИнтерфейс\r\n\r\n"
             + "// Точка входа: проверяет ПараметрЗапуска, если префикс наш —\r\n"
@@ -23,7 +23,7 @@ public final class BslRunnerTemplates {
             + "\tКонецЕсли;\r\n"
             + "\tЗакодированныйСелектор = Сред(Парам, СтрДлина(Префикс) + 1);\r\n"
             + "\tСелектор = РазобратьСелектор(ЗакодированныйСелектор);\r\n"
-            + "\tРезультат = EDT_MCP_TestRunner_Сервер.ВыполнитьТесты(Селектор);\r\n"
+            + "\tРезультат = " + serverModuleName + ".ВыполнитьТесты(Селектор);\r\n"
             + "\tЗаписатьРезультат(Результат, Селектор.ResultFile);\r\n"
             + "\tЗавершитьРаботуСистемы(Ложь);\r\n"
             + "КонецПроцедуры\r\n\r\n"
@@ -122,19 +122,19 @@ public final class BslRunnerTemplates {
             + "#КонецОбласти\r\n";
     }
 
-    public static String handlerProcedureForConfiguration() {
+    public static String handlerProcedureForConfiguration(String clientModuleName) {
         return ""
             + "// Установлено EDT_MCP. Если параметр запуска не наш — handler сразу возвращает управление.\r\n"
             + "Процедура ПриНачалеРаботыСистемы()\r\n"
-            + "\tEDT_MCP_TestRunner_Клиент.ВыполнитьЕсли7bПараметр();\r\n"
+            + "\t" + clientModuleName + ".ВыполнитьЕсли7bПараметр();\r\n"
             + "КонецПроцедуры\r\n";
     }
 
-    public static String handlerProcedureForExtension() {
+    public static String handlerProcedureForExtension(String clientModuleName) {
         return ""
             + "&После(\"ПриНачалеРаботыСистемы\")\r\n"
             + "Процедура EDT_MCP_ПриНачалеРаботыСистемы()\r\n"
-            + "\tEDT_MCP_TestRunner_Клиент.ВыполнитьЕсли7bПараметр();\r\n"
+            + "\t" + clientModuleName + ".ВыполнитьЕсли7bПараметр();\r\n"
             + "КонецПроцедуры\r\n";
     }
 }

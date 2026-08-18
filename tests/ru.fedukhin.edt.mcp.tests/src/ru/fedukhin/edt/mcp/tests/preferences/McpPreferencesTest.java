@@ -29,6 +29,31 @@ public class McpPreferencesTest {
     }
 
     @Test
+    public void portRangeEnd_defaultsToSixSlots() {
+        McpPreferences p = new McpPreferences(InstanceScope.INSTANCE.getNode(NODE));
+        assertEquals(3006, p.getPortRangeEnd());
+    }
+
+    /** Конец диапазона не может быть меньше начала — иначе подбор бы не запускался вовсе. */
+    @Test
+    public void portRangeEnd_neverBelowPort() throws Exception {
+        IEclipsePreferences node = InstanceScope.INSTANCE.getNode(NODE);
+        McpPreferences p = new McpPreferences(node);
+        p.setPort(4000);
+        p.setPortRangeEnd(3006);
+        node.flush();
+        assertEquals(4000, new McpPreferences(InstanceScope.INSTANCE.getNode(NODE)).getPortRangeEnd());
+    }
+
+    @Test
+    public void portRangeEnd_persists() throws Exception {
+        IEclipsePreferences node = InstanceScope.INSTANCE.getNode(NODE);
+        new McpPreferences(node).setPortRangeEnd(3010);
+        node.flush();
+        assertEquals(3010, new McpPreferences(InstanceScope.INSTANCE.getNode(NODE)).getPortRangeEnd());
+    }
+
+    @Test
     public void setPort_persists() throws Exception {
         IEclipsePreferences node = InstanceScope.INSTANCE.getNode(NODE);
         McpPreferences p = new McpPreferences(node);

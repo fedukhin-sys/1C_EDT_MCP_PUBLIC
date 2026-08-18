@@ -30,8 +30,9 @@ public class RestartServerHandler extends AbstractHandler {
             svc.stop();
             bus.publish(ServerState.starting(prefs.getPort()));
             svc.start();
-            bus.publish(ServerState.running(prefs.getPort()));
-            LOG.log(Status.info("MCP server restarted on port " + prefs.getPort()));
+            // Фактически занятый порт, а не желаемый: при авто-подборе они расходятся.
+            bus.publish(ServerState.running(svc.getPort()));
+            LOG.log(Status.info("MCP server restarted on port " + svc.getPort()));
         } catch (Throwable t) {
             LOG.log(Status.error("Failed to restart MCP server", t));
             throw new ExecutionException("Failed to restart MCP server: " + t.getMessage(), t);

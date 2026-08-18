@@ -25,16 +25,54 @@ public class McpServerLifecycle {
      */
     private static final java.time.Duration SSE_KEEP_ALIVE = java.time.Duration.ofSeconds(20);
 
+    /**
+     * Кто мы: путь рабочей области и открытые проекты. {@code null} — вне рабочей
+     * области (headless-тесты), тогда идентификация просто не публикуется.
+     */
+    public record WorkspaceIdentity(String path, java.util.List<String> projects) {}
+
     private final IToolRegistry tools;
     private final ToolSpecAdapter adapter;
+    private final java.util.function.Supplier<WorkspaceIdentity> identity;
 
     private HttpServletSseServerTransportProvider transport;
     private McpSyncServer server;
 
     @Inject
     public McpServerLifecycle(IToolRegistry tools, ToolSpecAdapter adapter) {
+        this(tools, adapter, McpServerLifecycle::currentWorkspace);
+    }
+
+    /** Test seam — явная идентификация вместо чтения рабочей области. */
+    public McpServerLifecycle(IToolRegistry tools, ToolSpecAdapter adapter,
+                              java.util.function.Supplier<WorkspaceIdentity> identity) {
         this.tools = tools;
         this.adapter = adapter;
+        this.identity = identity;
+    }
+
+    /** Идентификация текущей инстанции; нужна ещё и реестру инстанций в {@code McpHttpService}. */
+    public WorkspaceIdentity workspaceIdentity() { return identity.get(); }
+
+    public String serverVersion() { return bundleVersion(); }
+
+    /**
+     * Вне рабочей области (юнит-тесты вне OSGi) возвращает {@code null}, а не падает:
+     * идентификация — дополнение к протоколу, из-за неё сервер подниматься не перестаёт.
+     */
+    static WorkspaceIdentity currentWorkspace() {
+        try {
+            org.eclipse.core.resources.IWorkspaceRoot root =
+                org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot();
+            org.eclipse.core.runtime.IPath loc = root.getLocation();
+            java.util.List<String> names = new java.util.ArrayList<>();
+            for (org.eclipse.core.resources.IProject p : root.getProjects()) {
+                if (p.isOpen()) names.add(p.getName());
+            }
+            return new WorkspaceIdentity(loc == null ? "(unknown)" : loc.toString(), names);
+        } catch (RuntimeException | LinkageError e) {
+            return null;
+        }
     }
 
     /**
@@ -62,12 +100,45 @@ public class McpServerLifecycle {
         server = McpServer.sync(transport)
             .jsonMapper(jsonMapper)
             .jsonSchemaValidator(validator)
-            .serverInfo("EDT_MCP", bundleVersion())
-            .instructions(SERVER_INSTRUCTIONS)
+            .serverInfo(new McpSchema.Implementation("EDT_MCP", serverTitle(), bundleVersion()))
+            .instructions(buildInstructions(identity.get()))
             .capabilities(McpSchema.ServerCapabilities.builder().tools(true).build())
             .tools(tools.tools().stream().map(adapter::adapt).toList())
             .build();
         return transport;
+    }
+
+    /**
+     * Заголовок сервера виден пользователю в клиенте. При нескольких инстанциях
+     * EDT это единственное, чем они различаются в списке подключений.
+     */
+    private String serverTitle() {
+        WorkspaceIdentity id = identity.get();
+        if (id == null || id.path() == null) return "EDT_MCP";
+        java.nio.file.Path leaf;
+        try {
+            leaf = java.nio.file.Path.of(id.path()).getFileName();
+        } catch (RuntimeException e) {
+            return "EDT_MCP";
+        }
+        return leaf == null ? "EDT_MCP" : "EDT_MCP @ " + leaf;
+    }
+
+    /**
+     * Первый абзац называет обслуживаемую рабочую область. Инструкция уходит клиенту
+     * в каждом {@code initialize}, поэтому это самый надёжный способ дать сессии понять,
+     * что она подключилась не к той инстанции, — он не зависит ни от каких файлов на диске.
+     */
+    public static String buildInstructions(WorkspaceIdentity id) {
+        if (id == null) return POLICY;
+        String projects = (id.projects() == null || id.projects().isEmpty())
+            ? "(открытых проектов нет)"
+            : String.join(", ", id.projects());
+        return "Этот сервер обслуживает workspace " + id.path() + ".\n"
+             + "Открытые проекты: " + projects + ".\n"
+             + "Если пользователь работает с другим проектом — вы подключились не к тому серверу:\n"
+             + "вызовите get_workspace_info, сообщите об ошибке и НЕ выполняйте изменяющих операций.\n\n"
+             + POLICY;
     }
 
     /**
@@ -76,7 +147,7 @@ public class McpServerLifecycle {
      * in source), unlike CLAUDE.md/memory which is per-project. Keep it tight:
      * clients re-fetch on every session start.
      */
-    private static final String SERVER_INSTRUCTIONS = """
+    private static final String POLICY = """
         EDT_MCP serves 1C:EDT IDE state and lets the client mutate projects,
         BSL modules, MdObjects, forms, infobases, and run xUnitFor1C tests.
 

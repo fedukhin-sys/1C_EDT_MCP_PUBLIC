@@ -2,6 +2,75 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [1.23.0] — 2026-08-18
+
+Параллельная работа нескольких запущенных 1C:EDT. Раньше MCP-сервер поднимался
+только в одной инстанции: порт был один (3001), и вторая молча оставалась без
+сервера — `BindException` уходил в лог, состояние вставало в «ошибка» и висело
+там до ручного вмешательства.
+
+### Добавлено
+
+- **Диапазон портов вместо одного.** В настройках появилось поле
+  «Port range end» (по умолчанию 3001–3006); инстанция при старте занимает
+  первый свободный порт. Чтобы закрепить фиксированный порт, конец диапазона
+  задаётся равным началу.
+- **Реестр живых инстанций.** Каждая пишет `~/.edt-mcp/instances/<pid>.json` со
+  своим портом, путём рабочей области и списком открытых проектов. Клиент по
+  нему выбирает нужный порт, не перебирая их вслепую. Живость определяется
+  блокировкой файла, которую операционная система снимает при крахе процесса, —
+  осиротевшая запись отличается от живой механически, без эвристик по PID.
+- **Самоидентификация сервера.** В ответе `initialize` приходит
+  `serverInfo.title` вида `EDT_MCP @ Demo`, а первый абзац `instructions` называет
+  обслуживаемую рабочую область и открытые проекты. Клиент может обнаружить, что
+  подключился не к той инстанции, ещё до первого вызова.
+- **Межпроцессные замки монопольных операций.** Ключ подбирается под ресурс, за
+  который идёт борьба: информационная база — `deploy_project`, `run_tests`,
+  `run_test_method`; проект — сборка и импорт внешних объектов (сборка берёт ещё и замок по выходному файлу);
+  порт сервера отладки — `debug_client`; список информационных баз —
+  `create_infobase`. Отказ называет держателя (инструмент и pid, а
+  `deploy_project` — ещё и рабочую область) вместо безликого «timeout after 600s».
+- **Сверка базы с ассоциацией проекта** в `deploy_project`, `run_tests` и
+  `run_test_method`. Список информационных баз в 1С — один файл на пользователя,
+  и цель резолвилась по имени без всякой проверки: одна опечатка отправляла
+  расширение в чужую базу из правильного проекта, правильным инструментом и без
+  единой ошибки. Обход для намеренных случаев — аргумент
+  `allowForeignInfobase: true`.
+- **Чужие процессы платформы** в `list_running_clients` по
+  `includeForeign: true`. Осиротевший `1cv8` держит информационную базу и
+  превращает `deploy_project` в тихий no-op, а увидеть его через MCP было нечем:
+  реестр хранит живой объект процесса и между экземплярами IDE непереносим.
+- **Новые поля `get_workspace_info`** — `projects`, `port`, `pid`: по ним сессия
+  подтверждает, к какой инстанции подключилась.
+
+### Изменено
+
+- **Имена модулей тестового раннера суффиксуются проектом**
+  (`EDT_MCP_TestRunner_Сервер_Demo`). Уникальность требуется на уровне
+  информационной базы, а не проекта: два расширения одной базы с одинаковыми
+  именами общих модулей заставляют 1С молча отключить второе расширение целиком,
+  и видно это только в журнале регистрации. Модули старого образца сносятся при
+  установке; уже развёрнутые раннеры продолжают признаваться `run_tests`, так
+  что принудительная переустановка не нужна.
+- **Флаг `containsRealPersonalData` и журнал обезличивания** вынесены в
+  `~/.edt-mcp/privacy` и стали общими для всех инстанций. Раньше
+  `set_infobase_pii_flag` действовал только в той сессии, где его выставили, а
+  `get_privacy_audit` показывал свою долю фактов — для журнала, который ведётся
+  ради 152-ФЗ, это делало его бесполезным при параллельной работе.
+
+### Исправлено
+
+- **Секреты не доходили до диска.** Сброс хранилища Equinox не вызывался нигде,
+  а инициализация не была защищена между процессами: две инстанции, стартовавшие
+  при пустом хранилище, сгенерировали бы разные значения. Для ключа
+  псевдонимизации персональных данных это означало расхождение псевдонимов
+  одного и того же субъекта, необратимое постфактум — обратной таблицы нет.
+- **Утечка веб-сервера при неудачном старте.** После провалившейся попытки
+  занять порт объект сервера оставался живым и неостановленным, а проверка в
+  начале запуска пропускала следующую попытку.
+- **Статус-бар показывал желаемый порт, а не занятый.** Фактический порт был
+  доступен, но ни один вызывающий его не использовал.
+
 ## [1.22.1] — 2026-08-14
 
 Починка `import_external_object`: в 1.22.0 он отказывал на любом реальном файле
@@ -336,17 +405,24 @@ API EDT, устранён дефект `create_project` для конфигур�
 
 История до v1.12.0 разработки внутренняя; первая публичная редакция отражает состояние v1.12.0.
 
-[1.18.1]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.18.1
-[1.18.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.18.0
-[1.17.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.17.0
-[1.16.1]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.16.1
-[1.16.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.16.0
-[1.15.5]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.5
-[1.15.4]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.4
-[1.15.3]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.3
-[1.15.2]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.2
-[1.15.1]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.1
-[1.15.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.15.0
-[1.14.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.14.0
-[1.13.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.13.0
-[1.12.0]: https://github.com/fedukhin-sys/EDT_MCP/releases/tag/v1.12.0
+[1.23.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.23.0
+[1.22.1]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.22.1
+[1.22.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.22.0
+[1.21.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.21.0
+[1.19.2]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.19.2
+[1.19.1]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.19.1
+[1.19.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.19.0
+[1.18.1]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.18.1
+[1.18.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.18.0
+[1.17.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.17.0
+[1.16.1]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.16.1
+[1.16.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.16.0
+[1.15.5]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.15.5
+[1.15.4]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.15.4
+[1.15.3]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.15.3
+[1.15.2]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.15.2
+[1.15.1]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.15.1
+[1.15.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.15.0
+[1.14.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.14.0
+[1.13.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.13.0
+[1.12.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.12.0

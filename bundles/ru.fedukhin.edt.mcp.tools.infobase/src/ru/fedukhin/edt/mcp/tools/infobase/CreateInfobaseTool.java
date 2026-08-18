@@ -86,7 +86,22 @@ public class CreateInfobaseTool implements IMcpTool {
         Duration timeout = Duration.ofSeconds(parseTimeout(args));
 
         Path locPath = Paths.get(location);
-        InfobaseReference ref = registry.createFileInfobase(name, locPath, version, folder, timeout);
+        // Замок машинного уровня: список баз — один файл на пользователя
+        // (%APPDATA%\1C\1CEStart\ibases.v8i), он переписывается целиком, и
+        // блокировки нет ни у нас, ни в EDT. Замок закрывает наши гонки; тот же
+        // файл переписывают сам EDT и 1cestart, и это вне нашего контроля.
+        String holder = "create_infobase name=" + name + " pid=" + ProcessHandle.current().pid();
+        InfobaseReference ref;
+        try (ru.fedukhin.edt.mcp.core.ipc.InterProcessLock lock =
+                 ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
+                     "ibases-v8i", holder, timeout)) {
+            ref = registry.createFileInfobase(name, locPath, version, folder, timeout);
+        } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
+            throw new ToolException(e.getMessage());
+        } catch (java.io.IOException e) {
+            throw new ToolException("не удалось взять замок списка информационных баз: "
+                + e.getMessage(), e);
+        }
         return ListInfobasesTool.serialise(ref);
     }
 

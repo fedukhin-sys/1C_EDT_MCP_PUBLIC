@@ -33,12 +33,14 @@ public class IdeManagedAppModuleEditor implements TestRunnerInstaller.ManagedApp
 
     @Override
     public void appendConfigurationHandler(IProject project) throws ToolException {
-        append(project, BslRunnerTemplates.handlerProcedureForConfiguration());
+        append(project, BslRunnerTemplates.handlerProcedureForConfiguration(
+                TestRunnerInstaller.clientModule(project.getName())));
     }
 
     @Override
     public void appendExtensionHandler(IProject project) throws ToolException {
-        append(project, BslRunnerTemplates.handlerProcedureForExtension());
+        append(project, BslRunnerTemplates.handlerProcedureForExtension(
+                TestRunnerInstaller.clientModule(project.getName())));
     }
 
     @Override

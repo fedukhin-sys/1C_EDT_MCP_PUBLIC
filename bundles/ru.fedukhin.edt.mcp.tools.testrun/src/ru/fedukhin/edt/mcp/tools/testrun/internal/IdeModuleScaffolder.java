@@ -85,7 +85,8 @@ public class IdeModuleScaffolder implements TestRunnerInstaller.ModuleScaffolder
     @Override
     public void createClientModule(IProject project, String name) throws ToolException {
         createModuleWithRollback(project, name, /*server*/ false, /*client*/ true,
-                BslRunnerTemplates.clientModuleBody());
+                BslRunnerTemplates.clientModuleBody(
+                        TestRunnerInstaller.serverModule(project.getName())));
     }
 
     @Override

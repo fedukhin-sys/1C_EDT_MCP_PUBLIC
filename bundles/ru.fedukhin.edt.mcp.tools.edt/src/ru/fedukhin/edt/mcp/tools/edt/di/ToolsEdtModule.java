@@ -29,6 +29,8 @@ public class ToolsEdtModule extends AbstractServiceAwareModule {
         bind(IV8ProjectManager.class).toService();
         bind(IRuntimeVersionSupport.class).toService();
         bind(IRuntimeRegistry.class).toService();
+        // Шина состояния сервера: get_workspace_info отдаёт фактический порт инстанции.
+        bind(ru.fedukhin.edt.mcp.core.state.IServerStateBus.class).toService();
 
         bind(CloseProjectTool.class);
         bind(CreateProjectTool.class);

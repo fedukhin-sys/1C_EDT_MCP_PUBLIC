@@ -26,7 +26,7 @@ Required помечены `*`.
 | `get_infobase` | `name`, `uuid` |
 | `create_infobase` | `name*`, `type*`, `location*`, `version`, `folder`, `timeoutSeconds` |
 | `associate_infobase` | `project*`, `infobase*`, `setDefault` |
-| `deploy_project` | `project*`, `infobase*`, `force`, `timeoutSeconds` |
+| `deploy_project` | `project*`, `infobase*`, `force`, `timeoutSeconds`, `allowForeignInfobase` (по умолчанию false). База сверяется с ассоциацией проекта: связан с другими — отказ, обходится `allowForeignInfobase: true`; ассоциации нет — деплой идёт с предупреждением |
 
 ## Metadata (34)
 | Tool | Args |
@@ -133,16 +133,16 @@ Required помечены `*`.
 | `add_test_method` | `project*`, `moduleFqn*`, `methodName*`, `body`. Возвращает честный `registered` + `warning`, если метод не попал в `ИсполняемыеСценарии` |
 | `list_test_modules` | `project*`, `language` |
 | `get_test_methods` | `project*`, `moduleFqn*` |
-| `install_test_runner` | `project*` |
+| `install_test_runner` | `project*`. Имена общих модулей суффиксуются проектом (`EDT_MCP_TestRunner_Сервер_<Проект>`) — уникальность нужна на уровне ИБ; модули старого образца сносятся при установке |
 | `uninstall_test_runner` | `project*` |
-| `run_tests` | `project*`, `infobase*`, `moduleFqn`, `user`, `password`, `timeoutSeconds`. Без установленного раннера (`install_test_runner`) — отказ сразу с подсказкой (1.20.0). `user`/`password` → `/N /P` для 1cv8 (без них — OS-аутентификация, иначе висит на диалоге логина). По таймауту процесс убивается принудительно → в результате `killed` |
-| `run_test_method` | `project*`, `infobase*`, `moduleFqn*`, `methodName*`, `user`, `password`, `timeoutSeconds` |
+| `run_tests` | `project*`, `infobase*`, `moduleFqn`, `user`, `password`, `timeoutSeconds`. Без установленного раннера (`install_test_runner`) — отказ сразу с подсказкой (1.20.0). `user`/`password` → `/N /P` для 1cv8 (без них — OS-аутентификация, иначе висит на диалоге логина). По таймауту процесс убивается принудительно → в результате `killed`. Есть `allowForeignInfobase` (по умолчанию false) — база сверяется с ассоциацией проекта |
+| `run_test_method` | `project*`, `infobase*`, `moduleFqn*`, `methodName*`, `user`, `password`, `timeoutSeconds`, `allowForeignInfobase` (по умолчанию false) |
 
 ## Client + debug (19)
 | Tool | Args |
 |---|---|
 | `run_client` | `infobase*`, `clientType` (`thin`/`thick`), `user`, `password` |
-| `list_running_clients` | `infobase`, `clientType` |
+| `list_running_clients` | `infobase`, `clientType`, `includeForeign` (по умолчанию false — с ним в выдачу попадают процессы платформы других инстанций EDT, помеченные `foreign: true`; погасить их `stop_client` нельзя) |
 | `stop_client` | `sessionId*`, `force`, `gracefulTimeoutSeconds` |
 | `list_launch_configurations` | `project` (фильтр). Конфигурации EDT типа «Клиент 1С:Предприятия»: имя, проект, ИБ, `clientType` (`thin`/`thick`/`web`/`auto`), `user`, `hasPassword` (сам пароль не возвращается), версия платформы (1.21.0) |
 | `run_launch_configuration` | `name*` (точное имя конфигурации), `mode` (`run`/`debug`, default `run`), `timeoutSeconds` (30–3600, default 300). Запуск тем же кодом, что кнопка в IDE, — учётка/тип клиента/версия из конфигурации. Предпочтительный способ запуска клиента, когда конфигурация в EDT настроена. Таймаут НЕ прерывает запуск (`completed=false`); мгновенно умерший процесс → `warning` с exit-кодом (1.21.0) |

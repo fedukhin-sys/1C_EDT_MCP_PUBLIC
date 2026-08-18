@@ -48,7 +48,11 @@ public class McpPreferencePage extends FieldEditorPreferencePage implements IWor
     }
 
     @Override protected void createFieldEditors() {
-        addField(new IntegerFieldEditor(McpPreferences.KEY_PORT, "Port", getFieldEditorParent(), 5));
+        addField(new IntegerFieldEditor(McpPreferences.KEY_PORT, "Port (range start)",
+                getFieldEditorParent(), 5));
+        // Диапазон нужен для нескольких инстанций EDT: каждая занимает первый свободный порт.
+        addField(new IntegerFieldEditor(McpPreferences.KEY_PORT_RANGE_END, "Port range end (inclusive)",
+                getFieldEditorParent(), 5));
         addField(new BooleanFieldEditor(McpPreferences.KEY_AUTO_START, "Auto-start on IDE launch",
                 getFieldEditorParent()));
 

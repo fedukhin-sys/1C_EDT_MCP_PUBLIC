@@ -20,16 +20,29 @@ public class GetWorkspaceInfoTool implements IMcpTool {
 
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final IRuntimeRegistry runtimeRegistry;
+    private final java.util.function.IntSupplier portSupplier;
 
     @Inject
-    public GetWorkspaceInfoTool(IRuntimeRegistry runtimeRegistry) {
-        this(() -> ResourcesPlugin.getWorkspace().getRoot(), runtimeRegistry);
+    public GetWorkspaceInfoTool(IRuntimeRegistry runtimeRegistry,
+                                ru.fedukhin.edt.mcp.core.state.IServerStateBus bus) {
+        this(() -> ResourcesPlugin.getWorkspace().getRoot(), runtimeRegistry,
+             () -> {
+                 ru.fedukhin.edt.mcp.core.state.ServerState s = bus.current();
+                 return s == null ? 0 : s.port();
+             });
     }
 
     /** Test seam — pass an explicit root supplier. */
     public GetWorkspaceInfoTool(Supplier<IWorkspaceRoot> rootSupplier, IRuntimeRegistry runtimeRegistry) {
+        this(rootSupplier, runtimeRegistry, () -> 0);
+    }
+
+    /** Test seam — явный источник порта вместо шины состояния сервера. */
+    public GetWorkspaceInfoTool(Supplier<IWorkspaceRoot> rootSupplier, IRuntimeRegistry runtimeRegistry,
+                                java.util.function.IntSupplier portSupplier) {
         this.rootSupplier = rootSupplier;
         this.runtimeRegistry = runtimeRegistry;
+        this.portSupplier = portSupplier;
     }
 
     @Override public String name() { return "get_workspace_info"; }
@@ -47,8 +60,14 @@ public class GetWorkspaceInfoTool implements IMcpTool {
         IWorkspaceRoot root = rootSupplier.get();
         IProject[] projects = root.getProjects();
         int openCount = 0;
+        // Имена открытых проектов нужны сессии, чтобы убедиться, что она попала
+        // в ту инстанцию EDT: при нескольких инстанциях workspace у каждой свой.
+        List<String> projectNames = new ArrayList<>();
         for (IProject p : projects) {
-            if (p.isOpen()) openCount++;
+            if (p.isOpen()) {
+                openCount++;
+                projectNames.add(p.getName());
+            }
         }
         // Build version list and compute max version in a single pass.
         // Max version is null when the registry is empty (no installed runtimes).
@@ -69,6 +88,9 @@ public class GetWorkspaceInfoTool implements IMcpTool {
         out.put("openProjectCount", openCount);
         out.put("runtimeVersions", versions);
         out.put("defaultRuntimeVersion", maxVersion == null ? null : maxVersion.toString());
+        out.put("projects", projectNames);
+        out.put("port", portSupplier.getAsInt());
+        out.put("pid", ProcessHandle.current().pid());
         return out;
     }
 }

@@ -13,7 +13,9 @@ public final class PrivacyState {
         if (f == null) {
             synchronized (PrivacyState.class) {
                 f = flags;
-                if (f == null) { f = new InfobaseFlagStore(new ConcurrentHashMap<>()); flags = f; }
+                // Файловое хранилище, а не память процесса: флаг должен действовать
+                // во всех инстанциях EDT, а не только в той, где его выставили.
+                if (f == null) { f = new InfobaseFlagStore(new PersistentFlagStore()); flags = f; }
             }
         }
         return f;
@@ -24,7 +26,7 @@ public final class PrivacyState {
         if (a == null) {
             synchronized (PrivacyState.class) {
                 a = audit;
-                if (a == null) { a = new AuditLog(); audit = a; }
+                if (a == null) { a = new AuditLog(true); audit = a; }
             }
         }
         return a;

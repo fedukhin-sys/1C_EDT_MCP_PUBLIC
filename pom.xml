@@ -93,6 +93,10 @@
                         <!-- Don't auto-start the MCP server on bundle activation; the
                              integration test drives start/stop explicitly. -->
                         <mcp.test.skipAutoStart>true</mcp.test.skipAutoStart>
+                        <!-- Каталог межпроцессного состояния (маячки инстанций, замки).
+                             Без переопределения тесты писали бы в реальный ~/.edt-mcp
+                             пользователя и мешали работающим инстанциям EDT. -->
+                        <mcp.discovery.dir>${project.build.directory}/mcp-home</mcp.discovery.dir>
                     </systemProperties>
                 </configuration>
             </plugin>

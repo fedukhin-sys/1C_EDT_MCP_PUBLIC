@@ -29,17 +29,27 @@ public class DeployProjectTool implements IMcpTool {
     private final Supplier<IWorkspaceRoot> rootSupplier;
     private final InfobaseRegistry registry;
     private final InfobaseDeployer deployer;
+    private final com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager assoc;
 
     @Inject
-    public DeployProjectTool(InfobaseRegistry registry, InfobaseDeployer deployer) {
-        this(() -> ResourcesPlugin.getWorkspace().getRoot(), registry, deployer);
+    public DeployProjectTool(InfobaseRegistry registry, InfobaseDeployer deployer,
+            com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager assoc) {
+        this(() -> ResourcesPlugin.getWorkspace().getRoot(), registry, deployer, assoc);
+    }
+
+    /** Старый seam: без менеджера ассоциаций сверка даёт предупреждение, но не отказ. */
+    public DeployProjectTool(Supplier<IWorkspaceRoot> rootSupplier,
+                             InfobaseRegistry registry, InfobaseDeployer deployer) {
+        this(rootSupplier, registry, deployer, null);
     }
 
     public DeployProjectTool(Supplier<IWorkspaceRoot> rootSupplier,
-                             InfobaseRegistry registry, InfobaseDeployer deployer) {
+                             InfobaseRegistry registry, InfobaseDeployer deployer,
+            com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager assoc) {
         this.rootSupplier = rootSupplier;
         this.registry = registry;
         this.deployer = deployer;
+        this.assoc = assoc;
     }
 
     @Override public String name() { return "deploy_project"; }
@@ -53,11 +63,15 @@ public class DeployProjectTool implements IMcpTool {
         timeout.put("type", "integer");
         timeout.put("minimum", MIN_TIMEOUT_SECONDS);
         timeout.put("maximum", MAX_TIMEOUT_SECONDS);
+        Map<String, Object> allowForeign = new LinkedHashMap<>();
+        allowForeign.put("type", "boolean");
+        allowForeign.put("description", "Allow deploying to an infobase the project is not associated with");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("project", proj);
         properties.put("infobase", ib);
         properties.put("force", force);
         properties.put("timeoutSeconds", timeout);
+        properties.put("allowForeignInfobase", allowForeign);
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
@@ -80,7 +94,30 @@ public class DeployProjectTool implements IMcpTool {
         InfobaseReference ref = registry.findByName(infobaseName).orElseThrow(() ->
             new ToolException("infobase '" + infobaseName + "' not found"));
 
-        InfobaseDeployer.DeployResult res = deployer.deployWithTimeout(project, ref, force, timeoutSeconds);
+        // Список баз общий на пользователя, а цель резолвится по имени: без сверки
+        // с ассоциацией одна опечатка уводит расширение в чужую базу без ошибок.
+        Object af = args == null ? null : args.get("allowForeignInfobase");
+        boolean allowForeign = af instanceof Boolean ? (Boolean) af : false;
+        java.util.Optional<String> guardWarning = ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseGuard
+            .check(projectName, infobaseName,
+                   ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseGuard.associatedNames(assoc, project),
+                   allowForeign);
+
+        // Замок по базе: две инстанции EDT, деплоящие в одну ИБ, идут в 1cv8
+        // одновременно и получают тихий no-op вместо обновления конфигурации.
+        String lockKey = ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseLockKey.of(ref);
+        String holder = "deploy_project project=" + projectName + " ws=" + workspaceLeaf()
+            + " pid=" + ProcessHandle.current().pid();
+        InfobaseDeployer.DeployResult res;
+        try (ru.fedukhin.edt.mcp.core.ipc.InterProcessLock lock =
+                 ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
+                     lockKey, holder, java.time.Duration.ofSeconds(timeoutSeconds))) {
+            res = deployer.deployWithTimeout(project, ref, force, timeoutSeconds);
+        } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
+            throw new ToolException(e.getMessage());
+        } catch (java.io.IOException e) {
+            throw new ToolException("не удалось взять замок '" + lockKey + "': " + e.getMessage(), e);
+        }
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("project", projectName);
@@ -93,9 +130,20 @@ public class DeployProjectTool implements IMcpTool {
             out.put("warning", "deploy returned in " + res.durationMs() + " ms — too fast "
                     + "for a real 1cv8 configuration update (BUG-18 no-op): the configuration "
                     + "was most likely NOT applied. Ensure no Enterprise clients or debug "
-                    + "sessions hold infobase '" + infobaseName + "', then retry deploy_project.");
+                    + "sessions hold infobase '" + infobaseName + "' — including ones started by "
+                    + "other 1C:EDT instances (list_running_clients with includeForeign: true) — "
+                    + "then retry deploy_project.");
         }
+        guardWarning.ifPresent(w -> out.merge("warning", w, (a, b) -> a + " | " + b));
         return out;
+    }
+
+    /** Имя каталога рабочей области — чтобы в чужом отказе было видно, чья сессия держит базу. */
+    private String workspaceLeaf() {
+        org.eclipse.core.runtime.IPath loc = rootSupplier.get().getLocation();
+        if (loc == null) return "(unknown)";
+        String leaf = loc.lastSegment();
+        return leaf == null ? loc.toString() : leaf;
     }
 
     private static int parseTimeout(Map<String, Object> args) throws ToolException {

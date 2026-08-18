@@ -45,7 +45,10 @@ public class McpCorePlugin extends Plugin {
             log.log(Status.info("McpCorePlugin.start() — IServerStateBus registered"));
 
             portListener = evt -> {
-                if (McpPreferences.KEY_PORT.equals(evt.getKey())) {
+                // И конец диапазона тоже: иначе правка «Port range end» в настройках
+                // молча не применялась бы до перезапуска IDE.
+                if (McpPreferences.KEY_PORT.equals(evt.getKey())
+                        || McpPreferences.KEY_PORT_RANGE_END.equals(evt.getKey())) {
                     restart();
                 }
             };
@@ -75,10 +78,12 @@ public class McpCorePlugin extends Plugin {
             return;
         }
         try {
+            McpHttpService svc = injector.getInstance(McpHttpService.class);
             bus.publish(ServerState.starting(prefs.getPort()));
-            injector.getInstance(McpHttpService.class).start();
-            bus.publish(ServerState.running(prefs.getPort()));
-            log.log(Status.info("MCP server auto-started on port " + prefs.getPort()));
+            svc.start();
+            // Фактически занятый порт, а не желаемый: при авто-подборе они расходятся.
+            bus.publish(ServerState.running(svc.getPort()));
+            log.log(Status.info("MCP server auto-started on port " + svc.getPort()));
         } catch (Throwable t) {
             log.log(Status.error("MCP server failed to auto-start", t));
             bus.publish(ServerState.error(t.getMessage()));
@@ -90,10 +95,12 @@ public class McpCorePlugin extends Plugin {
         McpPreferences prefs = injector.getInstance(McpPreferences.class);
         ServerStateBus bus = injector.getInstance(ServerStateBus.class);
         try {
-            injector.getInstance(McpHttpService.class).stop();
+            McpHttpService svc = injector.getInstance(McpHttpService.class);
+            svc.stop();
             bus.publish(ServerState.starting(prefs.getPort()));
-            injector.getInstance(McpHttpService.class).start();
-            bus.publish(ServerState.running(prefs.getPort()));
+            svc.start();
+            // Фактически занятый порт, а не желаемый: при авто-подборе они расходятся.
+            bus.publish(ServerState.running(svc.getPort()));
         } catch (Throwable t) {
             log.log(Status.error("MCP server failed to restart", t));
             bus.publish(ServerState.error(t.getMessage()));

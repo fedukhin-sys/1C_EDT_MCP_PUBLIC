@@ -42,11 +42,11 @@ public class TestRunnerInstallerTest {
 
         assertEquals("configuration", res.mode());
         assertFalse(res.alreadyInstalled());
-        assertEquals("EDT_MCP_TestRunner_Клиент", res.clientModule());
-        assertEquals("EDT_MCP_TestRunner_Сервер", res.serverModule());
+        assertEquals("EDT_MCP_TestRunner_Клиент_Demo", res.clientModule());
+        assertEquals("EDT_MCP_TestRunner_Сервер_Demo", res.serverModule());
         assertTrue("configuration mode → warningInvasive", res.warningInvasive());
-        verify(scaffolder).createClientModule(eq(iproject), eq("EDT_MCP_TestRunner_Клиент"));
-        verify(scaffolder).createServerModule(eq(iproject), eq("EDT_MCP_TestRunner_Сервер"));
+        verify(scaffolder).createClientModule(eq(iproject), eq("EDT_MCP_TestRunner_Клиент_Demo"));
+        verify(scaffolder).createServerModule(eq(iproject), eq("EDT_MCP_TestRunner_Сервер_Demo"));
         verify(editor).appendConfigurationHandler(eq(iproject));
         verify(editor, never()).appendExtensionHandler(any());
     }
@@ -55,6 +55,7 @@ public class TestRunnerInstallerTest {
         IExtensionProject project = mock(IExtensionProject.class);
         IProject iproject = mock(IProject.class);
         when(project.getProject()).thenReturn(iproject);
+        when(iproject.getName()).thenReturn("DemoExt");
 
         ModuleScaffolder scaffolder = mock(ModuleScaffolder.class);
         when(scaffolder.exists(any(), anyString())).thenReturn(false);
@@ -74,6 +75,7 @@ public class TestRunnerInstallerTest {
         IConfigurationProject project = mock(IConfigurationProject.class);
         IProject iproject = mock(IProject.class);
         when(project.getProject()).thenReturn(iproject);
+        when(iproject.getName()).thenReturn("Demo");
 
         ModuleScaffolder scaffolder = mock(ModuleScaffolder.class);
         when(scaffolder.exists(any(), anyString())).thenReturn(true);
@@ -113,6 +115,7 @@ public class TestRunnerInstallerTest {
         IConfigurationProject project = mock(IConfigurationProject.class);
         IProject iproject = mock(IProject.class);
         when(project.getProject()).thenReturn(iproject);
+        when(iproject.getName()).thenReturn("Demo");
 
         ModuleScaffolder scaffolder = mock(ModuleScaffolder.class);
         when(scaffolder.exists(any(), anyString())).thenReturn(true);
@@ -123,14 +126,60 @@ public class TestRunnerInstallerTest {
         boolean removed = installer.uninstall(project);
 
         assertTrue(removed);
-        verify(scaffolder, times(2)).deleteModule(any(), anyString());
+        // Снимаются оба образца имён: суффиксованные и легаси-модули до миграции.
+        verify(scaffolder, times(4)).deleteModule(any(), anyString());
         verify(editor).removeMarkerBlock(any());
+    }
+
+    /**
+     * Уникальность имён модулей нужна на уровне ИНФОРМАЦИОННОЙ БАЗЫ: два расширения
+     * одной базы с одинаковыми именами приводят к тому, что 1С молча отключает
+     * второе расширение целиком, и видно это только в журнале регистрации.
+     */
+    @Test public void moduleNames_areSuffixedByProject() {
+        assertEquals("EDT_MCP_TestRunner_Клиент_Alpha", TestRunnerInstaller.clientModule("Alpha"));
+        assertEquals("EDT_MCP_TestRunner_Сервер_Alpha", TestRunnerInstaller.serverModule("Alpha"));
+    }
+
+    /** Точка в имени проекта недопустима в идентификаторе общего модуля 1С. */
+    @Test public void moduleNames_replaceIllegalCharacters() {
+        String name = TestRunnerInstaller.serverModule("Demo.Расширение");
+        assertFalse("точек быть не должно", name.contains("."));
+        assertTrue(name.startsWith("EDT_MCP_TestRunner_Сервер_Demo_"));
+    }
+
+    @Test public void moduleNames_fitPlatformIdentifierLimit() {
+        String name = TestRunnerInstaller.serverModule("Оченьдлинноеимяпроекта".repeat(6));
+        assertTrue("идентификатор 1С не длиннее 80 символов, было " + name.length(),
+            name.length() <= 80);
+    }
+
+    /** Модули без суффикса конфликтуют по имени — установка обязана их снести. */
+    @Test public void install_removesLegacyModules() throws Exception {
+        IConfigurationProject project = mock(IConfigurationProject.class);
+        IProject iproject = mock(IProject.class);
+        when(project.getProject()).thenReturn(iproject);
+        when(iproject.getName()).thenReturn("Demo");
+
+        ModuleScaffolder scaffolder = mock(ModuleScaffolder.class);
+        when(scaffolder.exists(any(), anyString())).thenReturn(false);
+        when(scaffolder.exists(any(), eq("CommonModule.EDT_MCP_TestRunner_Клиент"))).thenReturn(true);
+        when(scaffolder.exists(any(), eq("CommonModule.EDT_MCP_TestRunner_Сервер"))).thenReturn(true);
+        ManagedAppModuleEditor editor = mock(ManagedAppModuleEditor.class);
+        when(editor.hasMarker(any())).thenReturn(false);
+
+        new TestRunnerInstaller(scaffolder, editor).install(project);
+
+        verify(scaffolder).deleteModule(eq(iproject), eq("CommonModule.EDT_MCP_TestRunner_Клиент"));
+        verify(scaffolder).deleteModule(eq(iproject), eq("CommonModule.EDT_MCP_TestRunner_Сервер"));
+        verify(scaffolder).createClientModule(eq(iproject), eq("EDT_MCP_TestRunner_Клиент_Demo"));
     }
 
     @Test public void uninstall_notInstalled_returnsFalse_noChange() throws Exception {
         IConfigurationProject project = mock(IConfigurationProject.class);
         IProject iproject = mock(IProject.class);
         when(project.getProject()).thenReturn(iproject);
+        when(iproject.getName()).thenReturn("Demo");
 
         ModuleScaffolder scaffolder = mock(ModuleScaffolder.class);
         when(scaffolder.exists(any(), anyString())).thenReturn(false);

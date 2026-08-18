@@ -70,6 +70,50 @@ public class GetWorkspaceInfoToolTest {
         assertNull(result.get("defaultRuntimeVersion"));
     }
 
+    /**
+     * При нескольких инстанциях EDT сессия обязана уметь сверить, куда попала:
+     * инструмент отдаёт список открытых проектов, занятый порт и pid процесса.
+     */
+    @Test
+    public void call_reportsProjectsPortAndPid() throws Exception {
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getLocation()).thenReturn(new org.eclipse.core.runtime.Path("E:/EDTProjects/Demo"));
+        IProject open = mock(IProject.class);
+        when(open.isOpen()).thenReturn(true);
+        when(open.getName()).thenReturn("Demo");
+        IProject closed = mock(IProject.class);
+        when(closed.isOpen()).thenReturn(false);
+        when(closed.getName()).thenReturn("Demo.Старый");
+        when(root.getProjects()).thenReturn(new IProject[] { open, closed });
+
+        IRuntimeRegistry rr = mock(IRuntimeRegistry.class);
+        when(rr.getRuntimes()).thenReturn(Collections.emptyList());
+
+        GetWorkspaceInfoTool tool = new GetWorkspaceInfoTool(() -> root, rr, () -> 3002);
+        Map<String, Object> out = tool.call(Collections.emptyMap());
+
+        assertEquals(3002, out.get("port"));
+        assertEquals(ProcessHandle.current().pid(), out.get("pid"));
+        @SuppressWarnings("unchecked")
+        List<String> names = (List<String>) out.get("projects");
+        assertTrue("должен перечислять открытые проекты", names.contains("Demo"));
+        assertTrue("закрытые проекты в список не попадают", !names.contains("Demo.Старый"));
+    }
+
+    /** Без шины состояния (старый seam) порт неизвестен — это 0, а не падение. */
+    @Test
+    public void call_withoutStateBus_reportsZeroPort() throws Exception {
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        when(root.getLocation()).thenReturn(new org.eclipse.core.runtime.Path("C:/ws"));
+        when(root.getProjects()).thenReturn(new IProject[0]);
+        IRuntimeRegistry rr = mock(IRuntimeRegistry.class);
+        when(rr.getRuntimes()).thenReturn(Collections.emptyList());
+
+        Map<String, Object> out = new GetWorkspaceInfoTool(() -> root, rr).call(Collections.emptyMap());
+
+        assertEquals(0, out.get("port"));
+    }
+
     @Test
     public void metadata_isCorrect() {
         GetWorkspaceInfoTool tool = new GetWorkspaceInfoTool(() -> mock(IWorkspaceRoot.class), mock(IRuntimeRegistry.class));

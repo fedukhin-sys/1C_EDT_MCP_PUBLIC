@@ -14,7 +14,7 @@ mvn clean verify
 
 Артефакты:
 - p2 update site: `repositories/ru.fedukhin.edt.mcp.repository/target/repository/`.
-- Тестов: **874, 0 failures, 10 skipped** (замер на v1.18.0-ветке `feat/audit-docs`, 2026-07-17). Unit + integration с полным MCP SSE handshake; 10 `@Ignore` — Jackson LinkageError под tycho-surefire и headless-xtext ограничения, см. javadoc на самих классах. Число растёт с каждым PR — источник истины всегда вывод `mvn verify`, а не эта строка.
+- Тестов: **1019, 0 failures, 10 skipped** (замер на v1.23.0, 2026-08-18). Unit + integration с полным MCP SSE handshake; 10 `@Ignore` — Jackson LinkageError под tycho-surefire и headless-xtext ограничения, см. javadoc на самих классах. Число растёт с каждым PR — источник истины всегда вывод `mvn verify`, а не эта строка.
 
 ## Структура
 
@@ -32,7 +32,7 @@ mvn clean verify
 - `bundles/ru.fedukhin.edt.mcp.tools.quality` — validator/marker API.
 - `bundles/ru.fedukhin.edt.mcp.tools.tests` — xUnitFor1C-каркас (создание CommonModule + методов).
 - `bundles/ru.fedukhin.edt.mcp.tools.testrun` — auto-run xUnitFor1C под живой ИБ (`ManagedApplicationModule` handler + `1cv8.exe ENTERPRISE`).
-- `bundles/ru.fedukhin.edt.mcp.tools.privacy` — управляющий контур обезличивания ПДн 152-ФЗ (каталог ПДн, per-infobase флаг, журнал). Сам редактор — `ru.fedukhin.edt.mcp.core.privacy`, см. [`CLAUDE.md`](CLAUDE.md#обезличивание-персональных-данных-152-фз).
+- `bundles/ru.fedukhin.edt.mcp.tools.privacy` — управляющий контур обезличивания ПДн 152-ФЗ (каталог ПДн, per-infobase флаг, журнал). Сам редактор — `ru.fedukhin.edt.mcp.core.privacy`.
 - `bundles/ru.fedukhin.edt.mcp.ui` — `AbstractUIPlugin`, preference page, команды, status-bar.
 
 Tools регистрируются через extension point `ru.fedukhin.edt.mcp.core.tool` — пример в `bundles/ru.fedukhin.edt.mcp.tools.edt/plugin.xml`.
@@ -70,3 +70,30 @@ Bundle-Version в `META-INF/MANIFEST.MF` каждого bundle'а — это о�
 - Схемы с `anyOf`/`oneOf` (`query_event_log`, `get_event_log_path`) MCP SDK клиенту **не публикует** — record `JsonSchema` не имеет таких полей. Взаимоисключающие аргументы приходится дублировать словами в `description` инструмента.
 - `add_use_as_is_reference` отвергнут как broken (revert `b9811b1`); use-as-is CommonForm ⇒ обязательный `borrow_md_object` flow (full inline-borrow).
 - `extend_form_attribute_type` отменён 2026-05-19 (нет канонического образца для reverse-engineering, deploy=зелёный без него).
+
+## Несколько инстанций 1C:EDT на одной машине
+
+Плагин рассчитан на параллельную работу нескольких запущенных 1C:EDT.
+
+- **Порт** — не одно значение, а диапазон (`port` … `portRangeEnd`, по умолчанию
+  3001–3006). Инстанция при старте занимает первый свободный. Подобранный порт
+  **нельзя** записывать обратно в настройки: на ключи `port` и `portRangeEnd` висит
+  `IPreferenceChangeListener`, который перезапускает сервер, — получится каскад.
+- **`~/.edt-mcp/`** — каталог межпроцессного состояния, общий для всех инстанций
+  одного пользователя: `instances/` (маячки), `locks/` (замки), `privacy/`
+  (флаги ПДн и журналы обезличивания). Путь переопределяется системным свойством
+  `mcp.discovery.dir`; оно проставлено в `tycho-surefire`, иначе тесты писали бы
+  в реальный домашний каталог.
+- **Замки** — `ru.fedukhin.edt.mcp.core.ipc.InterProcessLock`, поверх
+  `FileChannel.tryLock`. Блокируется **только байт 0**, метаданные держателя
+  лежат со смещения 1: на Windows блокировка мандатная и залоченный диапазон не
+  читается из другого процесса, а текст держателя нужен именно чужому процессу.
+  Внутрипроцессный слой — `Semaphore`, а не `ReentrantLock`: последний
+  реентрантен и пропустил бы повторный захват в `OverlappingFileLockException`.
+- **Ключ замка для операций с базой** — информационная база, а не проект и не
+  рабочая область: один проект деплоится в разные базы, разные расширения — в
+  одну. Проектная сторона и так эксклюзивна, Eclipse держит OS-lock на
+  `.metadata/.lock`.
+- **`TypeReference` под OSGi не использовать.** Анонимный подкласс даёт
+  `loader constraint violation`: вендоренный в `core` Jackson и Jackson соседнего
+  бандла грузятся разными загрузчиками. Читать через `Class` и приводить руками.

@@ -30,14 +30,23 @@ public class RunTestsTool implements IMcpTool {
     private final InfobaseRegistry infobaseRegistry;
     private final RuntimeCli runtimeCli;
     private final TestRunnerInstaller.ModuleScaffolder scaffolder;
+    private final com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager assoc;
 
     @Inject
     public RunTestsTool(TestRunnerLauncher launcher, InfobaseRegistry infobaseRegistry,
-                        RuntimeCli runtimeCli, TestRunnerInstaller.ModuleScaffolder scaffolder) {
+                        RuntimeCli runtimeCli, TestRunnerInstaller.ModuleScaffolder scaffolder,
+            com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager assoc) {
         this.launcher = launcher;
         this.infobaseRegistry = infobaseRegistry;
         this.runtimeCli = runtimeCli;
         this.scaffolder = scaffolder;
+        this.assoc = assoc;
+    }
+
+    /** Старый seam: без менеджера ассоциаций сверка даёт предупреждение, но не отказ. */
+    public RunTestsTool(TestRunnerLauncher launcher, InfobaseRegistry infobaseRegistry,
+                        RuntimeCli runtimeCli, TestRunnerInstaller.ModuleScaffolder scaffolder) {
+        this(launcher, infobaseRegistry, runtimeCli, scaffolder, null);
     }
 
     @Override public String name() { return "run_tests"; }
@@ -63,6 +72,10 @@ public class RunTestsTool implements IMcpTool {
         properties.put("user", user);
         properties.put("password", password);
         properties.put("timeoutSeconds", timeout);
+        Map<String, Object> allowForeign = new LinkedHashMap<>();
+        allowForeign.put("type", "boolean");
+        allowForeign.put("description", "Allow running against an infobase the project is not associated with");
+        properties.put("allowForeignInfobase", allowForeign);
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
@@ -95,9 +108,34 @@ public class RunTestsTool implements IMcpTool {
         String selector = (moduleFqn == null)
             ? TestSelectorEncoder.encodeAll(resultFile.toString())
             : TestSelectorEncoder.encodeModule(moduleFqn, resultFile.toString());
-        TestRunResult res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(),
-            selector, timeoutSeconds, user, password);
-        return toMap(res);
+        // Прогон тестов пишет документы в базу: уехать не в ту так же разрушительно,
+        // как задеплоить не туда. Сверяем с ассоциацией проекта.
+        Object af = args == null ? null : args.get("allowForeignInfobase");
+        boolean allowForeign = af instanceof Boolean ? (Boolean) af : false;
+        java.util.Optional<String> guardWarning = ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseGuard
+            .check(projectName, infobaseName,
+                   ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseGuard.associatedNames(assoc, iproject),
+                   allowForeign);
+
+        // Замок по базе: два параллельных прогона по одной ИБ пишут в неё документы
+        // и портят друг другу данные. Файлы результатов при этом не конфликтуют
+        // (имена — UUID), поэтому расхождение выглядело бы как плавающие падения.
+        String lockKey = ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseLockKey.of(ref);
+        String holder = "run_tests project=" + projectName + " pid=" + ProcessHandle.current().pid();
+        TestRunResult res;
+        try (ru.fedukhin.edt.mcp.core.ipc.InterProcessLock lock =
+                 ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
+                     lockKey, holder, java.time.Duration.ofSeconds(timeoutSeconds))) {
+            res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(),
+                selector, timeoutSeconds, user, password);
+        } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
+            throw new ToolException(e.getMessage());
+        } catch (java.io.IOException e) {
+            throw new ToolException("не удалось взять замок '" + lockKey + "': " + e.getMessage(), e);
+        }
+        Map<String, Object> out = toMap(res);
+        guardWarning.ifPresent(w -> out.put("warning", w));
+        return out;
     }
 
     /**
@@ -108,9 +146,14 @@ public class RunTestsTool implements IMcpTool {
      */
     public static void requireRunnerInstalled(TestRunnerInstaller.ModuleScaffolder scaffolder,
                                               IProject project, String projectName) throws ToolException {
+        // Признаём оба образца имён: раннер, задеплоенный до введения суффикса,
+        // продолжает работать — принудительная переустановка тут ничего не даёт,
+        // потому что имя модуля важно внутри базы, а не для запуска.
         boolean present =
-            scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.CLIENT_MODULE)
-            && scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.SERVER_MODULE);
+            (scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.clientModule(projectName))
+             && scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.serverModule(projectName)))
+            || (scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.CLIENT_MODULE)
+                && scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.SERVER_MODULE));
         if (!present) {
             throw new ToolException("xUnit test runner is not installed in project '" + projectName
                 + "': run install_test_runner, deploy_project the project, then retry");

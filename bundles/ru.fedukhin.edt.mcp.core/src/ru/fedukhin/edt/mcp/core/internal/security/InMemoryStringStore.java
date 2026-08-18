@@ -15,4 +15,7 @@ public class InMemoryStringStore implements ISecureStringStore {
     @Override public String get(String key) { return values.get(key); }
 
     @Override public void put(String key, String value) { values.put(key, value); }
+
+    /** Нечего сбрасывать: хранилище и так живёт только в памяти процесса. */
+    @Override public void flush() { }
 }

@@ -5,7 +5,7 @@
 
 ## Endpoints
 
-- SSE: `http://127.0.0.1:<port>/mcp/sse` (порт по умолчанию `3001`)
+- SSE: `http://127.0.0.1:<port>/mcp/sse` (начало диапазона — `3001`; фактический порт инстанции берётся из её маячка)
 - messages: `http://127.0.0.1:<port>/mcp/messages?sessionId=…`
 
 `sessionId` возвращает SSE-handshake в первом `event: endpoint`.
@@ -23,7 +23,7 @@
 const http = require('http');
 const TOKEN = process.argv[2];
 const STEPS = require(process.argv[3]);
-const BASE = 'http://127.0.0.1:3001';
+const BASE = 'http://127.0.0.1:3001'; // порт нужной инстанции — из ~/.edt-mcp/instances/<pid>.json
 let endpoint = null, nextId = 1, buffer = '';
 const pending = new Map();
 
@@ -101,6 +101,6 @@ node "C:\path\to\mcp-smoke.js" $tok "C:\path\to\steps.json"
 - **Сервер может отвалиться**: порт перестаёт слушаться при работающем EDT. Лечится
   перезапуском EDT / MCP-сервера. После рестарта первые секунды соединение таймаутит —
   опрашивай с паузой.
-- **Проверить, что сервер жив**: `Get-NetTCPConnection -State Listen -LocalPort 3001`.
+- **Проверить, что сервер жив**: `Get-NetTCPConnection -State Listen | Where-Object LocalPort -in 3001..3006` (инстанция занимает первый свободный порт диапазона; точный порт — в маячке `~/.edt-mcp/instances/<pid>.json`).
 - **Ротация токена** (`Preferences → Regenerate token`) немедленно инвалидирует старый —
   обнови файл с токеном.

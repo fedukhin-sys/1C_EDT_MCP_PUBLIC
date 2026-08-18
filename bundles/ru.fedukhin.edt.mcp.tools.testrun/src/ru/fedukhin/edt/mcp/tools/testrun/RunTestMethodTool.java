@@ -29,13 +29,23 @@ public class RunTestMethodTool implements IMcpTool {
     private final RuntimeCli runtimeCli;
     private final TestRunnerInstaller.ModuleScaffolder scaffolder;
 
+    private final com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager assoc;
+
     @Inject
     public RunTestMethodTool(TestRunnerLauncher launcher, InfobaseRegistry infobaseRegistry,
-                              RuntimeCli runtimeCli, TestRunnerInstaller.ModuleScaffolder scaffolder) {
+                              RuntimeCli runtimeCli, TestRunnerInstaller.ModuleScaffolder scaffolder,
+            com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager assoc) {
         this.launcher = launcher;
         this.infobaseRegistry = infobaseRegistry;
         this.runtimeCli = runtimeCli;
         this.scaffolder = scaffolder;
+        this.assoc = assoc;
+    }
+
+    /** Старый seam: без менеджера ассоциаций сверка даёт предупреждение, но не отказ. */
+    public RunTestMethodTool(TestRunnerLauncher launcher, InfobaseRegistry infobaseRegistry,
+                              RuntimeCli runtimeCli, TestRunnerInstaller.ModuleScaffolder scaffolder) {
+        this(launcher, infobaseRegistry, runtimeCli, scaffolder, null);
     }
 
     @Override public String name() { return "run_test_method"; }
@@ -63,6 +73,10 @@ public class RunTestMethodTool implements IMcpTool {
         properties.put("user", user);
         properties.put("password", password);
         properties.put("timeoutSeconds", timeout);
+        Map<String, Object> allowForeign = new LinkedHashMap<>();
+        allowForeign.put("type", "boolean");
+        allowForeign.put("description", "Allow running against an infobase the project is not associated with");
+        properties.put("allowForeignInfobase", allowForeign);
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
@@ -92,13 +106,38 @@ public class RunTestMethodTool implements IMcpTool {
             throw new ToolException("1cv8 executable not found for infobase '" + infobaseName + "'");
         }
 
+        // Прогон тестов пишет документы в базу: уехать не в ту так же разрушительно,
+        // как задеплоить не туда. Сверяем с ассоциацией проекта.
+        Object af = args == null ? null : args.get("allowForeignInfobase");
+        boolean allowForeign = af instanceof Boolean ? (Boolean) af : false;
+        java.util.Optional<String> guardWarning = ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseGuard
+            .check(projectName, infobaseName,
+                   ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseGuard.associatedNames(assoc, iproject),
+                   allowForeign);
+
         Path resultFile = TestRunnerLauncher.allocateResultFile();
         String selector = TestSelectorEncoder.encodeMethod(moduleFqn, methodName, resultFile.toString());
         // .asConnectionString() даёт формат File="..." / Srvr="...";Ref="...";
         // .toString() даёт Java-дефолт (FileConnectionStringImpl@HASH) — мусор для cmdline.
-        TestRunResult res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(),
-            selector, timeoutSeconds, user, password);
-        return RunTestsTool.toMap(res);
+        // Замок по базе — см. комментарий в RunTestsTool: параллельные прогоны по
+        // одной ИБ портят друг другу данные, а результаты при этом не конфликтуют.
+        String lockKey = ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseLockKey.of(ref);
+        String holder = "run_test_method project=" + projectName + " method=" + methodName
+            + " pid=" + ProcessHandle.current().pid();
+        TestRunResult res;
+        try (ru.fedukhin.edt.mcp.core.ipc.InterProcessLock lock =
+                 ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
+                     lockKey, holder, java.time.Duration.ofSeconds(timeoutSeconds))) {
+            res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(),
+                selector, timeoutSeconds, user, password);
+        } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
+            throw new ToolException(e.getMessage());
+        } catch (java.io.IOException e) {
+            throw new ToolException("не удалось взять замок '" + lockKey + "': " + e.getMessage(), e);
+        }
+        Map<String, Object> out = RunTestsTool.toMap(res);
+        guardWarning.ifPresent(w -> out.put("warning", w));
+        return out;
     }
 
     private static int parseTimeout(Map<String, Object> args) throws ToolException {

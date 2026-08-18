@@ -101,6 +101,16 @@ public final class BuildExternalObjectTool implements IMcpTool {
         return schema;
     }
 
+    /**
+     * Ключ проекта для межпроцессного замка — абсолютный путь, а не имя: в разных
+     * рабочих областях могут лежать разные проекты с одинаковым именем.
+     */
+    static String projectLocationKey(IProject project) {
+        org.eclipse.core.runtime.IPath loc = project.getLocation();
+        String raw = (loc == null) ? project.getName() : loc.toString();
+        return raw.toLowerCase(java.util.Locale.ROOT);
+    }
+
     @Override
     public Object call(Map<String, Object> args) throws ToolException {
         String projectName = requireString(args, "project");
@@ -142,9 +152,32 @@ public final class BuildExternalObjectTool implements IMcpTool {
             throw new ToolException(blockerMessage(projectName, verdict.blockers()));
         }
 
-        ExternalObjectBuilder.BuildOutcome outcome = builder.build(
-                new ExternalObjectBuilder.BuildRequest(project, fqn, Path.of(outPath),
-                        timeoutSeconds));
+        // Два замка. По проекту — потому что EDT поднимает платформу на связанной
+        // с проектом информационной базе, и параллельная сборка из другой инстанции
+        // упирается в занятую базу. По выходному файлу — потому что outPath приходит
+        // от клиента, а перед сборкой делается deleteIfExists: две сессии в один путь
+        // молча затёрли бы результат друг друга.
+        Path outNorm = Path.of(outPath).toAbsolutePath().normalize();
+        String projectKey = "extobj:" + projectLocationKey(project);
+        String outKey = "out:" + outNorm.toString().toLowerCase(java.util.Locale.ROOT);
+        String holder = "build_external_object project=" + projectName + " fqn=" + fqn
+                + " pid=" + ProcessHandle.current().pid();
+
+        ExternalObjectBuilder.BuildOutcome outcome;
+        // Порядок захвата (проект, затем файл) обязан быть одинаковым везде — иначе клинч.
+        try (ru.fedukhin.edt.mcp.core.ipc.InterProcessLock projectLock =
+                     ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
+                             projectKey, holder, java.time.Duration.ofSeconds(timeoutSeconds));
+             ru.fedukhin.edt.mcp.core.ipc.InterProcessLock outLock =
+                     ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
+                             outKey, holder, java.time.Duration.ofSeconds(30))) {
+            outcome = builder.build(
+                    new ExternalObjectBuilder.BuildRequest(project, fqn, outNorm, timeoutSeconds));
+        } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
+            throw new ToolException(e.getMessage());
+        } catch (java.io.IOException e) {
+            throw new ToolException("не удалось взять замок сборки: " + e.getMessage(), e);
+        }
 
         List<String> warnings = new ArrayList<>(verdict.warnings());
         warnings.addAll(outcome.warnings());

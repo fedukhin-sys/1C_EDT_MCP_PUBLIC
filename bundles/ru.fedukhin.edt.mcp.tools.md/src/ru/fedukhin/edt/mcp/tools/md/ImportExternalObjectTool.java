@@ -120,8 +120,26 @@ public final class ImportExternalObjectTool implements IMcpTool {
         try { project.refreshLocal(IResource.DEPTH_INFINITE, new NullProgressMonitor()); }
         catch (CoreException ignored) { /* best-effort */ }
 
-        ExternalObjectImporter.ImportOutcome outcome = importer().importObject(
-                new ExternalObjectImporter.ImportRequest(project, file, overwrite, timeoutSeconds));
+        // Замок по проекту: распаковка поднимает платформу на связанной с проектом
+        // информационной базе (для серверной ИБ — агента конфигуратора), и параллельный
+        // вызов из другой инстанции EDT упирается в занятую базу. Существующий однократный
+        // ретрай на «already connected» лечит другой, внутрипроцессный класс отказа
+        // и остаётся внутри замка.
+        String projectKey = "extobj:" + BuildExternalObjectTool.projectLocationKey(project);
+        String holder = "import_external_object project=" + projectName
+                + " pid=" + ProcessHandle.current().pid();
+
+        ExternalObjectImporter.ImportOutcome outcome;
+        try (ru.fedukhin.edt.mcp.core.ipc.InterProcessLock lock =
+                     ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
+                             projectKey, holder, java.time.Duration.ofSeconds(timeoutSeconds))) {
+            outcome = importer().importObject(
+                    new ExternalObjectImporter.ImportRequest(project, file, overwrite, timeoutSeconds));
+        } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
+            throw new ToolException(e.getMessage());
+        } catch (java.io.IOException e) {
+            throw new ToolException("не удалось взять замок импорта: " + e.getMessage(), e);
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("project",    projectName);

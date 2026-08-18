@@ -49,6 +49,9 @@ public final class ToolsTestrunModule extends AbstractServiceAwareModule {
         bind(IRuntimeRegistry.class).toService();
         bind(IResolvableRuntimeInstallationManager.class).toService();
         bind(IRuntimeComponentManager.class).toService();
+        // Сверка запрошенной базы с ассоциацией проекта: прогон тестов пишет
+        // документы в базу, попасть не в ту так же разрушительно, как задеплоить.
+        bind(com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseAssociationManager.class).toService();
 
         // Reuse from tools.infobase
         bind(InfobaseRegistry.class).in(Singleton.class);

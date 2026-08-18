@@ -129,7 +129,8 @@ public class IdeManagedAppModuleEditorTest {
         editor.appendConfigurationHandler(project);
         Path file = tempProjectRoot.resolve("src/Configuration/ManagedApplicationModule.bsl");
         String text = Files.readString(file, StandardCharsets.UTF_8);
-        String expected = BslRunnerTemplates.handlerProcedureForConfiguration();
+        String expected = BslRunnerTemplates.handlerProcedureForConfiguration(
+                TestRunnerInstaller.clientModule(project.getName()));
         assertTrue("handler body from templates must appear in file", text.contains(expected));
     }
 }

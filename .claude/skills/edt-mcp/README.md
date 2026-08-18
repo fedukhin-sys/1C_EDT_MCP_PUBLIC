@@ -17,7 +17,7 @@ EDT_MCP — это OSGi-плагин для 1C:Enterprise Development Tools, к�
 - xUnitFor1C-тестов (create_test_module, run_tests);
 - обезличивания ПДн 152-ФЗ (fail-closed слой + 4 privacy-инструмента).
 
-Подробно: [GitHub `fedukhin-sys/EDT_MCP`](https://github.com/fedukhin-sys/EDT_MCP).
+Подробно: [GitHub `fedukhin-sys/1C_EDT_MCP_PUBLIC`](https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC).
 
 ## Когда срабатывает
 

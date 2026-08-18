@@ -10,6 +10,7 @@ Bundle-Activator: ru.fedukhin.edt.mcp.tools.md.ToolsMdActivator
 Bundle-ActivationPolicy: lazy
 Require-Bundle: ru.fedukhin.edt.mcp.core,
  ru.fedukhin.edt.mcp.tools.quality,
+ ru.fedukhin.edt.mcp.tools.infobase,
  org.eclipse.core.runtime,
  org.eclipse.core.resources,
  org.eclipse.emf.common,

@@ -10,20 +10,20 @@ import ru.fedukhin.edt.mcp.tools.testrun.internal.BslRunnerTemplates;
 public class BslRunnerTemplatesTest {
 
     @Test public void clientModuleBody_entryProcedure_callsServerAndExits() {
-        String body = BslRunnerTemplates.clientModuleBody();
+        String body = BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo");
         assertEquals("ВыполнитьЕсли7bПараметр should appear exactly once",
             1, count(body, "Процедура ВыполнитьЕсли7bПараметр()"));
         assertTrue("must reference ПараметрЗапуска", body.contains("ПараметрЗапуска"));
         assertTrue("must reference our protocol prefix", body.contains("EDT_MCP_TESTS="));
         assertTrue("must call server runner",
-            body.contains("EDT_MCP_TestRunner_Сервер.ВыполнитьТесты"));
+            body.contains("EDT_MCP_TestRunner_Сервер_Demo.ВыполнитьТесты"));
         assertTrue("must call ЗавершитьРаботуСистемы(Ложь)",
             body.contains("ЗавершитьРаботуСистемы(Ложь)"));
     }
 
     @Test public void clientModuleBody_helperProcedures_areDefined() {
         // Entry procedure CALLS these — they must be defined in the same module.
-        String body = BslRunnerTemplates.clientModuleBody();
+        String body = BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo");
         assertEquals("РазобратьСелектор must be defined exactly once",
             1, count(body, "Функция РазобратьСелектор("));
         assertEquals("РаскодироватьБазу64 must be defined exactly once",
@@ -34,7 +34,7 @@ public class BslRunnerTemplatesTest {
 
     @Test public void clientModuleBody_procedureFunctionBalance() {
         // Structural integrity — count of begin == count of end.
-        String body = BslRunnerTemplates.clientModuleBody();
+        String body = BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo");
         int procStart = count(body, "Процедура ");
         int procEnd = count(body, "КонецПроцедуры");
         int funcStart = count(body, "Функция ");
@@ -105,22 +105,22 @@ public class BslRunnerTemplatesTest {
     }
 
     @Test public void handlerProcedureForConfiguration_isNamedПриНачалеРаботыСистемы() {
-        String text = BslRunnerTemplates.handlerProcedureForConfiguration();
+        String text = BslRunnerTemplates.handlerProcedureForConfiguration("EDT_MCP_TestRunner_Клиент_Demo");
         assertTrue("must declare ПриНачалеРаботыСистемы",
             text.contains("Процедура ПриНачалеРаботыСистемы()"));
         assertTrue("must delegate to client module",
-            text.contains("EDT_MCP_TestRunner_Клиент.ВыполнитьЕсли7bПараметр()"));
+            text.contains("EDT_MCP_TestRunner_Клиент_Demo.ВыполнитьЕсли7bПараметр()"));
         assertTrue("must NOT have &После annotation", !text.contains("&После"));
     }
 
     @Test public void handlerProcedureForExtension_hasАфтерAnnotation() {
-        String text = BslRunnerTemplates.handlerProcedureForExtension();
+        String text = BslRunnerTemplates.handlerProcedureForExtension("EDT_MCP_TestRunner_Клиент_Demo");
         assertTrue("must have &После annotation",
             text.contains("&После(\"ПриНачалеРаботыСистемы\")"));
         assertTrue("must declare a unique procedure name",
             text.contains("Процедура EDT_MCP_ПриНачалеРаботыСистемы()"));
         assertTrue("must delegate to client module",
-            text.contains("EDT_MCP_TestRunner_Клиент.ВыполнитьЕсли7bПараметр()"));
+            text.contains("EDT_MCP_TestRunner_Клиент_Demo.ВыполнитьЕсли7bПараметр()"));
     }
 
     private static int count(String haystack, String needle) {

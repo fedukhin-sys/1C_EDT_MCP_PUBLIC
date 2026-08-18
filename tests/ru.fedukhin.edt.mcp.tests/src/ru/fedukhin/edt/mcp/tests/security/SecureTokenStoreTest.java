@@ -16,6 +16,8 @@ public class SecureTokenStoreTest {
         final Map<String, String> map = new HashMap<>();
         @Override public String get(String k) { return map.get(k); }
         @Override public void put(String k, String v) { map.put(k, v); }
+        /** Нечего сбрасывать: карта в памяти. */
+        @Override public void flush() { }
     }
 
     @Test
