@@ -2,6 +2,15 @@
 
 Все значимые изменения публичной версии EDT_MCP. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — по [семантическому](https://semver.org/lang/ru/) принципу.
 
+## [1.23.1] — 2026-08-18
+
+### Исправлено
+
+- **Сервер сообщал клиенту неверную версию.** В `serverInfo` ответа `initialize` и в
+  маячке инстанции уходила `Bundle-Version` ядра, которая никогда не поднималась и
+  стояла на `0.1.0`, — на релизе 1.23.0 клиент видел «0.1.0». Версия ядра теперь
+  версионируется вместе с релизом, и `serverInfo` показывает фактический номер.
+
 ## [1.23.0] — 2026-08-18
 
 Параллельная работа нескольких запущенных 1C:EDT. Раньше MCP-сервер поднимался
@@ -405,6 +414,7 @@ API EDT, устранён дефект `create_project` для конфигур�
 
 История до v1.12.0 разработки внутренняя; первая публичная редакция отражает состояние v1.12.0.
 
+[1.23.1]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.23.1
 [1.23.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.23.0
 [1.22.1]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.22.1
 [1.22.0]: https://github.com/fedukhin-sys/1C_EDT_MCP_PUBLIC/releases/tag/v1.22.0

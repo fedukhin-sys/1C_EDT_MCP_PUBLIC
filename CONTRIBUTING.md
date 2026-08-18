@@ -56,11 +56,20 @@ Tools регистрируются через extension point `ru.fedukhin.edt.m
 
 ## Bumping версии
 
-Версия живёт в двух местах, должна быть согласована (иначе `tycho-packaging-plugin:validate-version` падает):
+Версия живёт в четырёх местах, все должны быть согласованы (иначе
+`tycho-packaging-plugin:validate-version` падает):
 - `features/ru.fedukhin.edt.mcp.feature/feature.xml` → `version="X.Y.Z.qualifier"`.
 - `features/ru.fedukhin.edt.mcp.feature/pom.xml` → `<version>X.Y.Z-SNAPSHOT</version>`.
+- `bundles/ru.fedukhin.edt.mcp.core/META-INF/MANIFEST.MF` → `Bundle-Version: X.Y.Z.qualifier`.
+- `bundles/ru.fedukhin.edt.mcp.core/pom.xml` → `<version>X.Y.Z-SNAPSHOT</version>`
+  (собственная версия бандла, НЕ версия `<parent>` — её не трогать).
 
-Bundle-Version в `META-INF/MANIFEST.MF` каждого bundle'а — это отдельный жизненный цикл, обычно не меняется.
+Ядро версионируется вместе с релизом намеренно: `McpServerLifecycle.bundleVersion()`
+берёт `Bundle-Version` именно этого бандла и отдаёт клиенту в `serverInfo` ответа
+`initialize`, а также пишет в маячок инстанции. Пока ядро стояло на 0.1.0, клиент
+видел «0.1.0» на релизе 1.22.1.
+
+Bundle-Version остальных bundle'ов — отдельный жизненный цикл, обычно не меняется.
 
 ## Известные ограничения
 
