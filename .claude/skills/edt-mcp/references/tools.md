@@ -1,4 +1,4 @@
-# Полный список инструментов EDT_MCP (100)
+# Полный список инструментов EDT_MCP (106)
 
 Точные имена аргументов получены из `tools/list` и сверены с `inputSchema()` в коде.
 Если параметра нет в списке — он будет отвергнут (`additionalProperties: false`).
@@ -7,7 +7,7 @@ Required помечены `*`.
 Сверить актуальный набор — `tools/list`; счётчик по бандлам в репо:
 `grep -c "<tool " bundles/*/plugin.xml`.
 
-## Workspace + projects (8)
+## Workspace + projects (10)
 | Tool | Args |
 |---|---|
 | `get_workspace_info` | — |
@@ -18,15 +18,23 @@ Required помечены `*`.
 | `open_project` | `name*` |
 | `close_project` | `name*` |
 | `create_project` | `name*`, `type*` (`configuration`/`extension`/`external-object`), `version*`, `parentConfigurationName` (для extension/external-object), `namePrefix` (префикс имён объектов расширения — закрывает warning «Имя объекта должно содержать префикс») |
+| `get_job_status` | `jobId*`, `waitSeconds` (0–240, по умолчанию 60) |
+| `list_jobs` | — |
 
-## Infobase + deploy (5)
+## Infobase + deploy (9)
 | Tool | Args |
 |---|---|
 | `list_infobases` | `folder`, `type` |
 | `get_infobase` | `name`, `uuid` |
 | `create_infobase` | `name*`, `type*`, `location*`, `version`, `folder`, `timeoutSeconds` |
-| `associate_infobase` | `project*`, `infobase*`, `setDefault` |
+| `associate_infobase` | `project*`, `infobase*`, `setDefault`. Только для проекта конфигурации: EDT 2026.1 связывает базу с одним проектом, проект расширения следует за базой родителя (связать его откажет «already associated with project …») |
 | `deploy_project` | `project*`, `infobase*`, `force`, `timeoutSeconds`, `allowForeignInfobase` (по умолчанию false). База сверяется с ассоциацией проекта: связан с другими — отказ, обходится `allowForeignInfobase: true`; ассоциации нет — деплой идёт с предупреждением |
+| `create_infobase_from_dt` | `project*`, `dtFile*`, `type*` (`FILE`/`SERVER`), `infobase`, `location` (FILE), `server`, `ref`, `dbms`, `dbServer`, `dbName`, `dbUser` (SERVER), `dbPassword`, `createDatabase`, `lockScheduledJobs`, `clusterUser`, `clusterPassword`, `version`, `user`, `password`, `discardProjectChanges`, `timeoutMinutes`. SERVER: `dbName` защищён — БД с таким именем в СУБД уже есть → отказ сразу после создания, до загрузки `.dt` (регистрацию в кластере удалить без `--drop-database`, повторить с новым `dbName`) |
+| `update_extensions_from_cfe` | `project*`, `extensions*` (`[{file*, name}]`), `infobase`, `updateProjects`, `user`, `password`, `discardProjectChanges`, `allowForeignInfobase`, `timeoutMinutes`. `.cfe` грузится пакетным конфигуратором с `-Extension`; `name` — имя, под которым расширение загружается (по умолчанию имя файла без `.cfe`), должно совпадать с собственным именем расширения внутри `.cfe` (иначе применение может упасть «Расширение с таким именем уже существует!», а загруженное расширение останется в базе); проекты расширений не связываются с базой (следуют за родителем), связанный только с другой базой — `WARNING`; `discardProjectChanges: true` — полная замена их содержимого |
+| `restore_infobase_from_dt` | `project*`, `dtFile*`, `infobase`, `updateExtensionProjects`, `backupTo`, `user`, `password`, `discardProjectChanges`, `allowForeignInfobase`, `timeoutMinutes`. Обновляет проекты расширений без своей связи с базой (или связанные с этой); прочие — `extensionProjectsOfOtherInfobases`; `discardProjectChanges: true` — полная замена их содержимого |
+| `update_project_from_infobase` | `project*`, `infobase`, `user`, `password`, `discardProjectChanges`, `allowForeignInfobase`, `timeoutMinutes`. Только проекты конфигурации и расширений. Проект расширения без `infobase` берёт базу родительской конфигурации; удалённые в базе объекты удаляются и из проекта; `discardProjectChanges: true` — полная замена (вся конфигурация из базы, лишние файлы проекта удаляются); если EDT всё же ответила «изменений нет», `warning` говорит, что проект не заменён |
+
+Задания синхронизации (четыре инструмента выше, кроме `deploy_project`): первый шаг `wait-edt-checks` ждёт фоновые проверки EDT после запуска или открытия проекта **до 10 мин** (не дождалось — `FAILED` «…повторите позже; ничего не тронуто»); без `discardProjectChanges` у `.cfe`/`.dt` второй шаг `check-projects` (отказ до загрузки: правки — в git, у `.dt` ещё `backupTo`, повторить с флагом; `deploy_project` не поможет); после загрузки любой исход обновления проекта — `deploy_project` не вызывать, `update_project_from_infobase` с `discardProjectChanges: true`.
 
 ## Metadata (34)
 | Tool | Args |
@@ -120,9 +128,10 @@ Required помечены `*`.
 | `set_infobase_pii_flag` | `infobase*`, `containsRealPersonalData*` (default для всех ИБ = `true`, fail-closed) |
 | `get_privacy_audit` | `limit` — журнал фактов обезличивания (без самих ПДн) |
 
-Обезличивание применяется **автоматически** к 7 инструментам, возвращающим данные ИБ:
+Обезличивание применяется **автоматически** к 8 инструментам, возвращающим данные ИБ:
 `get_variables`, `evaluate`, `get_stack`, `query_event_log`, `run_tests`, `run_test_method`,
-`set_variable`. ПДн физлиц → HMAC-псевдонимы `Физлицо#…`, спец-категории/биометрия — полное
+`set_variable`, `get_job_status` (тексты ошибок платформы и СУБД из фоновых заданий).
+ПДн физлиц → HMAC-псевдонимы `Физлицо#…`, спец-категории/биометрия — полное
 сокрытие. Маскируются **и тексты ошибок** этих инструментов. Пока ИБ явно не помечена
 `containsRealPersonalData=false`, данные маскируются.
 

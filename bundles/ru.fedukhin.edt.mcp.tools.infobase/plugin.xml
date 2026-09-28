@@ -17,5 +17,17 @@
       <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.ListInfobasesTool"
             name="list_infobases"
             description="List infobases registered in 1C:EDT (with optional folder/type filter)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.UpdateProjectFromInfobaseTool"
+            name="update_project_from_infobase"
+            description="Pull the infobase configuration into the project, replacing project content (background job)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.RestoreInfobaseFromDtTool"
+            name="restore_infobase_from_dt"
+            description="Load a .dt into the project's infobase (replacing all data), then update the project and its extension projects from it (background job)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.UpdateExtensionsFromCfeTool"
+            name="update_extensions_from_cfe"
+            description="Load .cfe extensions into the project's infobase and update extension projects from it (background job)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseFromDtTool"
+            name="create_infobase_from_dt"
+            description="Create a new FILE/SERVER infobase from a .dt for a new project and update the project from it (background job)"/>
    </extension>
 </plugin>

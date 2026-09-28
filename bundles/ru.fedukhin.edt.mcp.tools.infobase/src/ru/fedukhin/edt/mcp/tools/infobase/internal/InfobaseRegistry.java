@@ -3,9 +3,11 @@ package ru.fedukhin.edt.mcp.tools.infobase.internal;
 import com._1c.g5.v8.dt.platform.services.core.infobases.IInfobaseManager;
 import com._1c.g5.v8.dt.platform.services.core.infobases.InfobaseReferenceException;
 import com._1c.g5.v8.dt.platform.services.model.FileConnectionString;
+import com._1c.g5.v8.dt.platform.services.model.IConnectionString;
 import com._1c.g5.v8.dt.platform.services.model.InfobaseReference;
 import com._1c.g5.v8.dt.platform.services.model.ModelFactory;
 import com._1c.g5.v8.dt.platform.services.model.Section;
+import com._1c.g5.v8.dt.platform.services.model.ServerConnectionString;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -51,6 +53,15 @@ public class InfobaseRegistry {
      */
     public InfobaseReference createFileInfobase(String name, Path location, String version,
                                                 String groupName, Duration timeout) throws ToolException {
+        return createFileInfobase(name, UUID.randomUUID(), location, version, groupName, timeout);
+    }
+
+    /**
+     * То же с заданным UUID: сценарий «база из .dt» берёт межпроцессный замок по UUID будущей
+     * базы ещё до её создания, поэтому UUID выбирается заранее.
+     */
+    public InfobaseReference createFileInfobase(String name, UUID uuid, Path location, String version,
+                                                String groupName, Duration timeout) throws ToolException {
         if (Files.exists(location)) {
             try (Stream<Path> children = Files.list(location)) {
                 if (children.findAny().isPresent()) {
@@ -63,13 +74,34 @@ public class InfobaseRegistry {
 
         runtimeCli.createFileInfobase(location, version, timeout);
 
-        InfobaseReference ref = ModelFactory.eINSTANCE.createInfobaseReference();
-        ref.setName(name);
-        ref.setUuid(UUID.randomUUID());
-        ref.setVersion(version);
         FileConnectionString cs = ModelFactory.eINSTANCE.createFileConnectionString();
         cs.setFile(location.toString());
-        ref.setConnectionString(cs);
+        return register(name, uuid, cs, version, groupName);
+    }
+
+    /**
+     * Серверная база: {@code CREATEINFOBASE Srvr=…;Ref=…} через {@link RuntimeCli} и регистрация в EDT
+     * со строкой подключения {@code Srvr=<server>;Ref=<ref>}. {@code groupName = null} — корень
+     * списка баз.
+     */
+    public InfobaseReference createServerInfobase(String name, UUID uuid, ServerInfobaseParams params,
+                                                  String version, String groupName, Duration timeout)
+            throws ToolException {
+        runtimeCli.createServerInfobase(params, version, timeout);
+
+        ServerConnectionString cs = ModelFactory.eINSTANCE.createServerConnectionString();
+        cs.setServer(params.server());
+        cs.setReference(params.ref());
+        return register(name, uuid, cs, version, groupName);
+    }
+
+    private InfobaseReference register(String name, UUID uuid, IConnectionString connection, String version,
+                                       String groupName) throws ToolException {
+        InfobaseReference ref = ModelFactory.eINSTANCE.createInfobaseReference();
+        ref.setName(name);
+        ref.setUuid(uuid);
+        ref.setVersion(version);
+        ref.setConnectionString(connection);
         ref.setShowInList(true);
 
         try {

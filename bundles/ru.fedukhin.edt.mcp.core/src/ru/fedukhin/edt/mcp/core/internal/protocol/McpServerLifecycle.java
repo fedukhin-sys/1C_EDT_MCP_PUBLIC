@@ -187,6 +187,14 @@ public class McpServerLifecycle {
 
         After fixing blockers, re-run `check_list_markers`. Warnings may
         remain — they don't block 1cv8 ENTERPRISE startup.
+
+        Long-running tools (create_infobase_from_dt, restore_infobase_from_dt,
+        update_extensions_from_cfe, update_project_from_infobase) start a
+        background job and return `jobId` immediately. Poll `get_job_status`
+        with `waitSeconds` up to 240 until status is not RUNNING; `list_jobs`
+        shows the jobs of this EDT instance. `restore_infobase_from_dt`
+        REPLACES ALL infobase data: run it only on an explicit user request
+        and prefer `backupTo` for infobases whose data matters.
         """;
 
     public synchronized void close() {

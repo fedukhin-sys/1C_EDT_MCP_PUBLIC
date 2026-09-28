@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: EDT MCP Tools — EDT
 Bundle-SymbolicName: ru.fedukhin.edt.mcp.tools.edt;singleton:=true
-Bundle-Version: 1.0.0.qualifier
+Bundle-Version: 1.1.0.qualifier
 Bundle-Vendor: Fedukhin
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Require-Bundle: ru.fedukhin.edt.mcp.core,
@@ -21,5 +21,6 @@ Import-Package: jakarta.inject;version="[1.0,3)",
  org.w3c.dom,
  org.xml.sax
 Export-Package: ru.fedukhin.edt.mcp.tools.edt,
+ ru.fedukhin.edt.mcp.tools.edt.jobs,
  ru.fedukhin.edt.mcp.tools.edt.workspace
 Automatic-Module-Name: ru.fedukhin.edt.mcp.tools.edt

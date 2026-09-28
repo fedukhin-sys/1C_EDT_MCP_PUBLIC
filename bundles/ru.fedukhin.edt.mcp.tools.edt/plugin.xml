@@ -26,5 +26,11 @@
       <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.workspace.CreateProjectTool"
             name="create_project"
             description="Create a new 1C project (configuration, extension, or external-object)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.jobs.GetJobStatusTool"
+            name="get_job_status"
+            description="Status and result of a background job; waitSeconds blocks until it finishes"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.edt.di.ToolsEdtExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.edt.jobs.ListJobsTool"
+            name="list_jobs"
+            description="Background jobs of this 1C:EDT instance, newest first"/>
    </extension>
 </plugin>

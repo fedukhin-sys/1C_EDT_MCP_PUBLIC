@@ -23,7 +23,9 @@ if (-not (Test-Path -LiteralPath $TargetFile)) {
 # p2 любит прямые слэши; нормализуем на всякий случай
 $pool = $PoolPath -replace '\\', '/'
 
-$content = Get-Content -Raw -LiteralPath $TargetFile
+# Явная кодировка обязательна: Windows PowerShell 5.1 без неё читает файл как ANSI,
+# и при записи обратно в UTF-8 кириллица и тире в комментариях target-файла портятся.
+$content = Get-Content -Raw -Encoding UTF8 -LiteralPath $TargetFile
 $pattern = '(<location\s+path=")[^"]*("\s+type="Directory"\s*/>)'
 if ($content -notmatch $pattern) {
     throw "В $TargetFile не найдена Directory-локация (<location path=... type=`"Directory`"/>)"

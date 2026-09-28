@@ -15,16 +15,20 @@ import com._1c.g5.v8.dt.platform.services.core.runtimes.execution.RuntimeExecuti
 import com._1c.g5.v8.dt.platform.services.model.AppArch;
 import com._1c.g5.v8.dt.platform.services.model.RuntimeInstallation;
 import jakarta.inject.Inject;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.core.ipc.McpHome;
 
 /**
  * Wraps the EDT thick-client CLI. Production-mode resolves 1cv8.exe via
@@ -47,6 +51,7 @@ public class RuntimeCli {
     private final IRuntimeRegistry registry;
     private final ExecutableResolver executableResolver;
     private final ProcessFactory processFactory;
+    private final DesignerBatch batch;
 
     @Inject
     public RuntimeCli(IRuntimeRegistry registry,
@@ -61,90 +66,248 @@ public class RuntimeCli {
         this.registry = registry;
         this.executableResolver = er;
         this.processFactory = pf;
+        this.batch = new DesignerBatch(pf, DesignerBatch.DEFAULT_POLL);
     }
 
     /**
-     * Run {@code 1cv8.exe CREATEINFOBASE File="<location>"} synchronously.
+     * Run {@code 1cv8.exe CREATEINFOBASE File=<location>} synchronously.
      * Returns process exit code (always 0 on success — non-zero throws).
      */
     public int createFileInfobase(Path location, String version, Duration timeout) throws ToolException {
-        // IRuntimeRegistry.getRuntime(String) treats its argument as a runtime *id*
-        // (e.g. "com._1c.g5.v8.dt.platform.runtime.8.3.27"), NOT a version. Search
-        // by version-string via getRuntimes() to give a clean "not found" diagnostic
-        // before delegating to the resolver chain (which throws MatchingRuntimeNotFound
-        // with its own less actionable message).
-        boolean known = false;
-        for (IRuntime r : registry.getRuntimes()) {
-            if (version.equals(String.valueOf(r.getVersion()))) {
-                known = true;
-                break;
-            }
-        }
-        if (!known) {
-            throw new ToolException("runtime version '" + version + "' not found; registered: " + listVersions());
-        }
+        requireRegisteredVersion(version);
         File executable = executableResolver.resolve(version);
-
-        // Build the command line directly — the command-builder facade lives in services.core.runtimes.execution.impl
-        // and requires a fully-resolved RuntimeInstallation, which we don't have in the headless path.
-        // Equivalent CLI shape (1C platform docs): 1cv8.exe CREATEINFOBASE File=<path>
-        //
         // Без кавычек вокруг пути: ProcessBuilder на Windows экранирует встроенные " как \",
         // а 1cv8.exe такую форму не понимает — отвечает «Неопределена информационная база»
         // (тот же отказ описан в TestRunnerLauncher.buildCommand). Кавычки вокруг аргумента
         // с пробелами Windows расставляет сам.
-        List<String> cmd = List.of(executable.getAbsolutePath(), "CREATEINFOBASE", "File=" + location);
+        return runCreateInfobase(executable, "File=" + location, timeout, List.of());
+    }
 
-        Process p;
-        try {
-            p = processFactory.start(cmd, null);
-        } catch (IOException e) {
-            throw new ToolException("failed to start 1cv8.exe: " + e.getMessage(), e);
-        }
-        // Дренируем потоки параллельно с ожиданием: полный pipe подвешивает сам процесс, и тогда
-        // никакой таймаут не спасёт (та же болезнь, что была у раннера тестов). Читать их до
-        // waitFor нельзя — блокирующее чтение и есть источник зависания.
-        StringBuilder stderr = new StringBuilder();
-        Thread errDrain = drainAsync(p.getErrorStream(), stderr);
-        Thread outDrain = drainAsync(p.getInputStream(), new StringBuilder());
-        boolean finished;
-        try {
-            finished = p.waitFor(timeout.toSeconds(), TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            p.destroyForcibly();
-            Thread.currentThread().interrupt();
-            throw new ToolException("interrupted waiting for 1cv8.exe");
-        }
-        if (!finished) {
-            p.destroyForcibly();
-            throw new ToolException("createInfobase timeout after " + timeout.toSeconds() + "s");
-        }
-        joinQuietly(errDrain);
-        joinQuietly(outDrain);
-        int code = p.exitValue();
-        if (code != 0) {
-            throw new ToolException("1cv8 exited " + code + ": " + stderr.toString().trim());
-        }
+    /**
+     * Run {@code 1cv8.exe CREATEINFOBASE Srvr=…;Ref=…;DBMS=…} — серверная база в кластере 1С.
+     * С {@code CrSQLDB=Y} платформа сама создаёт базу данных в СУБД — а если БД с таким именем в СУБД
+     * уже есть, молча подключает новую базу к ней. Поэтому сразу после создания новая база
+     * проверяется тем же 1cv8 ({@link #requireNewDatabase}): загрузка {@code .dt} в подключённую
+     * чужую БД уничтожила бы её данные (живой прогон 1.24.0).
+     */
+    public int createServerInfobase(ServerInfobaseParams params, String version, Duration timeout)
+            throws ToolException {
+        params.validate();
+        List<String> secrets = new ArrayList<>();
+        if (params.dbPassword() != null) secrets.add(params.dbPassword());
+        if (params.clusterPassword() != null) secrets.add(params.clusterPassword());
+        requireRegisteredVersion(version);
+        File executable = executableResolver.resolve(version);
+        int code = runCreateInfobase(executable, params.toCreateInfobaseArgument(), timeout, secrets);
+        requireNewDatabase(executable, params, timeout, secrets);
         return code;
     }
 
-    /** Вычитывает поток процесса в daemon-потоке, чтобы не блокировать ожидание. */
-    private static Thread drainAsync(InputStream in, StringBuilder sink) {
-        Thread t = new Thread(() -> {
-            String read = tail(in);
-            synchronized (sink) { sink.append(read); }
-        }, "edt-mcp-1cv8-drain");
-        t.setDaemon(true);
-        t.start();
-        return t;
+    /**
+     * Свежая база, созданная CREATEINFOBASE, конфигурации не содержит: выгрузка
+     * {@code DESIGNER /S <сервер>\<база> /DumpConfigToFiles <каталог> -configDumpInfoOnly} даёт
+     * {@code ConfigDumpInfo.xml} с пустым {@code <ConfigVersions/>}. Любой элемент {@code <Metadata},
+     * отсутствие файла или отказ конфигуратора (у существующей базы с пользователями — «Пользователь ИБ
+     * не идентифицирован») значат: 1С подключила новую базу к БД, которая в СУБД уже была, — дальше
+     * нельзя. Проверка fail-closed: файл без {@code <ConfigVersions} или без закрывающего
+     * {@code </ConfigDumpInfo>} (пустой, обрезанный) — тоже отказ. Учётные данные проверке не нужны: у
+     * свежей базы нет ни пользователей, ни агента EDT.
+     */
+    private void requireNewDatabase(File executable, ServerInfobaseParams params, Duration timeout,
+                                    List<String> secrets) throws ToolException {
+        Path dumpDir = newTempDirectory();
+        try {
+            DesignerBatch.Result result;
+            try {
+                result = batch.run(executable,
+                    List.of("/S", params.server() + "\\" + params.ref(), "/DumpConfigToFiles", dumpDir.toString(),
+                        "-configDumpInfoOnly"),
+                    null, timeout);
+            } catch (ToolException e) {
+                throw notNewDatabase(params, maskSecrets(e.getMessage(), secrets));
+            }
+            if (result.exitCode() != 0) {
+                String reason = maskSecrets(result.output(), secrets);
+                throw notNewDatabase(params, "проверка новой базы конфигуратором не прошла (код " + result.exitCode()
+                    + (reason.isEmpty() ? "" : ": " + reason) + ")");
+            }
+            Path info = dumpDir.resolve("ConfigDumpInfo.xml");
+            if (!Files.isRegularFile(info)) {
+                throw notNewDatabase(params, "проверка новой базы не выгрузила ConfigDumpInfo.xml");
+            }
+            String dump;
+            try {
+                dump = new String(Files.readAllBytes(info), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw notNewDatabase(params, "не удалось прочитать ConfigDumpInfo.xml проверки: " + e.getMessage());
+            }
+            // Fail-closed: пустой, обрезанный или непонятный файл — не «конфигурации нет», а отказ.
+            if (!dump.contains("<ConfigVersions") || !dump.contains("</ConfigDumpInfo>")) {
+                throw notNewDatabase(params, "ConfigDumpInfo.xml проверки пуст или повреждён: нет элемента "
+                    + "ConfigVersions или конца файла");
+            }
+            if (dump.contains("<Metadata")) {
+                throw notNewDatabase(params, null);
+            }
+        } finally {
+            deleteQuietly(dumpDir);
+        }
     }
 
-    private static void joinQuietly(Thread t) {
+    /**
+     * @param probeFailure причина, по которой проверка не состоялась; {@code null} — проверка прошла и
+     *     нашла в новой базе конфигурацию
+     */
+    private static ToolException notNewDatabase(ServerInfobaseParams params, String probeFailure) {
+        String what = probeFailure == null
+            ? "в СУБД уже была база данных '" + params.dbName() + "': 1С подключила к ней новую информационную "
+                + "базу '" + params.ref() + "' (в ней оказалась конфигурация)"
+            : "не удалось убедиться, что база данных '" + params.dbName() + "' новая (" + probeFailure + "): "
+                + "возможно, она уже была в СУБД, и 1С подключила к ней новую информационную базу '"
+                + params.ref() + "'";
+        return new ToolException(what + ". Загрузка .dt уничтожила бы её данные — задание остановлено до "
+            + "загрузки, в EDT база не зарегистрирована. Удалите регистрацию '" + params.ref() + "' в кластере 1С, "
+            + "НЕ удаляя базу данных (rac infobase drop без --drop-database или консоль кластера), выберите новое "
+            + "dbName и повторите");
+    }
+
+    /**
+     * @param secrets пароли из строки подключения: 1cv8 может эхом вставить их в текст отказа, и
+     *     там они вырезаются ({@link #maskSecrets})
+     */
+    private int runCreateInfobase(File executable, String connectionArgument, Duration timeout,
+                                  List<String> secrets) throws ToolException {
+        Path outLog = DesignerBatch.newOutLog();
+        // /Out — туда 1cv8 пишет причину отказа (stderr пуст); /DisableStartupDialogs — чтобы на
+        // ошибке не повис модальный диалог процесса без окна.
+        List<String> cmd = List.of(executable.getAbsolutePath(), "CREATEINFOBASE", connectionArgument,
+            "/Out", outLog.toString(), "/DisableStartupDialogs");
         try {
-            t.join(2000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            Process p;
+            try {
+                p = processFactory.start(cmd, null);
+            } catch (IOException e) {
+                throw new ToolException("failed to start 1cv8.exe: " + e.getMessage(), e);
+            }
+            // Дренируем потоки параллельно с ожиданием: полный pipe подвешивает сам процесс, и тогда
+            // никакой таймаут не спасёт (та же болезнь, что была у раннера тестов). Читать их до
+            // waitFor нельзя — блокирующее чтение и есть источник зависания.
+            StringBuilder stderr = new StringBuilder();
+            Thread errDrain = DesignerBatch.drainAsync(p.getErrorStream(), stderr);
+            Thread outDrain = DesignerBatch.drainAsync(p.getInputStream(), new StringBuilder());
+            boolean finished;
+            try {
+                finished = p.waitFor(timeout.toSeconds(), TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                p.destroyForcibly();
+                Thread.currentThread().interrupt();
+                throw new ToolException("interrupted waiting for 1cv8.exe");
+            }
+            if (!finished) {
+                p.destroyForcibly();
+                throw new ToolException("createInfobase timeout after " + timeout.toSeconds() + "s");
+            }
+            DesignerBatch.joinQuietly(errDrain);
+            DesignerBatch.joinQuietly(outDrain);
+            int code = p.exitValue();
+            if (code != 0) {
+                String reason = OutLogReader.read(outLog);
+                if (reason.isEmpty()) {
+                    synchronized (stderr) {
+                        reason = stderr.toString().trim();
+                    }
+                }
+                // 1cv8 иногда эхо́м вставляет в /Out или stderr саму строку подключения — вместе
+                // с ней и пароли (ServerInfobaseParams.toCreateInfobaseArgument). Маскируем перед
+                // тем, как текст попадёт в сообщение исключения (оно уходит клиенту и в лог).
+                reason = maskSecrets(reason, secrets);
+                throw new ToolException("1cv8 CREATEINFOBASE exited " + code
+                    + (reason.isEmpty() ? "" : ": " + reason));
+            }
+            return code;
+        } finally {
+            try {
+                Files.deleteIfExists(outLog);
+            } catch (IOException ignored) {
+                // временный лог; не удалился — не беда
+            }
         }
+    }
+
+    /**
+     * Версия должна быть зарегистрирована в EDT. Принимается и маска ({@code 8.3.27}), и полная
+     * сборка ({@code 8.3.27.2214}) — серверной базе нужна ровно та сборка, что у кластера.
+     *
+     * <p>{@code IRuntimeRegistry.getRuntime(String)} принимает id среды, а не версию, поэтому
+     * поиск идёт перебором {@code getRuntimes()} — так отказ получается понятным.
+     */
+    private void requireRegisteredVersion(String version) throws ToolException {
+        for (IRuntime r : registry.getRuntimes()) {
+            String known = String.valueOf(r.getVersion());
+            if (version.equals(known) || version.startsWith(known + ".")) return;
+        }
+        throw new ToolException("runtime version '" + version + "' not found; registered: " + listVersions());
+    }
+
+    /** Каталог проверочной выгрузки — в каталоге tmp домашнего каталога сервера, а не в системном temp. */
+    private static Path newTempDirectory() throws ToolException {
+        try {
+            Path dir = McpHome.root().resolve("tmp");
+            Files.createDirectories(dir);
+            return Files.createTempDirectory(dir, "1cv8-probe-");
+        } catch (IOException | RuntimeException e) {
+            throw new ToolException("не удалось создать каталог проверки новой базы: " + e.getMessage(), e);
+        }
+    }
+
+    /** Удаляет временный каталог вместе с содержимым; не удалилось — не беда. */
+    private static void deleteQuietly(Path dir) {
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
+                    // временный каталог; остаток уберёт следующая чистка tmp
+                }
+            });
+        } catch (IOException | RuntimeException ignored) {
+            // то же
+        }
+    }
+
+    /**
+     * {@code DBPwd=…}/{@code SPwd=…}: значение в кавычках целиком (каноническая форма строки
+     * подключения 1С — {@code DBPwd="…"}) или без кавычек — до первого {@code ;}, пробела или кавычки.
+     * Проверка аргументов ({@code ServerInfobaseParams.checkChars}) касается входа, а не того, как
+     * 1cv8 эхом повторяет строку в тексте отказа.
+     */
+    private static final Pattern SECRET_PATTERN = Pattern.compile("(?i)(DBPwd|SPwd)\\s*=\\s*(\"[^\"]*\"|[^;\\s\"]*)");
+
+    /**
+     * Буквальные вхождения пароля вырезаются, только если в нём 4 символа и больше: пароль в 1–3
+     * символа совпал бы с кусками обычного текста и изуродовал его. Такой пароль закрывает
+     * шаблон «ключ=значение».
+     */
+    private static final int MIN_LITERAL_SECRET_LENGTH = 4;
+
+    /**
+     * Вырезает пароли СУБД/кластера из текста {@code /Out}/stderr перед тем, как он попадёт в
+     * сообщение: сначала форма «ключ=значение», затем — буквальные вхождения самих паролей (1cv8
+     * может повторить значение и вне строки подключения). Самый длинный пароль — первым: если один
+     * пароль — часть другого, короткий, вырезанный раньше, оставил бы в тексте хвост длинного.
+     */
+    private static String maskSecrets(String text, List<String> secrets) {
+        if (text == null || text.isEmpty()) return text;
+        String masked = SECRET_PATTERN.matcher(text).replaceAll("$1=***");
+        List<String> longestFirst = new ArrayList<>();
+        for (String secret : secrets) {
+            if (secret != null && secret.length() >= MIN_LITERAL_SECRET_LENGTH) longestFirst.add(secret);
+        }
+        longestFirst.sort(Comparator.comparingInt(String::length).reversed());
+        for (String secret : longestFirst) {
+            masked = masked.replace(secret, "***");
+        }
+        return masked;
     }
 
     /** Resolves 1cv8 for the platform version of the given infobase. */
@@ -173,20 +336,6 @@ public class RuntimeCli {
             first = false;
         }
         return sb.append("]").toString();
-    }
-
-    private static String tail(InputStream in) {
-        try {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            byte[] buf = new byte[1024];
-            int n;
-            while ((n = in.read(buf)) != -1 && baos.size() < 4096) {
-                baos.write(buf, 0, n);
-            }
-            return new String(baos.toByteArray(), StandardCharsets.UTF_8).trim();
-        } catch (IOException e) {
-            return "<failed to read stderr: " + e.getMessage() + ">";
-        }
     }
 
     /**

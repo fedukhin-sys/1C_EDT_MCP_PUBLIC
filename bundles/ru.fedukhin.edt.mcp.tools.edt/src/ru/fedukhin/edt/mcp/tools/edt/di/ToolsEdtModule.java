@@ -10,6 +10,8 @@ import com._1c.g5.v8.dt.platform.version.IRuntimeVersionSupport;
 import com._1c.g5.wiring.AbstractServiceAwareModule;
 import org.eclipse.core.runtime.Plugin;
 import ru.fedukhin.edt.mcp.tools.edt.ListProjectsTool;
+import ru.fedukhin.edt.mcp.tools.edt.jobs.GetJobStatusTool;
+import ru.fedukhin.edt.mcp.tools.edt.jobs.ListJobsTool;
 import ru.fedukhin.edt.mcp.tools.edt.workspace.CloseProjectTool;
 import ru.fedukhin.edt.mcp.tools.edt.workspace.CreateProjectTool;
 import ru.fedukhin.edt.mcp.tools.edt.workspace.GetProjectTool;
@@ -40,5 +42,7 @@ public class ToolsEdtModule extends AbstractServiceAwareModule {
         bind(ListProjectsTool.class);
         bind(ListRuntimeVersionsTool.class);
         bind(OpenProjectTool.class);
+        bind(GetJobStatusTool.class);
+        bind(ListJobsTool.class);
     }
 }
