@@ -1,4 +1,4 @@
-# Полный список инструментов EDT_MCP (106)
+# Полный список инструментов EDT_MCP (107)
 
 Точные имена аргументов получены из `tools/list` и сверены с `inputSchema()` в коде.
 Если параметра нет в списке — он будет отвергнут (`additionalProperties: false`).
@@ -26,6 +26,7 @@ Required помечены `*`.
 |---|---|
 | `list_infobases` | `folder`, `type` |
 | `get_infobase` | `name`, `uuid` |
+| `get_infobase_sync_state` | `project*`, `infobase`, `details`, `maxFiles`. Только чтение: покажет ли EDT при запуске клиента окно «…не синхронизирована с проектом…» и из-за каких проектов (конфигурация + каждое расширение). Проект расширения — проверяется его конфигурация; несвязанная `infobase` — `launchDialogExpected: null` |
 | `create_infobase` | `name*`, `type*`, `location*`, `version`, `folder`, `timeoutSeconds` |
 | `associate_infobase` | `project*`, `infobase*`, `setDefault`. Только для проекта конфигурации: EDT 2026.1 связывает базу с одним проектом, проект расширения следует за базой родителя (связать его откажет «already associated with project …») |
 | `deploy_project` | `project*`, `infobase*`, `force`, `timeoutSeconds`, `allowForeignInfobase` (по умолчанию false). База сверяется с ассоциацией проекта: связан с другими — отказ, обходится `allowForeignInfobase: true`; ассоциации нет — деплой идёт с предупреждением |

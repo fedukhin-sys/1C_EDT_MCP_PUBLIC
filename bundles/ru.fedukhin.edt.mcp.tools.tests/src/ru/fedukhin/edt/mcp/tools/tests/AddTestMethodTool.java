@@ -6,7 +6,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +21,6 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.tests.internal.BslTestMethodAppender;
 import ru.fedukhin.edt.mcp.tools.tests.internal.BslTestMethodAppender.AppendResult;
 import ru.fedukhin.edt.mcp.tools.tests.internal.TestModuleHeuristic;
-import ru.fedukhin.edt.mcp.tools.tests.internal.XUnitTemplates;
 import ru.fedukhin.edt.mcp.tools.tests.internal.XUnitTemplates.Language;
 
 /**
@@ -32,6 +30,12 @@ import ru.fedukhin.edt.mcp.tools.tests.internal.XUnitTemplates.Language;
  * <p>Result: {@code { moduleFqn, methodName, fqn, registered, alreadyExisted, warning? }}
  *
  * <p>Идемпотентен: если метод уже существует, возвращает {@code alreadyExisted=true} без изменений.
+ *
+ * <p>{@code fqn} — фактическое имя процедуры в модуле: префикс {@code Тест_}/{@code Test_}
+ * добавляется ровно один раз (если {@code methodName} уже с ним — не дублируется). Метод всегда
+ * экспортный, вставляется внутрь области {@code ПрограммныйИнтерфейс}/{@code Public} (иначе —
+ * перед первым {@code #КонецОбласти}, без областей — в конец модуля); стиль переводов строк,
+ * BOM и кодировка файла сохраняются — см. {@link BslTestMethodAppender}.
  *
  * <p>{@code registered} — факт вставки строки регистрации в {@code ИсполняемыеСценарии}, а не
  * «метод дописан»: без этой процедуры регистрировать негде, и раннер xUnitFor1C тест не увидит.
@@ -94,7 +98,10 @@ public final class AddTestMethodTool implements IMcpTool {
             throw new ToolException("module file not found for '" + moduleFqn + "'");
         }
 
-        String text = readText(bslFile);
+        // Читаем и пишем в одной кодировке файла: раньше запись шла жёстко в UTF-8,
+        // и модуль в другой кодировке после правки становился нечитаемым.
+        Charset charset = charsetOf(bslFile);
+        String text = readText(bslFile, charset);
         String lang = heuristic.detectLanguage(moduleName, text);
         if (lang == null) lang = "ru";
         Language language = "en".equals(lang) ? Language.EN : Language.RU;
@@ -102,16 +109,13 @@ public final class AddTestMethodTool implements IMcpTool {
         AppendResult result = appender.append(text, methodName, language, body);
 
         if (!result.alreadyExisted) {
-            writeText(bslFile, result.newText);
+            writeText(bslFile, result.newText, charset);
         }
-
-        String prefix = XUnitTemplates.prefix(language);
-        String fqn = methodName.startsWith(prefix) ? methodName : prefix + methodName;
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("moduleFqn",    moduleFqn);
         out.put("methodName",   methodName);
-        out.put("fqn",          fqn);
+        out.put("fqn",          result.fqn);
         out.put("registered",   result.registered);
         out.put("alreadyExisted", result.alreadyExisted);
         if (!result.registered) {
@@ -133,12 +137,19 @@ public final class AddTestMethodTool implements IMcpTool {
         return fqn.substring(dot + 1);
     }
 
-    private String readText(IFile file) throws ToolException {
+    private static Charset charsetOf(IFile file) throws ToolException {
         try {
-            String charset = file.getCharset();
+            return Charset.forName(file.getCharset());
+        } catch (CoreException | IllegalArgumentException e) {
+            throw new ToolException("failed to read module charset: " + e.getMessage());
+        }
+    }
+
+    private static String readText(IFile file, Charset charset) throws ToolException {
+        try {
             StringBuilder sb = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(file.getContents(), Charset.forName(charset)))) {
+                    new InputStreamReader(file.getContents(), charset))) {
                 int c;
                 while ((c = reader.read()) != -1) sb.append((char) c);
             }
@@ -148,8 +159,8 @@ public final class AddTestMethodTool implements IMcpTool {
         }
     }
 
-    private static void writeText(IFile file, String text) throws ToolException {
-        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+    private static void writeText(IFile file, String text, Charset charset) throws ToolException {
+        byte[] bytes = text.getBytes(charset);
         try {
             if (file.exists()) {
                 file.setContents(new ByteArrayInputStream(bytes), true, true, new NullProgressMonitor());

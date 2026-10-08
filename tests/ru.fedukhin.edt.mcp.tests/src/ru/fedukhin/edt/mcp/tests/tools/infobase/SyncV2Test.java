@@ -8,8 +8,10 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
@@ -34,6 +36,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.tools.infobase.internal.EdtSyncSnapshot;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.SyncV2;
 
 public class SyncV2Test {
@@ -916,5 +919,47 @@ public class SyncV2Test {
         assertFalse(marking.marked());
         assertTrue(marking.reason(), marking.reason().contains("другая синхронизация с этой базой идёт прямо сейчас"));
         verifyZeroInteractions(delegate);
+    }
+
+    // ---- get_infobase_sync_state: projectDirty и readSnapshot ----
+
+    @Test
+    public void projectDirty_withoutV2_reasonNoValue() {
+        SyncV2.Dirtiness dirtiness = new SyncV2(() -> null).projectDirty(project("Demo"), ref);
+
+        assertNull(dirtiness.dirty());
+        assertTrue(dirtiness.failure(), dirtiness.failure().contains("2026.1"));
+    }
+
+    @Test
+    public void projectDirty_asksStateManager() {
+        IInfobaseSynchronizationStateManager sm = mock(IInfobaseSynchronizationStateManager.class);
+        IProject demo = project("Demo");
+        when(sm.isProjectDirty(demo, ref)).thenReturn(true);
+
+        SyncV2.Dirtiness dirtiness = new SyncV2(() -> sm).projectDirty(demo, ref);
+
+        assertEquals(Boolean.TRUE, dirtiness.dirty());
+        assertNull(dirtiness.failure());
+        verify(sm, never()).hasSynchronizationInfo(any(IProject.class), any());
+    }
+
+    /**
+     * Снимок читается через делегат сервиса v2 — только поиском держателя, без создания; {@code hasSynchronizationInfo}
+     * не зовётся (для проекта расширения он создаёт каталог {@code ext/<проект>}).
+     */
+    @Test
+    public void readSnapshot_readsThroughDelegate_findOnly() throws Exception {
+        SyncV2Fakes.FakeStore store = store();
+        SyncV2Fakes.SnapshotDelegate delegate = new SyncV2Fakes.SnapshotDelegate(SyncV2Fakes.holder(store,
+            new SyncV2Fakes.FakeState(1L, "uuid", Map.of(), Map.of(), "gen")));
+        IInfobaseSynchronizationStateManager sm = SyncV2Fakes.stateManager(delegate);
+
+        EdtSyncSnapshot.Read read = new SyncV2(() -> sm).readSnapshot(project("Demo"), ref, List.of(), false);
+
+        assertNotNull(read.failure(), read.memory());
+        assertEquals(List.of("calculateStoreProject", "findProjectInfobaseSynchronizationStateHolder"),
+            delegate.calls);
+        verify(sm, never()).hasSynchronizationInfo(any(IProject.class), any());
     }
 }

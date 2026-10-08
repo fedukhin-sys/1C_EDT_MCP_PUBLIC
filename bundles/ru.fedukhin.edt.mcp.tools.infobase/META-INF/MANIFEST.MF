@@ -6,6 +6,7 @@ Bundle-Version: 1.1.0.qualifier
 Bundle-Vendor: Fedukhin
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Bundle-Activator: ru.fedukhin.edt.mcp.tools.infobase.internal.ToolsInfobaseActivator
+Bundle-ActivationPolicy: lazy
 Require-Bundle: ru.fedukhin.edt.mcp.core,
  org.eclipse.core.runtime,
  org.eclipse.core.resources,

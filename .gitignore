@@ -7,6 +7,8 @@ RemoteSystemsTempFiles/
 target/
 *.jar
 *.class
+# Tycho ≥ 4 кладёт рядом с каждым модулем сгенерированный consumer pom
+.tycho-consumer-pom.xml
 
 # Third-party libs vendored into ru.fedukhin.edt.mcp.core via Bundle-ClassPath
 # (not OSGi-registered → no conflicts with host 1C:EDT runtime).

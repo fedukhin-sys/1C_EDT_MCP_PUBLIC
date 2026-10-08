@@ -29,5 +29,8 @@
       <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseFromDtTool"
             name="create_infobase_from_dt"
             description="Create a new FILE/SERVER infobase from a .dt for a new project and update the project from it (background job)"/>
+      <tool class="ru.fedukhin.edt.mcp.tools.infobase.di.ToolsInfobaseExecutableExtensionFactory:ru.fedukhin.edt.mcp.tools.infobase.GetInfobaseSyncStateTool"
+            name="get_infobase_sync_state"
+            description="Diagnose project-infobase synchronization: will EDT ask to update the infobase on client launch, and why (read-only)"/>
    </extension>
 </plugin>

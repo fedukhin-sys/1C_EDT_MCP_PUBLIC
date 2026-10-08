@@ -54,6 +54,9 @@ public class SyncV2 {
     static final String UNAVAILABLE = "инструмент требует 1C:EDT 2026.1 или новее: в этой версии нет API "
         + "синхронизации v2 (IInfobaseSynchronizationStateManager)";
 
+    /** Причина {@code null} у значения API v2 в ответе диагностики (не отказ инструмента). */
+    static final String V2_MISSING = "нет API синхронизации v2 (нужна 1C:EDT 2026.1 или новее)";
+
     private final Supplier<Object> lookup;
     private volatile Object cached;
     private volatile RuntimeException transientFailure;
@@ -160,6 +163,47 @@ public class SyncV2 {
             String reason = McpJobs.describe(e);
             return new Risk(project.getName() + " (не удалось проверить: " + reason + ")", reason);
         }
+    }
+
+    /** {@code isProjectDirty} пары проект — база; {@code dirty == null} — не узнать, причина в {@code failure}. */
+    public record Dirtiness(Boolean dirty, String failure) {}
+
+    /** Только чтение: {@code isProjectDirty} EDT ничего не пишет, кроме своего кэша отметок времени. */
+    public Dirtiness projectDirty(IProject project, InfobaseReference infobase) {
+        Object sm = stateManager();
+        if (sm == null) return new Dirtiness(null, unavailableReason());
+        try {
+            return new Dirtiness(((IInfobaseSynchronizationStateManager) sm).isProjectDirty(project, infobase), null);
+        } catch (RuntimeException | LinkageError e) {
+            return new Dirtiness(null, McpJobs.describe(e));
+        }
+    }
+
+    /**
+     * Снимок синхронизации пары «проект конфигурации — база» и её расширений — только чтение
+     * ({@link EdtSyncSnapshot#read}): в памяти EDT и, с {@code withDisk}, на диске. Сервис или делегат недоступен —
+     * {@code Read} с причиной, не исключение.
+     */
+    public EdtSyncSnapshot.Read readSnapshot(IProject configuration, InfobaseReference infobase,
+                                             Collection<String> extensionProjects, boolean withDisk) {
+        Object sm = stateManager();
+        String reason = sm == null ? unavailableReason() : null;
+        Object delegate = null;
+        if (sm != null) {
+            try {
+                delegate = delegateOf(sm);
+            } catch (ToolException e) {
+                reason = e.getMessage();
+            }
+        }
+        if (delegate == null) return new EdtSyncSnapshot.Read(null, reason, null, withDisk ? reason : null);
+        return EdtSyncSnapshot.read(delegate, configuration, infobase, extensionProjects, withDisk);
+    }
+
+    /** Почему сервиса v2 нет: временно (EDT загружается) или совсем (старая ветка). */
+    private String unavailableReason() {
+        RuntimeException cause = transientFailure;
+        return cause != null ? "сервис синхронизации EDT пока недоступен: " + McpJobs.describe(cause) : V2_MISSING;
     }
 
     /**

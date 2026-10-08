@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import org.eclipse.core.resources.IProject;
 
@@ -119,6 +120,17 @@ public final class SyncV2Fakes {
             extensionPathLookups++;
             return extensions.resolve(extensionProject + ".xml");
         }
+
+        /** Что вернёт {@code readState()} — снимок «на диске»; {@code null} — снимка нет. */
+        public FakeState persisted;
+        public RuntimeException readFailure;
+        public int readCalls;
+
+        public FakeState readState() {
+            readCalls++;
+            if (readFailure != null) throw readFailure;
+            return persisted;
+        }
     }
 
     /** Как {@code …Delegate$ProjectInfobaseSynchronizationStateHolder}: пакетный класс с публичными полями. */
@@ -200,5 +212,45 @@ public final class SyncV2Fakes {
         when(((DelegateAccess) sm).getDelegate()).thenReturn(delegate);
         when(sm.hasSynchronizationInfo(any(IProject.class), any())).thenReturn(true);
         return sm;
+    }
+
+    // ---- get_infobase_sync_state: чтение снимка (EdtSyncSnapshot) ----
+
+    /**
+     * Как делегат для ЧТЕНИЯ снимка: {@code calculateStoreProject}, {@code findProjectInfobaseSynchronizationStateHolder}
+     * (отдаёт {@code Optional}, как у EDT) и поле {@code lock}. {@code findOrCreate…} тоже есть — чтобы тест поймал
+     * вызов: созданный держатель изменил бы ответ {@code isProjectDirty}.
+     */
+    public static final class SnapshotDelegate {
+        private final Object lock = new Object();
+        public final List<String> calls = new ArrayList<>();
+        /** Держатель любой формы (у EDT — пакетный класс с полями {@code state}, {@code synchronizationStore}). */
+        public Object holder;
+        public IProject storeProject;
+
+        public SnapshotDelegate(Object holder) {
+            this.holder = holder;
+        }
+
+        public boolean holdsLock() {
+            return Thread.holdsLock(lock);
+        }
+
+        private IProject calculateStoreProject(IProject project) {
+            calls.add("calculateStoreProject");
+            return storeProject != null ? storeProject : project;
+        }
+
+        private Optional<Object> findProjectInfobaseSynchronizationStateHolder(IProject project,
+                                                                               InfobaseReference infobase) {
+            calls.add("findProjectInfobaseSynchronizationStateHolder");
+            return Optional.ofNullable(holder);
+        }
+
+        private Object findOrCreateProjectInfobaseSynchronizationStateHolder(IProject project,
+                                                                            InfobaseReference infobase) {
+            calls.add("findOrCreateProjectInfobaseSynchronizationStateHolder");
+            return holder;
+        }
     }
 }

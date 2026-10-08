@@ -16,6 +16,7 @@ import ru.fedukhin.edt.mcp.tools.infobase.AssociateInfobaseTool;
 import ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseFromDtTool;
 import ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseTool;
 import ru.fedukhin.edt.mcp.tools.infobase.DeployProjectTool;
+import ru.fedukhin.edt.mcp.tools.infobase.GetInfobaseSyncStateTool;
 import ru.fedukhin.edt.mcp.tools.infobase.GetInfobaseTool;
 import ru.fedukhin.edt.mcp.tools.infobase.ListInfobasesTool;
 import ru.fedukhin.edt.mcp.tools.infobase.RestoreInfobaseFromDtTool;
@@ -28,6 +29,7 @@ import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseTargets;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.ProjectFromInfobaseUpdater;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
+import ru.fedukhin.edt.mcp.tools.infobase.internal.SyncStateProbe;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.SyncV2;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.ThickClientOps;
 
@@ -61,10 +63,13 @@ public class ToolsInfobaseModule extends AbstractServiceAwareModule {
         bind(SyncV2.class).in(Singleton.class);
         bind(ProjectFromInfobaseUpdater.class);
         bind(InfobaseTargets.class);
+        // SyncStateProbe берёт IResourceStoreManager и сервис приложений EDT лениво, как ProjectFromInfobaseUpdater.
+        bind(SyncStateProbe.class);
         bind(InfobaseJobs.class);
         bind(UpdateProjectFromInfobaseTool.class);
         bind(RestoreInfobaseFromDtTool.class);
         bind(UpdateExtensionsFromCfeTool.class);
         bind(CreateInfobaseFromDtTool.class);
+        bind(GetInfobaseSyncStateTool.class);
     }
 }

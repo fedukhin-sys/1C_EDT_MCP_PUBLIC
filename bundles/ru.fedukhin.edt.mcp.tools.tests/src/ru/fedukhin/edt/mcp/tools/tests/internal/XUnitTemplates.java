@@ -24,15 +24,42 @@ public final class XUnitTemplates {
             + "#EndRegion\r\n";
     }
 
-    /** Boilerplate for a new test method with optional body. */
-    public static String methodBody(String name, Language lang, String userBody) {
-        String prefix = (lang == Language.RU) ? "Тест_" : "Test_";
+    /**
+     * Имя тестового метода с префиксом {@code Тест_}/{@code Test_} ровно один раз.
+     * Если клиент уже передал имя с префиксом (в любом регистре — идентификаторы BSL
+     * регистронезависимы), оно возвращается как есть: раньше префикс добавлялся повторно
+     * ({@code Тест_Тест_…}), и метод в модуле не совпадал с {@code fqn} из ответа инструмента.
+     */
+    public static String fqn(String methodName, Language lang) {
+        String prefix = prefix(lang);
+        return methodName.regionMatches(true, 0, prefix, 0, prefix.length())
+                ? methodName
+                : prefix + methodName;
+    }
+
+    /**
+     * Текст тестового метода: заголовок с {@code Экспорт}/{@code Export}, тело и
+     * {@code КонецПроцедуры}/{@code EndProcedure} на отдельной строке. Переводы строк — {@code eol}
+     * (стиль файла); тело приводится к тому же стилю и всегда завершается переводом строки,
+     * иначе последний оператор склеивался с {@code КонецПроцедуры}.
+     *
+     * @param fqn      полное имя метода (уже с префиксом, см. {@link #fqn(String, Language)})
+     * @param userBody тело метода или {@code null}/пусто — тогда заглушка {@code // TODO}
+     * @param eol      перевод строки файла: {@code "\r\n"} или {@code "\n"}
+     */
+    public static String methodBody(String fqn, Language lang, String userBody, String eol) {
         String header = (lang == Language.RU) ? "Процедура " : "Procedure ";
         String footer = (lang == Language.RU) ? "КонецПроцедуры" : "EndProcedure";
         String exportKw = (lang == Language.RU) ? " Экспорт" : " Export";
-        String body = (userBody != null && !userBody.isBlank()) ? userBody
-                : (lang == Language.RU ? "\t// TODO: написать тест\r\n" : "\t// TODO: write test\r\n");
-        return header + prefix + name + "()" + exportKw + "\r\n" + body + footer + "\r\n";
+        return header + fqn + "()" + exportKw + eol + normalizeBody(userBody, lang, eol) + footer + eol;
+    }
+
+    private static String normalizeBody(String userBody, Language lang, String eol) {
+        if (userBody == null || userBody.isBlank()) {
+            return (lang == Language.RU ? "\t// TODO: написать тест" : "\t// TODO: write test") + eol;
+        }
+        String body = userBody.replace("\r\n", "\n").replace('\r', '\n').replace("\n", eol);
+        return body.endsWith(eol) ? body : body + eol;
     }
 
     /** Returns the prefix to apply to a method name based on language. */

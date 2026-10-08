@@ -86,11 +86,13 @@ public class BuildPrecheckTest {
             marker("error", "BslEditor", "Отсутствует включение безопасного режима перед вызовом метода \"Выполнить\""),
             marker("error", "BslEditor", "Тип 'ЗаписьJSON' неопределен [Web-клиент]"),
             marker("error", "BslEditor", "Возвращается недекларируемое свойство: \"Вид, Версия\""),
-            marker("error", "BslEditor", "Цикл содержит выполнение запроса")));
+            marker("error", "BslEditor", "Цикл содержит выполнение запроса"),
+            marker("error", "BslEditor",
+                "Цикл содержит вызов метода с запросом \"ВернутьОрдер() -> {4112} Запрос.Выполнить()\"")));
 
         assertEquals("ни одно из этих замечаний не мешает 1cv8 загрузить модуль",
             0, v.blockers().size());
-        assertEquals(6, v.warnings().size());
+        assertEquals(7, v.warnings().size());
     }
 
     /** Незнакомое сообщение от BslEditor считаем компиляционным — fail-closed. */

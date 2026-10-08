@@ -75,6 +75,7 @@ public class ProjectFromInfobaseUpdaterLinkageTest {
         "ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseFromDtTool",
         "ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseTool",
         "ru.fedukhin.edt.mcp.tools.infobase.DeployProjectTool",
+        "ru.fedukhin.edt.mcp.tools.infobase.GetInfobaseSyncStateTool",
         "ru.fedukhin.edt.mcp.tools.infobase.GetInfobaseTool",
         "ru.fedukhin.edt.mcp.tools.infobase.ListInfobasesTool",
         "ru.fedukhin.edt.mcp.tools.infobase.RestoreInfobaseFromDtTool",
@@ -87,6 +88,7 @@ public class ProjectFromInfobaseUpdaterLinkageTest {
         "ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseTargets",
         "ru.fedukhin.edt.mcp.tools.infobase.internal.ProjectFromInfobaseUpdater",
         "ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli",
+        "ru.fedukhin.edt.mcp.tools.infobase.internal.SyncStateProbe",
         "ru.fedukhin.edt.mcp.tools.infobase.internal.SyncV2",
         "ru.fedukhin.edt.mcp.tools.infobase.internal.ThickClientOps");
 
