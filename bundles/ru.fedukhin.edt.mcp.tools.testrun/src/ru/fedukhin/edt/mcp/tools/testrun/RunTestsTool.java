@@ -14,6 +14,8 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseTool;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.SessionErrorProbe;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.TestCatalog;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestResult;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunResult;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller;
@@ -21,6 +23,15 @@ import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerLauncher;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestSelectorEncoder;
 
 public class RunTestsTool implements IMcpTool {
+
+    /** Общая часть описания run_tests и run_test_method. */
+    static final String RUN_BEHAVIOUR = "Only this project's runner executes the tests, even if "
+        + "other extensions of the infobase have runners too (runners installed by an older "
+        + "plugin ignore this — re-run install_test_runner and deploy). The run returns as soon "
+        + "as the result is written, even if a test left a modal window open (the client is "
+        + "then closed forcibly, see 'warning'), and fails fast when the run session shows an "
+        + "unhandled error in the event log (e.g. a module that compiles in EDT but not at "
+        + "runtime) instead of waiting for the timeout.";
 
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
     private static final int MIN_TIMEOUT_SECONDS = 30;
@@ -52,9 +63,15 @@ public class RunTestsTool implements IMcpTool {
     @Override public String name() { return "run_tests"; }
     @Override public String description() {
         return "Run xUnit tests in module (or all modules) against a deployed infobase. "
+             + "Tests are taken from the project sources: a test module is a common module with "
+             + "ИсполняемыеСценарии/ExecutableScenarios; its tests are those registered via "
+             + "ЮнитТесты.ДобавитьТест(\"...\"), or, if none are registered, exported no-arg "
+             + "procedures named Тест_*/Test_*. Modules named «…Клиент» run only one by one via "
+             + "run_test_method (skipped in the all-modules run). An empty set is an error. "
              + "Requires install_test_runner scaffolding in the project (checked up front). "
              + "Pass user/password if the infobase has users; without them 1cv8 relies on OS "
-             + "authentication and otherwise blocks on a login dialog until the timeout.";
+             + "authentication and otherwise blocks on a login dialog until the timeout. "
+             + RUN_BEHAVIOUR;
     }
 
     @Override public Map<String, Object> inputSchema() {
@@ -96,7 +113,7 @@ public class RunTestsTool implements IMcpTool {
         if (!iproject.exists() || !iproject.isOpen()) {
             throw new ToolException("project '" + projectName + "' not open");
         }
-        requireRunnerInstalled(scaffolder, iproject, projectName);
+        String runner = requireRunnerInstalled(scaffolder, iproject, projectName);
         InfobaseReference ref = infobaseRegistry.findByName(infobaseName).orElseThrow(() ->
             new ToolException("infobase '" + infobaseName + "' not found"));
         String exe = runtimeCli.resolveExecutableForInfobase(ref);
@@ -104,10 +121,15 @@ public class RunTestsTool implements IMcpTool {
             throw new ToolException("1cv8 executable not found for infobase '" + infobaseName + "'");
         }
 
+        // Состав прогона — по исходникам проекта: перечислить тесты в рантайме раннеру нечем.
+        // Пустой набор — отказ сразу, а не молчаливые «0 тестов» после запуска клиента.
+        TestCatalog.Selection selection =
+            TestCatalog.collect(Path.of(iproject.getLocation().toOSString()), moduleFqn);
         Path resultFile = TestRunnerLauncher.allocateResultFile();
+        Path listFile = writeTestList(resultFile, selection.tests());
         String selector = (moduleFqn == null)
-            ? TestSelectorEncoder.encodeAll(resultFile.toString())
-            : TestSelectorEncoder.encodeModule(moduleFqn, resultFile.toString());
+            ? TestSelectorEncoder.encodeAll(resultFile.toString(), runner, listFile.toString())
+            : TestSelectorEncoder.encodeModule(moduleFqn, resultFile.toString(), runner, listFile.toString());
         // Прогон тестов пишет документы в базу: уехать не в ту так же разрушительно,
         // как задеплоить не туда. Сверяем с ассоциацией проекта.
         Object af = args == null ? null : args.get("allowForeignInfobase");
@@ -127,15 +149,38 @@ public class RunTestsTool implements IMcpTool {
                  ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
                      lockKey, holder, java.time.Duration.ofSeconds(timeoutSeconds))) {
             res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(),
-                selector, timeoutSeconds, user, password);
+                selector, timeoutSeconds, user, password, SessionErrorProbe.forInfobase(ref, user));
         } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
             throw new ToolException(e.getMessage());
         } catch (java.io.IOException e) {
             throw new ToolException("не удалось взять замок '" + lockKey + "': " + e.getMessage(), e);
         }
+        if (res.tests().isEmpty()) {
+            throw new ToolException("раннер вернул 0 тестов из " + selection.tests().size()
+                + ": обычно раннер в базе старого образца и не знает списка тестов —"
+                + " install_test_runner и deploy_project проекта, затем повторить; иначе клиент"
+                + " не прочитал файл списка " + listFile);
+        }
         Map<String, Object> out = toMap(res);
-        guardWarning.ifPresent(w -> out.put("warning", w));
+        if (!selection.skippedClientModules().isEmpty()) {
+            addWarning(out, "клиентские тестовые модули пропущены (их тесты — по одному через"
+                + " run_test_method): " + String.join(", ", selection.skippedClientModules()));
+        }
+        guardWarning.ifPresent(w -> addWarning(out, w));
         return out;
+    }
+
+    /** Файл списка тестов «Модуль.Метод» по строке рядом с файлом результата (UTF-8). */
+    static Path writeTestList(Path resultFile, List<String> tests) throws ToolException {
+        Path listFile = resultFile.resolveSibling(
+            resultFile.getFileName().toString().replace(".json", ".tests.txt"));
+        try {
+            java.nio.file.Files.writeString(listFile, String.join("\r\n", tests) + "\r\n",
+                java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new ToolException("не удалось записать список тестов " + listFile + ": " + e.getMessage(), e);
+        }
+        return listFile;
     }
 
     /**
@@ -143,21 +188,25 @@ public class RunTestsTool implements IMcpTool {
      * клиент висит окном до таймаута (минуты) — вместо этого сразу говорим, чего не хватает.
      * Наличие модулей в проекте не гарантирует, что раннер задеплоен в ИБ, — но отсекает
      * основной случай «забыли install_test_runner».
+     *
+     * @return имя серверного модуля раннера проекта — адресат прогона (ключ {@code run}
+     *         селектора): раннеры других расширений той же базы селектор пропустят
      */
-    public static void requireRunnerInstalled(TestRunnerInstaller.ModuleScaffolder scaffolder,
+    public static String requireRunnerInstalled(TestRunnerInstaller.ModuleScaffolder scaffolder,
                                               IProject project, String projectName) throws ToolException {
         // Признаём оба образца имён: раннер, задеплоенный до введения суффикса,
         // продолжает работать — принудительная переустановка тут ничего не даёт,
         // потому что имя модуля важно внутри базы, а не для запуска.
-        boolean present =
-            (scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.clientModule(projectName))
-             && scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.serverModule(projectName)))
-            || (scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.CLIENT_MODULE)
-                && scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.SERVER_MODULE));
-        if (!present) {
-            throw new ToolException("xUnit test runner is not installed in project '" + projectName
-                + "': run install_test_runner, deploy_project the project, then retry");
+        if (scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.clientModule(projectName))
+            && scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.serverModule(projectName))) {
+            return TestRunnerInstaller.serverModule(projectName);
         }
+        if (scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.CLIENT_MODULE)
+            && scaffolder.exists(project, "CommonModule." + TestRunnerInstaller.SERVER_MODULE)) {
+            return TestRunnerInstaller.SERVER_MODULE;
+        }
+        throw new ToolException("xUnit test runner is not installed in project '" + projectName
+            + "': run install_test_runner, deploy_project the project, then retry");
     }
 
     private static int parseTimeout(Map<String, Object> args) throws ToolException {
@@ -173,7 +222,7 @@ public class RunTestsTool implements IMcpTool {
         return v;
     }
 
-    static Map<String, Object> toMap(TestRunResult r) {
+    public static Map<String, Object> toMap(TestRunResult r) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("passed", r.passed());
         out.put("failed", r.failed());
@@ -189,7 +238,13 @@ public class RunTestsTool implements IMcpTool {
             tests.add(m);
         }
         out.put("tests", tests);
+        if (r.warning() != null) out.put("warning", r.warning());
         return out;
+    }
+
+    /** Дописывает предупреждение к уже имеющемуся, а не затирает его. */
+    static void addWarning(Map<String, Object> out, String warning) {
+        out.merge("warning", warning, (a, b) -> a + "; " + b);
     }
 
     /** Assert-сообщения xUnit формируются в 1С и содержат реальные значения базы. */

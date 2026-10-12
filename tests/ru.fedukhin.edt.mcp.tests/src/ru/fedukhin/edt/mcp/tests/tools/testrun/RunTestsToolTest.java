@@ -10,6 +10,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.eclipse.core.resources.IProject;
 import org.junit.Test;
@@ -17,6 +18,7 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
 import ru.fedukhin.edt.mcp.tools.testrun.RunTestsTool;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunResult;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerLauncher;
 
@@ -78,6 +80,33 @@ public class RunTestsToolTest {
             mock(TestRunnerInstaller.ModuleScaffolder.class);
         when(scaffolder.exists(any(), anyString())).thenReturn(true);
         RunTestsTool.requireRunnerInstalled(scaffolder, mock(IProject.class), "Demo");
+    }
+
+    /** Имя серверного модуля уходит в селектор ключом run — адресат прогона. */
+    @Test public void requireRunnerInstalled_returnsServerModuleOfProjectRunner() throws ToolException {
+        TestRunnerInstaller.ModuleScaffolder scaffolder =
+            mock(TestRunnerInstaller.ModuleScaffolder.class);
+        when(scaffolder.exists(any(), anyString())).thenReturn(true);
+        assertEquals("EDT_MCP_TestRunner_Сервер_Demo",
+            RunTestsTool.requireRunnerInstalled(scaffolder, mock(IProject.class), "Demo"));
+    }
+
+    @Test public void requireRunnerInstalled_legacyOnly_returnsLegacyServerModule() throws ToolException {
+        TestRunnerInstaller.ModuleScaffolder scaffolder =
+            mock(TestRunnerInstaller.ModuleScaffolder.class);
+        when(scaffolder.exists(any(), anyString())).thenReturn(false);
+        when(scaffolder.exists(any(),
+            eq("CommonModule." + TestRunnerInstaller.CLIENT_MODULE))).thenReturn(true);
+        when(scaffolder.exists(any(),
+            eq("CommonModule." + TestRunnerInstaller.SERVER_MODULE))).thenReturn(true);
+        assertEquals(TestRunnerInstaller.SERVER_MODULE,
+            RunTestsTool.requireRunnerInstalled(scaffolder, mock(IProject.class), "Demo"));
+    }
+
+    @Test public void toMap_carriesRunWarning() {
+        Map<String, Object> out = RunTestsTool.toMap(new TestRunResult(1, 0, 5, List.of(), "клиент закрыт принудительно"));
+        assertEquals("клиент закрыт принудительно", out.get("warning"));
+        assertTrue(!RunTestsTool.toMap(new TestRunResult(1, 0, 5, List.of())).containsKey("warning"));
     }
 
     @Test public void requireRunnerInstalled_partialInstall_throws() {

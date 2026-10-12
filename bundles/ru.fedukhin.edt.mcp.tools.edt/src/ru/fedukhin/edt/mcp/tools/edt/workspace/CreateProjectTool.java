@@ -79,7 +79,12 @@ public class CreateProjectTool implements IMcpTool {
     }
 
     @Override public String name() { return "create_project"; }
-    @Override public String description() { return "Create a new 1C project (configuration, extension, or external-object)"; }
+    @Override public String description() {
+        return "Create a new 1C project (configuration, extension, or external-object). "
+             + "For an extension the compatibility mode is the requested version capped by the "
+             + "parent configuration's compatibility mode (an extension above it does not deploy); "
+             + "lowering is reported in 'warning', the result is 'extensionCompatibilityMode'.";
+    }
 
     @Override public Map<String, Object> inputSchema() {
         Map<String, Object> nameProp = new LinkedHashMap<>(); nameProp.put("type", "string");
@@ -168,9 +173,22 @@ public class CreateProjectTool implements IMcpTool {
         // never activates and deploy later fails with a missing-InternalInfo error.
         boolean configWritten = false;
         String configWarning = null;
+        String extensionCompatibility = null;
         if ("extension".equals(type)) {
+            // Режим совместимости расширения не может быть выше режима основной конфигурации:
+            // иначе deploy_project падает «Режим совместимости расширения конфигурации больше
+            // режима совместимости основной конфигурации» (8.5.1 к конфигурации 8.3.27).
+            String requested = String.valueOf(versionFinal);
+            String parentMode = resolveParentCompatibilityMode(parentFinal);
+            extensionCompatibility = notAbove(requested, parentMode);
             configWarning = writeExtensionConfiguration(created, parentFinal,
-                    configurationName(name), namePrefix, String.valueOf(versionFinal));
+                    configurationName(name), namePrefix, extensionCompatibility);
+            if (!extensionCompatibility.equals(requested)) {
+                String lowered = "режим совместимости расширения понижен до " + extensionCompatibility
+                        + " — режима основной конфигурации (запрошено " + requested
+                        + "): расширение с режимом выше основной конфигурации не загружается в базу";
+                configWarning = configWarning == null ? lowered : configWarning + "; " + lowered;
+            }
             configWritten = true;
         }
 
@@ -181,6 +199,7 @@ public class CreateProjectTool implements IMcpTool {
         out.put("location", created.getLocation() == null ? null : created.getLocation().toString());
         if (configWritten) {
             out.put("configurationMdoWritten", true);
+            out.put("extensionCompatibilityMode", extensionCompatibility);
             out.put("note", "Configuration.mdo written and project reloaded; "
                     + "the BM namespace may take a few seconds to activate — "
                     + "poll list_md_objects until it succeeds.");
@@ -415,6 +434,73 @@ public class CreateProjectTool implements IMcpTool {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * Режим совместимости родительской конфигурации ({@code <compatibilityMode>} корня её
+     * {@code Configuration.mdo}) или {@code null}, если прочитать не удалось или он не задан.
+     */
+    private String resolveParentCompatibilityMode(IProject parent) {
+        if (parent == null) {
+            return null;
+        }
+        IFile cfg = parent.getFile("src/Configuration/Configuration.mdo");
+        try {
+            if (cfg == null || !cfg.exists()) {
+                return null;
+            }
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(false);
+            try {
+                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            } catch (Exception ignore) {
+                // feature unsupported by this parser — the parsed file is trusted project metadata
+            }
+            Document doc;
+            try (InputStream in = cfg.getContents()) {
+                doc = factory.newDocumentBuilder().parse(in);
+            }
+            String mode = childText(doc.getDocumentElement(), "compatibilityMode");
+            return mode == null || mode.isEmpty() ? null : mode;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * {@code requested}, но не выше {@code limit}; версии вида {@code 8.3.27} сравниваются по
+     * числам. Предел неизвестен или не разбирается как версия — {@code requested} как есть.
+     */
+    static String notAbove(String requested, String limit) {
+        int[] r = versionNumbers(requested);
+        int[] l = versionNumbers(limit);
+        if (r == null || l == null) {
+            return requested;
+        }
+        for (int i = 0; i < Math.max(r.length, l.length); i++) {
+            int a = i < r.length ? r[i] : 0;
+            int b = i < l.length ? l[i] : 0;
+            if (a != b) {
+                return a > b ? limit : requested;
+            }
+        }
+        return requested;
+    }
+
+    private static int[] versionNumbers(String version) {
+        if (version == null || version.isBlank()) {
+            return null;
+        }
+        String[] parts = version.trim().split("\\.");
+        int[] out = new int[parts.length];
+        try {
+            for (int i = 0; i < parts.length; i++) {
+                out[i] = Integer.parseInt(parts[i]);
+            }
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return out;
     }
 
     /** Text of the first direct child element {@code <tag>} of {@code parent}, or {@code null}. */

@@ -13,6 +13,7 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.infobase.CreateInfobaseTool;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.InfobaseRegistry;
 import ru.fedukhin.edt.mcp.tools.infobase.internal.RuntimeCli;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.SessionErrorProbe;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunResult;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerLauncher;
@@ -53,7 +54,10 @@ public class RunTestMethodTool implements IMcpTool {
         return "Run a single xUnit test method against a deployed infobase. "
              + "Requires install_test_runner scaffolding in the project (checked up front). "
              + "Pass user/password if the infobase has users; without them 1cv8 relies on OS "
-             + "authentication and otherwise blocks on a login dialog until the timeout.";
+             + "authentication and otherwise blocks on a login dialog until the timeout. "
+             + "Modules named «…Клиент» run on the client (async tests: throw «EDT_MCP_ASYNC» and "
+             + "finish with <client runner>.ЗавершитьКлиентскийТест). "
+             + RunTestsTool.RUN_BEHAVIOUR;
     }
 
     @Override public Map<String, Object> inputSchema() {
@@ -98,7 +102,7 @@ public class RunTestMethodTool implements IMcpTool {
         if (!iproject.exists() || !iproject.isOpen()) {
             throw new ToolException("project '" + projectName + "' not open");
         }
-        RunTestsTool.requireRunnerInstalled(scaffolder, iproject, projectName);
+        String runner = RunTestsTool.requireRunnerInstalled(scaffolder, iproject, projectName);
         InfobaseReference ref = infobaseRegistry.findByName(infobaseName).orElseThrow(() ->
             new ToolException("infobase '" + infobaseName + "' not found"));
         String exe = runtimeCli.resolveExecutableForInfobase(ref);
@@ -116,7 +120,7 @@ public class RunTestMethodTool implements IMcpTool {
                    allowForeign);
 
         Path resultFile = TestRunnerLauncher.allocateResultFile();
-        String selector = TestSelectorEncoder.encodeMethod(moduleFqn, methodName, resultFile.toString());
+        String selector = TestSelectorEncoder.encodeMethod(moduleFqn, methodName, resultFile.toString(), runner);
         // .asConnectionString() даёт формат File="..." / Srvr="...";Ref="...";
         // .toString() даёт Java-дефолт (FileConnectionStringImpl@HASH) — мусор для cmdline.
         // Замок по базе — см. комментарий в RunTestsTool: параллельные прогоны по
@@ -129,14 +133,14 @@ public class RunTestMethodTool implements IMcpTool {
                  ru.fedukhin.edt.mcp.core.ipc.InterProcessLock.acquire(
                      lockKey, holder, java.time.Duration.ofSeconds(timeoutSeconds))) {
             res = launcher.runWithTimeout(exe, ref.getConnectionString().asConnectionString(),
-                selector, timeoutSeconds, user, password);
+                selector, timeoutSeconds, user, password, SessionErrorProbe.forInfobase(ref, user));
         } catch (ru.fedukhin.edt.mcp.core.ipc.LockTimeoutException e) {
             throw new ToolException(e.getMessage());
         } catch (java.io.IOException e) {
             throw new ToolException("не удалось взять замок '" + lockKey + "': " + e.getMessage(), e);
         }
         Map<String, Object> out = RunTestsTool.toMap(res);
-        guardWarning.ifPresent(w -> out.put("warning", w));
+        guardWarning.ifPresent(w -> RunTestsTool.addWarning(out, w));
         return out;
     }
 

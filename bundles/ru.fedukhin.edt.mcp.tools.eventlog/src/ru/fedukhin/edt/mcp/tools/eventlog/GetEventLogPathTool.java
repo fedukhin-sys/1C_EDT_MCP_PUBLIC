@@ -41,10 +41,10 @@ public class GetEventLogPathTool implements IMcpTool {
         Map<String, Object> uuid = new LinkedHashMap<>(); uuid.put("type", "string");
         Map<String, Object> srvinfo = new LinkedHashMap<>();
         srvinfo.put("type", "string");
-        srvinfo.put("description", "Override path to the 1cv8 srvinfo directory. Used for SERVER infobases when auto-discovery (default Program Files paths) fails or the cluster runs in a non-standard location.");
+        srvinfo.put("description", "Override path to the 1cv8 srvinfo directory. Used for SERVER infobases when auto-discovery fails (it searches 'Program Files/1cv8/srvinfo' and srvinfo* directories in C:/ProgramData/1C and the 1cv8 install folders, picking the one that holds reg_<port>) or the cluster runs on another machine.");
         Map<String, Object> port = new LinkedHashMap<>();
         port.put("type", "integer");
-        port.put("description", "Cluster registry port (default 1541). Server log path is <srvinfo>/reg_<port>/.");
+        port.put("description", "Cluster manager port. Default: the port from the infobase connection string (Srvr=host:port), otherwise 1541. Server log path is <srvinfo>/reg_<port>/.");
 
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("name", name);

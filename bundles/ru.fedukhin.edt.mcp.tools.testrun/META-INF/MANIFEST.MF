@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: EDT MCP — Test execution tools
 Bundle-SymbolicName: ru.fedukhin.edt.mcp.tools.testrun;singleton:=true
-Bundle-Version: 1.1.3.qualifier
+Bundle-Version: 1.2.0.qualifier
 Bundle-Vendor: fedukhin
 Automatic-Module-Name: ru.fedukhin.edt.mcp.tools.testrun
 Bundle-RequiredExecutionEnvironment: JavaSE-17
@@ -11,6 +11,7 @@ Bundle-ActivationPolicy: lazy
 Require-Bundle: ru.fedukhin.edt.mcp.core,
  ru.fedukhin.edt.mcp.tools.infobase,
  ru.fedukhin.edt.mcp.tools.md,
+ ru.fedukhin.edt.mcp.tools.eventlog,
  org.eclipse.core.runtime,
  org.eclipse.core.resources,
  org.eclipse.emf.common,

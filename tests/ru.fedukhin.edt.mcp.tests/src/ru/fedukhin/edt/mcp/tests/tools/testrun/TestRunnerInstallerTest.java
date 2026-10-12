@@ -16,9 +16,11 @@ import static org.mockito.Mockito.when;
 import com._1c.g5.v8.dt.core.platform.IConfigurationProject;
 import com._1c.g5.v8.dt.core.platform.IExtensionProject;
 import com._1c.g5.v8.dt.core.platform.IV8Project;
+import java.util.List;
 import org.eclipse.core.resources.IProject;
 import org.junit.Test;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
+import ru.fedukhin.edt.mcp.tools.testrun.internal.BslRunnerTemplates;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller.InstallResult;
 import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerInstaller.ManagedAppModuleEditor;
@@ -173,6 +175,81 @@ public class TestRunnerInstallerTest {
         verify(scaffolder).deleteModule(eq(iproject), eq("CommonModule.EDT_MCP_TestRunner_Клиент"));
         verify(scaffolder).deleteModule(eq(iproject), eq("CommonModule.EDT_MCP_TestRunner_Сервер"));
         verify(scaffolder).createClientModule(eq(iproject), eq("EDT_MCP_TestRunner_Клиент_Demo"));
+    }
+
+    /**
+     * Раннер, поставленный старым плагином, не знает ключа run и исполняет чужие селекторы.
+     * Повторный install_test_runner обязан переписать устаревшие модули по текущему шаблону —
+     * раньше он сразу отвечал alreadyInstalled и ничего не трогал.
+     */
+    @Test public void install_alreadyInstalled_outdatedModule_rewrittenFromTemplate() throws Exception {
+        IExtensionProject project = mock(IExtensionProject.class);
+        IProject iproject = mock(IProject.class);
+        when(project.getProject()).thenReturn(iproject);
+        when(iproject.getName()).thenReturn("Demo");
+
+        ModuleScaffolder scaffolder = mock(ModuleScaffolder.class);
+        when(scaffolder.exists(any(), anyString())).thenReturn(true);
+        when(scaffolder.readModuleBody(iproject, "EDT_MCP_TestRunner_Клиент_Demo"))
+            .thenReturn("// раннер старого образца\r\n");
+        when(scaffolder.readModuleBody(iproject, "EDT_MCP_TestRunner_Сервер_Demo"))
+            .thenReturn(BslRunnerTemplates.serverModuleBody());
+        ManagedAppModuleEditor editor = mock(ManagedAppModuleEditor.class);
+        when(editor.hasMarker(any())).thenReturn(true);
+
+        InstallResult res = new TestRunnerInstaller(scaffolder, editor).install(project);
+
+        assertTrue(res.alreadyInstalled());
+        assertEquals(List.of("CommonModule.EDT_MCP_TestRunner_Клиент_Demo"), res.updatedModules());
+        verify(scaffolder).writeModuleBody(iproject, "EDT_MCP_TestRunner_Клиент_Demo",
+            BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo"));
+        verify(scaffolder, never()).writeModuleBody(eq(iproject),
+            eq("EDT_MCP_TestRunner_Сервер_Demo"), anyString());
+        verify(scaffolder, never()).createClientModule(any(), anyString());
+    }
+
+    /** Разница только в переводах строк и BOM — не повод переписывать модуль. */
+    @Test public void install_alreadyInstalled_sameTextUpToEolAndBom_notRewritten() throws Exception {
+        IExtensionProject project = mock(IExtensionProject.class);
+        IProject iproject = mock(IProject.class);
+        when(project.getProject()).thenReturn(iproject);
+        when(iproject.getName()).thenReturn("Demo");
+
+        ModuleScaffolder scaffolder = mock(ModuleScaffolder.class);
+        when(scaffolder.exists(any(), anyString())).thenReturn(true);
+        when(scaffolder.readModuleBody(iproject, "EDT_MCP_TestRunner_Клиент_Demo")).thenReturn(String.valueOf((char) 0xFEFF)
+            + BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo").replace("\r\n", "\n"));
+        when(scaffolder.readModuleBody(iproject, "EDT_MCP_TestRunner_Сервер_Demo"))
+            .thenReturn(BslRunnerTemplates.serverModuleBody().replace("\r\n", "\n"));
+        ManagedAppModuleEditor editor = mock(ManagedAppModuleEditor.class);
+        when(editor.hasMarker(any())).thenReturn(true);
+
+        InstallResult res = new TestRunnerInstaller(scaffolder, editor).install(project);
+
+        assertTrue(res.updatedModules().isEmpty());
+        verify(scaffolder, never()).writeModuleBody(any(), anyString(), anyString());
+    }
+
+    /** Модули есть, обработчика нет (частичная установка) — модули всё равно приводятся к шаблону. */
+    @Test public void install_modulesWithoutHandler_outdatedModuleRewritten() throws Exception {
+        IExtensionProject project = mock(IExtensionProject.class);
+        IProject iproject = mock(IProject.class);
+        when(project.getProject()).thenReturn(iproject);
+        when(iproject.getName()).thenReturn("Demo");
+
+        ModuleScaffolder scaffolder = mock(ModuleScaffolder.class);
+        when(scaffolder.exists(any(), anyString())).thenReturn(false);
+        when(scaffolder.exists(any(), eq("CommonModule.EDT_MCP_TestRunner_Клиент_Demo"))).thenReturn(true);
+        when(scaffolder.exists(any(), eq("CommonModule.EDT_MCP_TestRunner_Сервер_Demo"))).thenReturn(true);
+        when(scaffolder.readModuleBody(iproject, "EDT_MCP_TestRunner_Клиент_Demo")).thenReturn("старый");
+        ManagedAppModuleEditor editor = mock(ManagedAppModuleEditor.class);
+        when(editor.hasMarker(any())).thenReturn(false);
+
+        InstallResult res = new TestRunnerInstaller(scaffolder, editor).install(project);
+
+        assertFalse(res.alreadyInstalled());
+        assertEquals(List.of("CommonModule.EDT_MCP_TestRunner_Клиент_Demo"), res.updatedModules());
+        verify(editor).appendExtensionHandler(iproject);
     }
 
     @Test public void uninstall_notInstalled_returnsFalse_noChange() throws Exception {

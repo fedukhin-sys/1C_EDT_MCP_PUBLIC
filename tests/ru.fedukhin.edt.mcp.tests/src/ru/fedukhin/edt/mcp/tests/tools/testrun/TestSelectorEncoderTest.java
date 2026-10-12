@@ -47,6 +47,40 @@ public class TestSelectorEncoderTest {
         assertEquals("method encoding should have exactly 3 semicolons (4 pairs)", 3, semCount);
     }
 
+    /** Ключ run — имя серверного модуля раннера, которому адресован прогон. */
+    @Test public void encodeMethod_withRunner_addsRunKey() {
+        String encoded = TestSelectorEncoder.encodeMethod("CommonModule.МойТест", "Тест_X",
+            "/tmp/r.json", "EDT_MCP_TestRunner_Сервер_Demo");
+        assertTrue(encoded, encoded.endsWith(";run=EDT_MCP_TestRunner_Сервер_Demo"));
+        assertTrue(encoded.contains("mtd=Тест_X"));
+    }
+
+    @Test public void encodeModuleAndAll_withRunner_addRunKey() {
+        assertTrue(TestSelectorEncoder.encodeModule("CommonModule.М", "/tmp/r.json", "R1")
+            .endsWith(";run=R1"));
+        assertTrue(TestSelectorEncoder.encodeAll("/tmp/r.json", "R2").endsWith(";run=R2"));
+    }
+
+    /** Список тестов модуля/проекта — файлом: в /C он может не поместиться. */
+    @Test public void encodeModuleAndAll_withTestList_addBase64ListPath() {
+        String mod = TestSelectorEncoder.encodeModule("CommonModule.М", "/tmp/r.json", "R1", "C:\\tmp\\r.tests.txt");
+        String all = TestSelectorEncoder.encodeAll("/tmp/r.json", "R2", "C:\\tmp\\r.tests.txt");
+        for (String s : new String[] {mod, all}) {
+            int i = s.indexOf(";lst=");
+            assertTrue(s, i > 0);
+            String b64 = s.substring(i + 5, s.indexOf(';', i + 1) > 0 ? s.indexOf(';', i + 1) : s.length());
+            assertEquals("C:\\tmp\\r.tests.txt", new String(java.util.Base64.getDecoder().decode(b64),
+                java.nio.charset.StandardCharsets.UTF_8));
+        }
+        assertTrue(!TestSelectorEncoder.encodeAll("/tmp/r.json", "R2", null).contains("lst="));
+    }
+
+    @Test public void encode_withoutRunner_hasNoRunKey() {
+        assertTrue(!TestSelectorEncoder.encodeMethod("CommonModule.М", "Т", "/tmp/r.json", null)
+            .contains("run="));
+        assertTrue(!TestSelectorEncoder.encodeAll("/tmp/r.json", " ").contains("run="));
+    }
+
     @Test public void encodeAll_base64IsValid() {
         // The Base64 portion should round-trip back to the original path.
         String original = "C:\\Users\\User\\AppData\\Local\\Temp\\edt-mcp-test-results\\abc.json";

@@ -8,6 +8,6 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
     <artifactId>ru.fedukhin.edt.mcp.tools.form</artifactId>
-    <version>1.3.2-SNAPSHOT</version>
+    <version>1.4.0-SNAPSHOT</version>
     <packaging>eclipse-plugin</packaging>
 </project>

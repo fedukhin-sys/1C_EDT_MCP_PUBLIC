@@ -94,6 +94,100 @@ public class EventLogLocatorTest {
         new EventLogLocator().setSrvinfoDir(srvinfo).locate(ref);
     }
 
+    /** Порт кластера — из строки соединения базы (Srvr=host:port), иначе 1541. */
+    @Test
+    public void clusterPortOf_parsesServerString() {
+        assertEquals(2541, EventLogLocator.clusterPortOf("localhost:2541"));
+        assertEquals(1541, EventLogLocator.clusterPortOf("localhost"));
+        assertEquals(2541, EventLogLocator.clusterPortOf("srv1:2541,srv2:2541"));
+        assertEquals(3541, EventLogLocator.clusterPortOf("tcp://host:3541"));
+        assertEquals(1541, EventLogLocator.clusterPortOf(null));
+        assertEquals(1541, EventLogLocator.clusterPortOf("host:abc"));
+    }
+
+    /**
+     * Стенд 8.3.27 рядом с 8.5: кластер :2541 живёт в C:\ProgramData\1C\srvinfo8327, а поиск знал
+     * только Program Files\1cv8\srvinfo (там reg_1541) — без srvinfoDir журнал не находился.
+     */
+    @Test
+    public void serverInfobase_portFromConnectionString_findsSrvinfoHoldingThatRegistry() throws Exception {
+        Path root = tmp.newFolder("ProgramData1C").toPath();
+        Files.createDirectories(root.resolve("srvinfo").resolve("reg_1541"));
+        Path reg = root.resolve("srvinfo8327").resolve("reg_2541");
+        String ibUuid = "22222222-2222-2222-2222-222222222222";
+        Path logDir = reg.resolve(ibUuid).resolve("1Cv8Log");
+        Files.createDirectories(logDir);
+        Files.write(reg.resolve("1CV8Clst.lst"),
+            ("{1,\n{" + ibUuid + ",\"DemoBase\",\"\",\"PostgreSQL\"}\n}").getBytes(Charset.forName("windows-1251")));
+
+        ServerConnectionString scs = mock(ServerConnectionString.class);
+        when(scs.getReference()).thenReturn("DemoBase");
+        when(scs.getServer()).thenReturn("localhost:2541");
+        InfobaseReference ref = mock(InfobaseReference.class);
+        when(ref.getInfobaseType()).thenReturn(InfobaseType.SERVER);
+        when(ref.getConnectionString()).thenReturn(scs);
+
+        EventLogLocator.ResolvedLog r = new EventLogLocator()
+            .setSrvinfoSearchRoots(List.of(root)).locate(ref);
+
+        assertEquals(logDir, r.logDir);
+        assertEquals(2541, r.clusterPort);
+        assertEquals(root.resolve("srvinfo8327"), r.srvinfoDir);
+    }
+
+    /**
+     * В C:\ProgramData\1C каталог может создать любой пользователь машины: подложенный
+     * srvinfo* с тем же reg_<порт> подменил бы журнал. При неоднозначности — отказ, а не выбор.
+     */
+    @Test
+    public void severalDiscoveredSrvinfoWithSameRegistry_refusesToGuess() throws Exception {
+        Path root = tmp.newFolder("ProgramData1C-ambiguous").toPath();
+        for (String dir : new String[] {"srvinfo0", "srvinfo8327"}) {
+            Path reg = root.resolve(dir).resolve("reg_2541");
+            Files.createDirectories(reg);
+            Files.write(reg.resolve("1CV8Clst.lst"),
+                "{1,\n{44444444-4444-4444-4444-444444444444,\"DemoBase\",\"\"}\n}"
+                    .getBytes(Charset.forName("windows-1251")));
+        }
+        ServerConnectionString scs = mock(ServerConnectionString.class);
+        when(scs.getReference()).thenReturn("DemoBase");
+        when(scs.getServer()).thenReturn("localhost:2541");
+        InfobaseReference ref = mock(InfobaseReference.class);
+        when(ref.getInfobaseType()).thenReturn(InfobaseType.SERVER);
+        when(ref.getConnectionString()).thenReturn(scs);
+
+        try {
+            new EventLogLocator().setSrvinfoSearchRoots(List.of(root)).locate(ref);
+            org.junit.Assert.fail("неоднозначный srvinfo нельзя угадывать");
+        } catch (ToolException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("srvinfoDir"));
+        }
+    }
+
+    /** Явно заданный порт важнее строки соединения. */
+    @Test
+    public void explicitClusterPort_winsOverConnectionString() throws Exception {
+        Path srvinfo = tmp.newFolder("srvinfoX").toPath();
+        Path reg = srvinfo.resolve("reg_1541");
+        String ibUuid = "33333333-3333-3333-3333-333333333333";
+        Files.createDirectories(reg.resolve(ibUuid).resolve("1Cv8Log"));
+        Files.write(reg.resolve("1CV8Clst.lst"),
+            ("{1,\n{" + ibUuid + ",\"DB\",\"\"}\n}").getBytes(Charset.forName("windows-1251")));
+
+        ServerConnectionString scs = mock(ServerConnectionString.class);
+        when(scs.getReference()).thenReturn("DB");
+        when(scs.getServer()).thenReturn("localhost:2541");
+        InfobaseReference ref = mock(InfobaseReference.class);
+        when(ref.getInfobaseType()).thenReturn(InfobaseType.SERVER);
+        when(ref.getConnectionString()).thenReturn(scs);
+
+        EventLogLocator.ResolvedLog r = new EventLogLocator().setSrvinfoDir(srvinfo)
+            .setClusterPort(1541).locate(ref);
+
+        assertEquals(1541, r.clusterPort);
+        assertEquals(reg.resolve(ibUuid).resolve("1Cv8Log"), r.logDir);
+    }
+
     @Test
     public void listPartitions_returnsSortedByName() throws Exception {
         Path dir = tmp.newFolder("log").toPath();

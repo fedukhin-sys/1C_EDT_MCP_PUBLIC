@@ -32,6 +32,69 @@ public class BslRunnerTemplatesTest {
             1, count(body, "Процедура ЗаписатьРезультат("));
     }
 
+    /**
+     * 12.10.2026: раннеры стояли в двух расширениях одной базы, обработчик старта есть
+     * у каждого, и один вызов run_test_method прогонял тест дважды. Селектор несёт имя серверного
+     * модуля целевого раннера (ключ run), чужой раннер обязан выйти до запуска тестов.
+     */
+    @Test public void clientModuleBody_exitsWhenSelectorIsAddressedToAnotherRunner() {
+        String body = BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo");
+        assertTrue("ключ run должен разбираться в Runner",
+            body.contains("ИначеЕсли Ключ = \"run\" Тогда Результат.Runner = Значение;"));
+        String guard = "Если ЗначениеЗаполнено(Селектор.Runner) "
+            + "И Селектор.Runner <> \"EDT_MCP_TestRunner_Сервер_Demo\" Тогда";
+        int guardAt = body.indexOf(guard);
+        assertTrue("нужна проверка адресата селектора: " + body, guardAt >= 0);
+        assertTrue("после проверки адресата — выход", body.indexOf("Возврат;", guardAt) > guardAt);
+        assertTrue("проверка адресата — до запуска серверного раннера",
+            guardAt < body.indexOf("EDT_MCP_TestRunner_Сервер_Demo.ВыполнитьТесты"));
+        assertTrue("проверка адресата — до клиентского теста",
+            guardAt < body.indexOf("Результат = ВыполнитьКлиентскийТест(Селектор)"));
+        assertTrue("структура селектора должна иметь поле Runner (пустое для старого плагина)",
+            body.contains("\"Mode, ResultFile, ModuleFqn, MethodName, Runner, TestList\""));
+    }
+
+    /**
+     * run_tests по модулю и по всем модулям молча отдавал 0 тестов: СобратьТесты знал только MTD.
+     * Список «Модуль.Метод» собирает Java и передаёт файлом (ключ lst); читает его клиент — у
+     * серверного процесса 1С может не быть доступа к %TEMP% пользователя.
+     */
+    @Test public void clientModuleBody_readsTestListFileOnClient() {
+        String body = BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo");
+        assertTrue(body.contains(
+            "ИначеЕсли Ключ = \"lst\" Тогда Результат.TestList = ПрочитатьСписокТестов(РаскодироватьБазу64(Значение));"));
+        assertEquals(1, count(body, "Функция ПрочитатьСписокТестов(Путь)"));
+        assertTrue("файл списка — UTF-8", body.contains("Новый ЧтениеТекста(Путь, КодировкаТекста.UTF8)"));
+        assertFalse("переменная «Строка» затенила бы глобальную функцию Строка()",
+            body.contains("\tСтрока = "));
+    }
+
+    @Test public void serverModuleBody_collectsModuleAndAllFromTestList() {
+        String body = BslRunnerTemplates.serverModuleBody();
+        assertTrue("список берётся безопасно — раннер мог получить селектор без него",
+            body.contains("Селектор.Свойство(\"TestList\", Список)"));
+        assertTrue("«Модуль.Метод» делится по последней точке",
+            body.contains("СтрНайти(Полное, \".\", НаправлениеПоиска.СКонца)"));
+        assertFalse("заглушка «будут перечислять в будущей итерации» должна уйти",
+            body.contains("будущей итерации"));
+    }
+
+    /**
+     * Протокол клиентских тестов (модули «…Клиент» и асинхронное завершение) жил только в базах,
+     * куда его дописали руками; повторный install_test_runner обновляет модули по шаблону и стёр
+     * бы его — поэтому он в шаблоне.
+     */
+    @Test public void clientModuleBody_runsClientModulesOnClientWithAsyncCompletion() {
+        String body = BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo");
+        assertTrue("модули «…Клиент» в режиме одного метода выполняются на клиенте",
+            body.contains("Если Селектор.Mode = \"MTD\" И СтрЗаканчиваетсяНа(Селектор.ModuleFqn, \"Клиент\") Тогда"));
+        assertEquals(1, count(body, "Функция ВыполнитьКлиентскийТест(Селектор)"));
+        assertTrue("асинхронный тест объявляет себя исключением EDT_MCP_ASYNC",
+            body.contains("\"EDT_MCP_ASYNC\""));
+        assertEquals("завершение асинхронного теста вызывается из теста — процедура экспортная",
+            1, count(body, "Процедура ЗавершитьКлиентскийТест(ТекстОшибки = \"\", НачалоМс = 0) Экспорт"));
+    }
+
     @Test public void clientModuleBody_procedureFunctionBalance() {
         // Structural integrity — count of begin == count of end.
         String body = BslRunnerTemplates.clientModuleBody("EDT_MCP_TestRunner_Сервер_Demo");

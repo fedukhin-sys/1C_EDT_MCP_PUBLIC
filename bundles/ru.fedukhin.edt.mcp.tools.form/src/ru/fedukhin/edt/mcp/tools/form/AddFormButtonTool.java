@@ -14,15 +14,16 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.form.internal.FormFileEditor;
 
 /**
- * {@code add_form_button} — Button bound to a Form.Command (Stage 8c).
+ * {@code add_form_button} — Button bound to a command (Stage 8c).
  *
  * <p>Args: {@code { project, formFqn, name, commandName, parentPath?, title? }}
- * <p>Result: {@code { formFqn, name, commandName, parentPath, formPath }}
+ * <p>Result: {@code { formFqn, name, commandName, buttonType, parentPath, formPath }}
  *
- * <p>commandName — короткое имя {@code <formCommands><name>X</name>...</formCommands>}
- * (без {@code Form.Command.} prefix — добавится автоматически в {@code <commandName>}).
- * FormCommand должна уже быть создана через {@code add_form_command} — иначе кнопка
- * будет ссылаться на nothing.
+ * <p>commandName — короткое имя команды формы {@code <formCommands><name>X</name>...</formCommands>}
+ * (префикс {@code Form.Command.} добавится сам; команда должна уже быть создана через
+ * {@code add_form_command}) или полная ссылка: {@code CommonCommand.X} — общая команда,
+ * {@code Form.StandardCommand.X} — стандартная. Тип кнопки — по месту, см.
+ * {@link FormFileEditor#addButton}.
  */
 public final class AddFormButtonTool implements IMcpTool {
 
@@ -41,8 +42,12 @@ public final class AddFormButtonTool implements IMcpTool {
 
     @Override public String name()        { return "add_form_button"; }
     @Override public String description() {
-        return "Add a Button bound to a Form.Command. commandName is the short name "
-             + "(no 'Form.Command.' prefix). FormCommand must exist (add_form_command first).";
+        return "Add a Button bound to a command. commandName: short name of a form command "
+             + "(no 'Form.Command.' prefix; create it with add_form_command first) or a full "
+             + "reference such as 'CommonCommand.X' (common command) or 'Form.StandardCommand.X'. "
+             + "parentPath: '/'-separated path of groups; a command bar is addressed by its name, "
+             + "e.g. 'ФормаКоманднаяПанель' or 'Группа/Список/СписокКоманднаяПанель'. The button "
+             + "type follows the place: CommandBarButton in a command bar, UsualButton elsewhere.";
     }
 
     @Override
@@ -83,13 +88,14 @@ public final class AddFormButtonTool implements IMcpTool {
             throw new ToolException("Form.form not found at '" + formPath + "'");
         }
 
-        editor.addButton(formFile, new FormFileEditor.ButtonSpec(
-                btnName, cmdName, parentPath, title));
+        FormFileEditor.ButtonResult written = editor.addButton(formFile,
+                new FormFileEditor.ButtonSpec(btnName, cmdName, parentPath, title));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("formFqn",     formFqn);
         result.put("name",        btnName);
-        result.put("commandName", cmdName);
+        result.put("commandName", written == null ? cmdName : written.commandName());
+        if (written != null) result.put("buttonType", written.type());
         result.put("parentPath",  parentPath);
         result.put("formPath",    formPath);
         return result;

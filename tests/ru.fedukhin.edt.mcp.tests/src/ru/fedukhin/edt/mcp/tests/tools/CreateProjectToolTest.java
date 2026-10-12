@@ -237,6 +237,85 @@ public class CreateProjectToolTest {
         assertEquals("parent language resolved — no warning expected", null, result.get("warning"));
     }
 
+    /** Создаёт проект расширения против родителя с данным Configuration.mdo; возвращает записанный .mdo и ответ. */
+    private static Object[] createExtension(String parentMdo, Version runtime) throws Exception {
+        IWorkspace ws = workspaceThatRunsRunnable();
+        IExtensionProjectManager epm = mock(IExtensionProjectManager.class);
+        IWorkspaceRoot root = mock(IWorkspaceRoot.class);
+        IProject newProject = mock(IProject.class);
+        when(newProject.exists()).thenReturn(false);
+        when(root.getProject("Ext1")).thenReturn(newProject);
+        IProject parent = mock(IProject.class);
+        when(parent.exists()).thenReturn(true);
+        when(parent.isOpen()).thenReturn(true);
+        when(root.getProject("Parent")).thenReturn(parent);
+        stubParentConfigMdo(parent, parentMdo);
+        IProject created = mock(IProject.class);
+        when(created.getName()).thenReturn("Ext1");
+        IFile mdo = stubExtensionConfigMdo(created);
+        when(epm.create(eq("Ext1"), eq(runtime), (Configuration) any(), eq(parent), any(IProgressMonitor.class)))
+            .thenReturn(created);
+        CreateProjectTool tool = new CreateProjectTool(
+            ws, () -> root, registryWith(runtime),
+            mock(IConfigurationProjectManager.class), epm, mock(IExternalObjectProjectManager.class),
+            mock(IV8ProjectManager.class));
+        Map<String, Object> args = new HashMap<>();
+        args.put("name", "Ext1");
+        args.put("type", "extension");
+        args.put("version", String.valueOf(runtime));
+        args.put("parentConfigurationName", "Parent");
+        Map<String, Object> result = tool.call(args);
+        ArgumentCaptor<InputStream> content = ArgumentCaptor.forClass(InputStream.class);
+        verify(mdo).create(content.capture(), eq(true), any(IProgressMonitor.class));
+        return new Object[] {new String(content.getValue().readAllBytes(), StandardCharsets.UTF_8), result};
+    }
+
+    private static String parentMdoWithCompatibility(String mode) {
+        return PARENT_CONFIG_MDO.replace("  <languages ",
+            "  <compatibilityMode>" + mode + "</compatibilityMode>\n  <languages ");
+    }
+
+    /**
+     * 10.10.2026: проект расширения с version 8.5.1 к конфигурации в режиме 8.3.27 получал
+     * configurationExtensionCompatibilityMode 8.5.1, и deploy_project падал «Режим совместимости
+     * расширения конфигурации больше режима совместимости основной конфигурации».
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    public void call_extension_versionAboveParentCompatibility_loweredWithWarning() throws Exception {
+        Object[] r = createExtension(parentMdoWithCompatibility("8.3.27"), Version.V8_5_1);
+        String written = (String) r[0];
+        Map<String, Object> result = (Map<String, Object>) r[1];
+
+        assertTrue(written, written.contains(
+            "<configurationExtensionCompatibilityMode>8.3.27</configurationExtensionCompatibilityMode>"));
+        assertEquals("8.3.27", result.get("extensionCompatibilityMode"));
+        String warning = (String) result.get("warning");
+        assertTrue("о понижении — предупреждение: " + warning,
+            warning != null && warning.contains("8.3.27") && warning.contains("8.5.1"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void call_extension_versionNotAboveParent_keptWithoutWarning() throws Exception {
+        Object[] r = createExtension(parentMdoWithCompatibility("8.3.27"), Version.V8_3_22);
+        assertTrue((String) r[0], ((String) r[0]).contains(
+            "<configurationExtensionCompatibilityMode>8.3.22</configurationExtensionCompatibilityMode>"));
+        Map<String, Object> result = (Map<String, Object>) r[1];
+        assertEquals("8.3.22", result.get("extensionCompatibilityMode"));
+        assertEquals(null, result.get("warning"));
+    }
+
+    /** Режим родителя не прочитан — версия как запрошено (прежнее поведение). */
+    @Test
+    @SuppressWarnings("unchecked")
+    public void call_extension_parentWithoutCompatibilityMode_keepsRequested() throws Exception {
+        Object[] r = createExtension(PARENT_CONFIG_MDO, Version.V8_5_1);
+        assertTrue((String) r[0], ((String) r[0]).contains(
+            "<configurationExtensionCompatibilityMode>8.5.1</configurationExtensionCompatibilityMode>"));
+        assertEquals(null, ((Map<String, Object>) r[1]).get("warning"));
+    }
+
     @Test
     public void call_extensionWithoutParentLanguage_warns() throws Exception {
         IWorkspace ws = workspaceThatRunsRunnable();

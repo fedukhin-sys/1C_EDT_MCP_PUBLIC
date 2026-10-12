@@ -49,7 +49,7 @@ public class QueryEventLogTool implements IMcpTool {
         properties.put("uuid",        strProp("Infobase UUID registered in EDT"));
         properties.put("logDir",      strProp("Direct path to the 1Cv8Log directory (skips infobase lookup)"));
         properties.put("srvinfoDir",  strProp("Override srvinfo path for SERVER infobases"));
-        properties.put("clusterPort", intProp("Cluster port (default 1541)"));
+        properties.put("clusterPort", intProp("Cluster manager port (default: from Srvr=host:port of the infobase, otherwise 1541)"));
 
         properties.put("from", strProp("Inclusive start date/time, ISO-8601 (e.g. 2026-04-01 or 2026-04-01T08:00:00)"));
         properties.put("to",   strProp("Inclusive end date/time, ISO-8601 (e.g. 2026-05-31T23:59:59)"));

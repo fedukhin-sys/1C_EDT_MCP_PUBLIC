@@ -22,6 +22,10 @@ import ru.fedukhin.edt.mcp.tools.testrun.internal.TestRunnerLauncher.ProcessRunn
  * сам процесс и {@code waitFor} с таймаутом не спасёт), ожидание — {@code waitFor(timeout)},
  * а по таймауту процесс принудительно уничтожается и результат честно помечается
  * {@link ProcessRunner.RunOutcome#killed()}.
+ *
+ * <p>Под наблюдателем ожидание идёт порциями, и между ними наблюдатель может остановить
+ * процесс досрочно — так же принудительно, с его причиной в
+ * {@link ProcessRunner.RunOutcome#stopReason()}.
  */
 public class DefaultProcessRunner implements ProcessRunner {
 
@@ -34,8 +38,28 @@ public class DefaultProcessRunner implements ProcessRunner {
     /** exitCode, отдаваемый вместо настоящего, когда процесс не завершился сам. */
     private static final int EXIT_CODE_KILLED = -1;
 
+    /** Как часто спрашивать наблюдателя, пока процесс жив. */
+    private static final long DEFAULT_WATCH_POLL_MILLIS = 1000;
+
+    private final long watchPollMillis;
+
+    public DefaultProcessRunner() {
+        this(DEFAULT_WATCH_POLL_MILLIS);
+    }
+
+    /** Шов для тестов: период опроса наблюдателя. */
+    public DefaultProcessRunner(long watchPollMillis) {
+        this.watchPollMillis = watchPollMillis;
+    }
+
     @Override
     public RunOutcome run(List<String> command, Map<String, String> env, int timeoutSeconds)
+        throws Exception {
+        return run(command, env, timeoutSeconds, null);
+    }
+
+    @Override
+    public RunOutcome run(List<String> command, Map<String, String> env, int timeoutSeconds, Watch watch)
         throws Exception {
         ProcessBuilder pb = new ProcessBuilder(command);
         if (env != null && !env.isEmpty()) {
@@ -47,11 +71,9 @@ public class DefaultProcessRunner implements ProcessRunner {
         StreamDrainer stdout = StreamDrainer.start(p.getInputStream(), "edt-mcp-proc-stdout");
         StreamDrainer stderr = StreamDrainer.start(p.getErrorStream(), "edt-mcp-proc-stderr");
 
-        boolean exited = timeoutSeconds > 0
-            ? p.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-            : waitForever(p);
+        Wait wait = watch == null ? waitPlain(p, timeoutSeconds) : waitWatched(p, timeoutSeconds, watch);
         boolean killed = false;
-        if (!exited) {
+        if (!wait.exited()) {
             p.destroyForcibly();
             p.waitFor(KILL_WAIT_SECONDS, TimeUnit.SECONDS);
             killed = true;
@@ -60,7 +82,8 @@ public class DefaultProcessRunner implements ProcessRunner {
             killed ? EXIT_CODE_KILLED : p.exitValue(),
             stdout.await(),
             stderr.await(),
-            killed);
+            killed,
+            wait.stopReason());
     }
 
     /** Seam для тестов: даёт перехватить запущенный процесс. */
@@ -68,6 +91,40 @@ public class DefaultProcessRunner implements ProcessRunner {
         return pb.start();
     }
 
+    /** Чем кончилось ожидание: процесс вышел сам, вышло время или наблюдатель велел остановить. */
+    private record Wait(boolean exited, String stopReason) { }
+
+    private static Wait waitPlain(Process p, int timeoutSeconds) throws InterruptedException {
+        boolean exited = timeoutSeconds > 0
+            ? p.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            : waitForever(p);
+        return new Wait(exited, null);
+    }
+
+    /**
+     * Ожидание выхода порциями по {@code watchPollMillis} с вопросом наблюдателю между ними.
+     * Каждая порция — блокирующий {@code waitFor} с пределом, а не холостой цикл: процессор
+     * между проверками свободен, а вышедший процесс отпускает ожидание сразу.
+     */
+    private Wait waitWatched(Process p, int timeoutSeconds, Watch watch) throws InterruptedException {
+        // Без таймаута — «бесконечность» в пределах, при которых наносекунды не переполняются.
+        long limitNanos = TimeUnit.SECONDS.toNanos(timeoutSeconds > 0 ? timeoutSeconds : Integer.MAX_VALUE);
+        long deadline = System.nanoTime() + limitNanos;
+        long sliceNanos = TimeUnit.MILLISECONDS.toNanos(Math.max(1, watchPollMillis));
+        while (true) {
+            long left = deadline - System.nanoTime();
+            if (left <= 0) {
+                return new Wait(false, null);
+            }
+            if (p.waitFor(Math.min(left, sliceNanos), TimeUnit.NANOSECONDS)) {
+                return new Wait(true, null);
+            }
+            String reason = watch.stopReason();
+            if (reason != null) {
+                return new Wait(false, reason);
+            }
+        }
+    }
     private static boolean waitForever(Process p) throws InterruptedException {
         p.waitFor();
         return true;

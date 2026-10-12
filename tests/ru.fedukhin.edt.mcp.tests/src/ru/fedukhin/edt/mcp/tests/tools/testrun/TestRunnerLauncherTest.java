@@ -1,12 +1,16 @@
 package ru.fedukhin.edt.mcp.tests.tools.testrun;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import org.junit.After;
 import org.junit.Test;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
@@ -176,6 +180,191 @@ public class TestRunnerLauncherTest {
         assertTrue("свежий файл параллельного прогона трогать нельзя", Files.exists(fresh));
         assertTrue("протухший файл должен быть удалён", !Files.exists(stale));
         Files.deleteIfExists(fresh);
+    }
+
+    // ---- Досрочная остановка: результат записан, а клиент не закрылся (11.10.2026) ----
+
+    private static final String ONE_PASSED = "{\"passed\":1,\"failed\":0,\"durationMs\":10,\"tests\":["
+        + "{\"module\":\"M\",\"name\":\"Т\",\"status\":\"passed\",\"durationMs\":5}]}";
+
+    /**
+     * Подделка 1cv8 под наблюдением: выполняет сценарий, затем спрашивает наблюдателя, пока тот
+     * не скажет остановиться (или не кончатся попытки), — как настоящий раннер между ожиданиями.
+     */
+    private static final class WatchedFake implements ProcessRunner {
+        interface Step { void run(Path resultFile) throws Exception; }
+        private final Step before;
+        private final Step between;
+        private final int polls;
+        volatile String stopReason;
+        volatile int watchCalls;
+
+        WatchedFake(Step before, Step between, int polls) {
+            this.before = before; this.between = between; this.polls = polls;
+        }
+
+        @Override
+        public RunOutcome run(List<String> cmd, Map<String, String> env, int timeoutSeconds) {
+            throw new AssertionError("лаунчер обязан запускать процесс под наблюдателем");
+        }
+
+        @Override
+        public RunOutcome run(List<String> cmd, Map<String, String> env, int timeoutSeconds, Watch watch)
+            throws Exception {
+            Path rf = extractResultFile(cmd);
+            if (before != null) before.run(rf);
+            for (int i = 0; i < polls && stopReason == null; i++) {
+                watchCalls++;
+                stopReason = watch.stopReason();
+                if (stopReason == null && between != null) between.run(rf);
+            }
+            return stopReason != null
+                ? new RunOutcome(-1, "", "", true, stopReason)
+                : new RunOutcome(0, "", "");
+        }
+    }
+
+    private static String selector() {
+        return "EDT_MCP_TESTS=mode=MTD;rf=" + base64(systemTempJson()) + ";mod=M;mtd=Т";
+    }
+
+    /**
+     * Тест показал ПоказатьПредупреждение: клиент остался открыт после записи результата,
+     * run_test_method ждал до таймаута и отвечал «timeout», хотя результат лежал на диске.
+     */
+    @Test
+    public void resultWritten_clientStaysOpen_processStoppedAndResultReturned() throws Exception {
+        WatchedFake fake = new WatchedFake(rf -> Files.writeString(rf, ONE_PASSED), null, 5);
+        launcher = new TestRunnerLauncher(fake, Duration.ZERO, Duration.ZERO, Duration.ZERO);
+
+        TestRunResult r = launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 600);
+
+        assertNotNull("увидев результат, наблюдатель обязан остановить процесс", fake.stopReason);
+        assertEquals(1, r.passed());
+        assertNotNull("о принудительном закрытии клиента сказать в ответе", r.warning());
+        assertTrue(r.warning(), r.warning().contains("не закрылся"));
+    }
+
+    /** Нормальному клиенту даётся время закрыться самому — сразу после записи его не убиваем. */
+    @Test
+    public void resultWritten_withinGrace_processNotStopped() throws Exception {
+        WatchedFake fake = new WatchedFake(rf -> Files.writeString(rf, ONE_PASSED), null, 5);
+        launcher = new TestRunnerLauncher(fake, Duration.ofHours(1), Duration.ZERO, Duration.ZERO);
+
+        TestRunResult r = launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 600);
+
+        assertNull(fake.stopReason);
+        assertEquals(1, r.passed());
+        assertNull("клиент закрылся сам — предупреждать не о чем", r.warning());
+    }
+
+    /** Недописанный файл результата — ещё не результат. */
+    @Test
+    public void unparseableResultFile_doesNotStopProcess() throws Exception {
+        WatchedFake fake = new WatchedFake(rf -> Files.writeString(rf, "{\"passed\":1,"), null, 3);
+        launcher = new TestRunnerLauncher(fake, Duration.ZERO, Duration.ZERO, Duration.ZERO);
+        try {
+            launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 600);
+            fail("битый JSON после штатного выхода — ошибка разбора");
+        } catch (ToolException e) {
+            assertNull(fake.stopReason);
+        }
+    }
+
+    /** Убит по таймауту, но результат успел записаться — отдаём его, а не «timeout». */
+    @Test
+    public void killedByTimeout_resultOnDisk_returnedWithWarning() throws Exception {
+        ProcessRunner fake = (cmd, env, t) -> {
+            Files.writeString(extractResultFile(cmd), ONE_PASSED);
+            return new ProcessRunner.RunOutcome(-1, "", "", true);
+        };
+        launcher = new TestRunnerLauncher(fake);
+
+        TestRunResult r = launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 30);
+
+        assertEquals(1, r.passed());
+        assertTrue(r.warning(), r.warning().contains("таймаут"));
+    }
+
+    // ---- Необработанная ошибка в сеансе прогона (10.10 и 12.10.2026) ----
+
+    private static final String COMPILE_ERROR =
+        "сеанс 5: {ОбщийМодуль.ДемоТест_Т.Модуль(12,5)}: Неопознанный оператор";
+
+    /**
+     * Тестовый модуль не компилировался в рантайме (EDT ошибку не видит), клиент показал окно
+     * ошибки и стоял до таймаута — 900 и 1500 с впустую. Ошибка видна в журнале регистрации,
+     * по ней прогон останавливается сразу и отвечает её текстом.
+     */
+    @Test
+    public void unhandledErrorInRunSession_stopsRunAndReportsIt() {
+        WatchedFake fake = new WatchedFake(null, null, 5);
+        launcher = new TestRunnerLauncher(fake, Duration.ZERO, Duration.ZERO, Duration.ZERO);
+        try {
+            launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 600, null, null,
+                () -> COMPILE_ERROR);
+            fail("expected ToolException");
+        } catch (ToolException e) {
+            assertNotNull("наблюдатель обязан остановить процесс по ошибке", fake.stopReason);
+            assertTrue(e.getMessage(), e.getMessage().contains("Неопознанный оператор"));
+            assertTrue(e.getMessage(), e.getMessage().contains("_$PerformError$_"));
+            assertTrue("сообщение не должно выглядеть как таймаут: " + e.getMessage(),
+                !e.getMessage().contains("timeout"));
+        }
+    }
+
+    /** Результат, пришедший в отведённый после ошибки запас, важнее ошибки. */
+    @Test
+    public void unhandledError_resultArrivesWithinGrace_resultWins() throws Exception {
+        WatchedFake fake = new WatchedFake(null, rf -> Files.writeString(rf, ONE_PASSED), 5);
+        launcher = new TestRunnerLauncher(fake, Duration.ZERO, Duration.ofHours(1), Duration.ZERO);
+
+        TestRunResult r = launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 600,
+            null, null, () -> COMPILE_ERROR);
+
+        assertEquals(1, r.passed());
+    }
+
+    /** Журнал читается не на каждом шаге ожидания, а с интервалом. */
+    @Test
+    public void probe_isThrottled() throws Exception {
+        int[] probes = {0};
+        int[] duringWait = {0};
+        WatchedFake fake = new WatchedFake(null, rf -> duringWait[0] = probes[0], 10);
+        launcher = new TestRunnerLauncher(fake, Duration.ZERO, Duration.ZERO, Duration.ofHours(1));
+        try {
+            launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 600, null, null,
+                () -> { probes[0]++; return null; });
+        } catch (ToolException expected) { /* результата нет */ }
+        assertEquals("за час ожидания — одно чтение журнала, шагов ожидания было " + fake.watchCalls,
+            1, duringWait[0]);
+    }
+
+    /** Сбой чтения журнала не роняет прогон. */
+    @Test
+    public void failingProbe_isIgnored() throws Exception {
+        WatchedFake fake = new WatchedFake(null, rf -> Files.writeString(rf, ONE_PASSED), 5);
+        launcher = new TestRunnerLauncher(fake, Duration.ZERO, Duration.ZERO, Duration.ZERO);
+
+        TestRunResult r = launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 600,
+            null, null, () -> { throw new java.io.IOException("журнал занят"); });
+
+        assertEquals(1, r.passed());
+    }
+
+    /** Толстый клиент с ошибкой компиляции выходит сам (exit=1) — причину берём из журнала. */
+    @Test
+    public void processExitedWithoutResult_messageIncludesEventLogError() {
+        ProcessRunner fake = (cmd, env, t) -> new ProcessRunner.RunOutcome(1, "", "");
+        launcher = new TestRunnerLauncher(fake);
+        try {
+            launcher.runWithTimeout("1cv8.exe", "File=\"E:\\IB\";", selector(), 30, null, null,
+                () -> COMPILE_ERROR);
+            fail("expected ToolException");
+        } catch (ToolException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("no result file"));
+            assertTrue(e.getMessage(), e.getMessage().contains("Неопознанный оператор"));
+        }
     }
 
     private static Path extractResultFile(List<String> cmd) throws Exception {

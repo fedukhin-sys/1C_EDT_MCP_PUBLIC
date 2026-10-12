@@ -12,7 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.stream.Stream;
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.emf.ecore.EObject;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 import ru.fedukhin.edt.mcp.tools.md.internal.BmPersistentExecutor;
@@ -33,6 +36,8 @@ import ru.fedukhin.edt.mcp.tools.md.internal.PropertyAccessor;
  */
 @Singleton
 public class IdeModuleScaffolder implements TestRunnerInstaller.ModuleScaffolder {
+
+    private static final String BOM = String.valueOf((char) 0xFEFF);
 
     private final BmPersistentExecutor executor;
     private final MdObjectFactory  factory;
@@ -183,6 +188,44 @@ public class IdeModuleScaffolder implements TestRunnerInstaller.ModuleScaffolder
         }
     }
 
+    @Override
+    public String readModuleBody(IProject project, String name) {
+        Path file = moduleFile(project, name);
+        if (!Files.isRegularFile(file)) return null;
+        try {
+            String text = Files.readString(file, StandardCharsets.UTF_8);
+            return text.startsWith(BOM) ? text.substring(1) : text;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Перезаписывает текст модуля раннера (обновление по шаблону). BOM сохраняется, если был:
+     * EDT пишет .bsl с ним, и перезапись не должна менять форму файла. После записи ресурс
+     * обновляется в workspace — иначе EDT до ручного обновления видит старый текст и
+     * {@code deploy_project} публикует его.
+     */
+    @Override
+    public void writeModuleBody(IProject project, String name, String body) throws ToolException {
+        Path file = moduleFile(project, name);
+        try {
+            boolean hadBom = Files.isRegularFile(file)
+                && Files.readString(file, StandardCharsets.UTF_8).startsWith(BOM);
+            Files.writeString(file, hadBom ? BOM + body : body, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new ToolException("rewrite module '" + name + "' failed: " + e.getMessage(), e);
+        }
+        IFile resource = project.getFile("src/CommonModules/" + name + "/Module.bsl");
+        if (resource != null) {
+            try {
+                resource.refreshLocal(IResource.DEPTH_ZERO, null);
+            } catch (CoreException e) {
+                // Файл записан; EDT подхватит его при следующем обновлении workspace.
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
 
     private void writeBody(IProject project, String modulePath, String body) throws ToolException {
@@ -238,5 +281,9 @@ public class IdeModuleScaffolder implements TestRunnerInstaller.ModuleScaffolder
 
     private static Path commonModuleFolder(IProject project, String name) {
         return Path.of(project.getLocation().toOSString(), "src", "CommonModules", name);
+    }
+
+    private static Path moduleFile(IProject project, String name) {
+        return commonModuleFolder(project, name).resolve("Module.bsl");
     }
 }

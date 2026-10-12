@@ -71,6 +71,16 @@ public class FormFileEditor {
     /** Spec для add_form_button — Button bound to FormCommand by short name. */
     public record ButtonSpec(String name, String commandName, String parentPath, String titleRu) { }
 
+    /**
+     * Что записано для кнопки.
+     *
+     * @param commandName ссылка на команду в {@code <commandName>} ({@code Form.Command.X},
+     *                    {@code CommonCommand.X}, …)
+     * @param type        тип кнопки: {@code CommandBarButton} в командной панели (EDT его не
+     *                    пишет — значение по умолчанию), иначе {@code UsualButton}
+     */
+    public record ButtonResult(String commandName, String type) { }
+
     /** Spec для add_form_table — Table bound to data path (tabular section / dynamic list). */
     public record TableSpec(String name, String dataPath, String parentPath, String titleRu) { }
 
@@ -316,12 +326,19 @@ public class FormFileEditor {
     }
 
     /**
-     * Добавить Button типа UsualButton, биндинг к Form.Command.{commandName}.
-     * Команда с этим именем должна уже существовать (через add_form_command),
-     * иначе кнопка будет ссылаться на несуществующее — EDT покажет ошибку
-     * при открытии формы.
+     * Добавить Button, привязанную к команде.
+     *
+     * <p>Ссылка на команду: короткое имя — команда формы ({@code Form.Command.X}; должна уже
+     * существовать, иначе EDT покажет ошибку при открытии формы), полная ссылка
+     * ({@code CommonCommand.X}, {@code Form.Command.X}, {@code Form.StandardCommand.X}) — как есть.
+     *
+     * <p>Тип — по месту, как у EDT: в командной панели ({@code autoCommandBar} формы или таблицы,
+     * группа-командная панель, группа кнопок, подменю) — {@code CommandBarButton}, который EDT не
+     * сериализует (значение по умолчанию); в обычной группе и в корне — {@code UsualButton}.
+     * Командная панель адресуется в {@code parentPath} по имени, как группа:
+     * {@code ФормаКоманднаяПанель}, {@code Группа/Список/СписокКоманднаяПанель}.
      */
-    public void addButton(IFile formFile, ButtonSpec spec) throws ToolException {
+    public ButtonResult addButton(IFile formFile, ButtonSpec spec) throws ToolException {
         Document doc = load(formFile);
         Element root = doc.getDocumentElement();
         Element parentItem = resolveParent(root, spec.parentPath);
@@ -350,12 +367,47 @@ public class FormFileEditor {
         appendText(doc, uv, "common", "true");
         item.appendChild(uv);
         item.appendChild(buildExtendedTooltip(doc, spec.name, tipId));
-        appendText(doc, item, "type", "UsualButton");
-        appendText(doc, item, "commandName", "Form.Command." + spec.commandName);
+        boolean inCommandBar = isCommandBarContainer(parentItem);
+        if (!inCommandBar) {
+            appendText(doc, item, "type", "UsualButton");
+        }
+        String commandRef = commandReference(spec.commandName);
+        appendText(doc, item, "commandName", commandRef);
         appendText(doc, item, "representation", "Auto");
 
         insertItem(root, parentItem, item);
         save(formFile, doc);
+        return new ButtonResult(commandRef, inCommandBar ? "CommandBarButton" : "UsualButton");
+    }
+
+    /** Префиксы полных ссылок на команду в {@code <commandName>} кнопки. */
+    private static final String[] COMMAND_REFERENCE_PREFIXES = {
+        "Form.Command.", "Form.StandardCommand.", "CommonCommand.", "StandardCommand."
+    };
+
+    /** Полная ссылка на команду: короткое имя — команда формы, полная ссылка — как есть. */
+    static String commandReference(String commandName) {
+        for (String prefix : COMMAND_REFERENCE_PREFIXES) {
+            if (commandName.startsWith(prefix)) return commandName;
+        }
+        return "Form.Command." + commandName;
+    }
+
+    /** Типы групп формы, кнопки которых — кнопки командной панели. */
+    private static final java.util.Set<String> COMMAND_BAR_GROUP_TYPES =
+        java.util.Set.of("CommandBar", "ButtonGroup", "Popup");
+
+    /**
+     * Контейнер — командная панель: {@code autoCommandBar} формы/таблицы или группа с типом
+     * командной панели. У группы кнопок EDT тип не пишет (значение по умолчанию), такие группы
+     * встречаются только внутри командных панелей.
+     */
+    private static boolean isCommandBarContainer(Element container) {
+        if ("autoCommandBar".equals(container.getTagName())) return true;
+        if (!"items".equals(container.getTagName())) return false;
+        if (!"form:FormGroup".equals(container.getAttributeNS(XSI_NS, "type"))) return false;
+        String type = childText(container, "type");
+        return type == null || COMMAND_BAR_GROUP_TYPES.contains(type);
     }
 
     /**
@@ -466,13 +518,15 @@ public class FormFileEditor {
 
     /**
      * Найти parent EObject для inserting item. {@code path == null} → root;
-     * иначе walk "/" segments через дочерние {@code <items>} по {@code <name>}.
+     * иначе walk "/" segments через дочерние {@code <items>} по {@code <name>}. Сегментом может
+     * быть и командная панель ({@code <autoCommandBar>} формы или таблицы) — по её имени.
      */
     private static Element resolveParent(Element root, String path) throws ToolException {
         if (path == null || path.isEmpty()) return root;
         Element current = root;
         for (String segment : path.split("/")) {
             Element next = findItemChildByName(current, segment);
+            if (next == null) next = findCommandBarByName(current, segment);
             if (next == null) {
                 throw new ToolException("group path segment '" + segment + "' not found "
                         + "(walking path '" + path + "')");
@@ -495,9 +549,24 @@ public class FormFileEditor {
         return null;
     }
 
+    /** Прямой {@code <autoCommandBar>}-child с {@code <name>NAME</name>}. */
+    private static Element findCommandBarByName(Element parent, String name) {
+        NodeList kids = parent.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node k = kids.item(i);
+            if (k.getNodeType() == Node.ELEMENT_NODE && "autoCommandBar".equals(k.getNodeName())
+                && name.equals(childText((Element) k, "name"))) {
+                return (Element) k;
+            }
+        }
+        return null;
+    }
+
     /**
      * Вставить item в parent. Для root — same anchor logic как addAttribute
-     * (before commandInterface/extInfo). Для nested parent — append.
+     * (before commandInterface/extInfo). Во вложенный контейнер (группа, командная панель) —
+     * как у EDT: после последнего дочернего {@code <items>}, а без них — сразу после
+     * {@code <id>}, до свойств контейнера ({@code visible}, {@code type}, {@code horizontalAlign}…).
      */
     private static void insertItem(Element root, Element parent, Element newItem) {
         if (parent == root) {
@@ -509,6 +578,16 @@ public class FormFileEditor {
             if (anchor == null) anchor = firstChildByName(root, "extInfo");
             if (anchor != null) root.insertBefore(newItem, anchor);
             else                root.appendChild(newItem);
+            return;
+        }
+        Node after = null;
+        for (Node k = parent.getFirstChild(); k != null; k = k.getNextSibling()) {
+            if (k.getNodeType() == Node.ELEMENT_NODE && "items".equals(k.getNodeName())) after = k;
+        }
+        if (after == null) after = firstChildByName(parent, "id");
+        if (after == null) after = firstChildByName(parent, "name");
+        if (after != null && after.getNextSibling() != null) {
+            parent.insertBefore(newItem, after.getNextSibling());
         } else {
             parent.appendChild(newItem);
         }

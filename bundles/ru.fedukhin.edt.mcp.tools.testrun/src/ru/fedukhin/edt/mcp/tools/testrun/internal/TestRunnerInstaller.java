@@ -5,6 +5,8 @@ import com._1c.g5.v8.dt.core.platform.IExtensionProject;
 import com._1c.g5.v8.dt.core.platform.IV8Project;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import java.util.ArrayList;
+import java.util.List;
 import org.eclipse.core.resources.IProject;
 import ru.fedukhin.edt.mcp.core.api.ToolException;
 
@@ -42,6 +44,15 @@ public class TestRunnerInstaller {
         void createClientModule(IProject project, String name) throws ToolException;
         void createServerModule(IProject project, String name) throws ToolException;
         void deleteModule(IProject project, String fqn) throws ToolException;
+        /**
+         * Текст модуля {@code src/CommonModules/<name>/Module.bsl} без BOM или {@code null},
+         * если модуля нет или прочитать его нельзя (тогда модуль не обновляется).
+         */
+        default String readModuleBody(IProject project, String name) { return null; }
+        /** Перезаписывает текст существующего модуля, сохраняя форму файла (BOM). */
+        default void writeModuleBody(IProject project, String name, String body) throws ToolException {
+            throw new ToolException("module rewrite is not supported by " + getClass().getName());
+        }
     }
 
     /** Edits ManagedApplicationModule.bsl text. Real impl in Task 9. */
@@ -52,9 +63,19 @@ public class TestRunnerInstaller {
         void removeMarkerBlock(IProject project) throws ToolException;
     }
 
+    /**
+     * @param updatedModules FQN модулей раннера, переписанных по текущему шаблону (раннер ставил
+     *                       прежний плагин) — до {@code deploy_project} база работает со старыми
+     */
     public record InstallResult(String mode, boolean alreadyInstalled,
                                  String clientModule, String serverModule, String handlerLocation,
-                                 boolean warningInvasive) { }
+                                 boolean warningInvasive, List<String> updatedModules) {
+        public InstallResult(String mode, boolean alreadyInstalled, String clientModule,
+                             String serverModule, String handlerLocation, boolean warningInvasive) {
+            this(mode, alreadyInstalled, clientModule, serverModule, handlerLocation, warningInvasive,
+                List.of());
+        }
+    }
 
     /**
      * Имя клиентского модуля раннера для проекта.
@@ -98,13 +119,22 @@ public class TestRunnerInstaller {
         String client = clientModule(p.getName());
         String server = serverModule(p.getName());
 
-        boolean modulesPresent = scaffolder.exists(p, "CommonModule." + client)
-                              && scaffolder.exists(p, "CommonModule." + server);
+        boolean clientPresent = scaffolder.exists(p, "CommonModule." + client);
+        boolean serverPresent = scaffolder.exists(p, "CommonModule." + server);
         boolean handlerPresent = editor.hasMarker(p);
-        boolean alreadyInstalled = modulesPresent && handlerPresent;
+        // Модули, поставленные прежним плагином, приводятся к текущему шаблону: иначе раннер
+        // не узнает, например, ключа run и будет исполнять селекторы чужих раннеров базы.
+        List<String> updated = new ArrayList<>();
+        if (clientPresent) {
+            refreshModule(p, client, BslRunnerTemplates.clientModuleBody(server), updated);
+        }
+        if (serverPresent) {
+            refreshModule(p, server, BslRunnerTemplates.serverModuleBody(), updated);
+        }
+        boolean alreadyInstalled = clientPresent && serverPresent && handlerPresent;
         if (alreadyInstalled) {
             return new InstallResult(mode, true, client, server,
-                handlerLocationFor(mode), "configuration".equals(mode));
+                handlerLocationFor(mode), "configuration".equals(mode), List.copyOf(updated));
         }
         // Миграция: модули без суффикса конфликтовали бы по имени со вторым
         // расширением той же информационной базы, поэтому сносим их.
@@ -123,7 +153,24 @@ public class TestRunnerInstaller {
             }
         }
         return new InstallResult(mode, false, client, server,
-            handlerLocationFor(mode), "configuration".equals(mode));
+            handlerLocationFor(mode), "configuration".equals(mode), List.copyOf(updated));
+    }
+
+    /**
+     * Переписывает модуль по шаблону, если текст отличается не только переводами строк и BOM.
+     * Модуль, текст которого прочитать нельзя, не трогаем.
+     */
+    private void refreshModule(IProject p, String name, String template, List<String> updated)
+        throws ToolException {
+        String current = scaffolder.readModuleBody(p, name);
+        if (current == null || normalized(current).equals(normalized(template))) return;
+        scaffolder.writeModuleBody(p, name, template);
+        updated.add("CommonModule." + name);
+    }
+
+    private static String normalized(String text) {
+        String t = !text.isEmpty() && text.charAt(0) == '\uFEFF' ? text.substring(1) : text;
+        return t.replace("\r\n", "\n");
     }
 
     /** Сносит модули старого образца (без суффикса), если они остались от прошлой установки. */

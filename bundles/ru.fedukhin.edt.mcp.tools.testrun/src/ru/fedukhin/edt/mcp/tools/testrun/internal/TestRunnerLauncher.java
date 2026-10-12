@@ -25,6 +25,19 @@ import ru.fedukhin.edt.mcp.core.api.ToolException;
  * Launches 1cv8.exe ENTERPRISE with the encoded selector, waits for the result
  * file to be produced by the BSL handler, parses it into {@link TestRunResult}.
  * Owns a single-thread daemon executor (Stage 7d pattern).
+ *
+ * <p>Процесс идёт под наблюдателем ({@code RunWatch}) — ждать его выхода бывает незачем:
+ * <ul>
+ *   <li>результат уже записан, а клиент не закрывается (тест оставил модальное окно —
+ *       {@code ПоказатьПредупреждение}, вопрос): через {@link #DEFAULT_RESULT_GRACE} процесс
+ *       останавливается, результат отдаётся с предупреждением;</li>
+ *   <li>в журнале регистрации — необработанная ошибка сеанса прогона ({@link FailureProbe}):
+ *       обычно модуль, который EDT считает правильным, не компилируется в рантайме; окно ошибки
+ *       стоит, обработчик раннера не выполняется. Если за {@link #DEFAULT_ERROR_GRACE}
+ *       результат так и не появился, процесс останавливается, ответ — текст ошибки.</li>
+ * </ul>
+ * Без этого {@code run_test_method} в обоих случаях ждал до таймаута (10–12.10.2026: 900
+ * и 1500 с впустую) и отвечал «timeout», даже когда результат лежал на диске.
  */
 @Singleton
 public class TestRunnerLauncher {
@@ -39,17 +52,49 @@ public class TestRunnerLauncher {
      */
     private static final int WATCHDOG_GRACE_SECONDS = 15;
 
+    /**
+     * Сколько клиенту дать закрыться самому после записи результата. Обычно он выходит за
+     * секунды ({@code ЗавершитьРаботуСистемы(Ложь)}); запас большой, потому что убитый клиент
+     * оставляет сеанс на сервере 1С, а тот держит лицензию до засыпания (~20 минут).
+     */
+    public static final Duration DEFAULT_RESULT_GRACE = Duration.ofSeconds(30);
+
+    /** Сколько после ошибки в журнале ещё ждать результата, прежде чем остановить прогон. */
+    public static final Duration DEFAULT_ERROR_GRACE = Duration.ofSeconds(30);
+
+    /** Как часто читать журнал регистрации: чтение — разбор дописанного хвоста партиции. */
+    public static final Duration DEFAULT_PROBE_INTERVAL = Duration.ofSeconds(10);
+
+    /** {@link ProcessRunner.RunOutcome#stopReason()}: результат записан, клиент не закрылся. */
+    public static final String STOP_RESULT_WRITTEN = "result-written";
+
+    /** {@link ProcessRunner.RunOutcome#stopReason()}: необработанная ошибка в сеансе прогона. */
+    public static final String STOP_UNHANDLED_ERROR = "unhandled-error";
+
     /** Abstracted process launcher — real impl uses ProcessBuilder; tests inject a fake. */
     public interface ProcessRunner {
         /**
-         * @param killed процесс не завершился сам и был уничтожен по таймауту; {@code exitCode}
-         *               в этом случае синтетический и о работе процесса ничего не говорит
+         * @param killed     процесс не завершился сам и был уничтожен — по таймауту или по просьбе
+         *                   наблюдателя; {@code exitCode} в этом случае синтетический и о работе
+         *                   процесса ничего не говорит
+         * @param stopReason что ответил наблюдатель, остановивший процесс, или {@code null}
+         *                   (вышел сам или убит по таймауту)
          */
-        record RunOutcome(int exitCode, String stdout, String stderr, boolean killed) {
+        record RunOutcome(int exitCode, String stdout, String stderr, boolean killed, String stopReason) {
+            public RunOutcome(int exitCode, String stdout, String stderr, boolean killed) {
+                this(exitCode, stdout, stderr, killed, null);
+            }
             /** Штатное завершение процесса (без таймаута). */
             public RunOutcome(int exitCode, String stdout, String stderr) {
                 this(exitCode, stdout, stderr, false);
             }
+        }
+
+        /** Наблюдатель за живым процессом: раннер спрашивает его между ожиданиями выхода. */
+        @FunctionalInterface
+        interface Watch {
+            /** @return причина остановить процесс сейчас или {@code null} — ждать дальше */
+            String stopReason();
         }
 
         /**
@@ -57,14 +102,46 @@ public class TestRunnerLauncher {
          *                       {@link RunOutcome#killed()}; значение {@code <= 0} снимает таймаут
          */
         RunOutcome run(List<String> command, Map<String, String> env, int timeoutSeconds) throws Exception;
+
+        /**
+         * То же под наблюдателем: если {@code watch} вернул причину, процесс уничтожается, а
+         * результат помечается {@code killed} с этой причиной. Реализация по умолчанию
+         * наблюдателя не спрашивает — ждёт выхода или таймаута.
+         */
+        default RunOutcome run(List<String> command, Map<String, String> env, int timeoutSeconds,
+                               Watch watch) throws Exception {
+            return run(command, env, timeoutSeconds);
+        }
+    }
+
+    /** Источник сведений о необработанной ошибке в сеансе прогона (журнал регистрации). */
+    @FunctionalInterface
+    public interface FailureProbe {
+        /**
+         * @return описание ошибки или {@code null}, если ошибки нет; исключение — источник
+         *         недоступен, прогон идёт как без него
+         */
+        String unhandledError() throws Exception;
     }
 
     private final ProcessRunner runner;
+    private final long resultGraceMillis;
+    private final long errorGraceMillis;
+    private final long probeIntervalMillis;
     private volatile ExecutorService executor;
 
     @Inject
     public TestRunnerLauncher(ProcessRunner runner) {
+        this(runner, DEFAULT_RESULT_GRACE, DEFAULT_ERROR_GRACE, DEFAULT_PROBE_INTERVAL);
+    }
+
+    /** Шов для тестов: сроки наблюдателя. */
+    public TestRunnerLauncher(ProcessRunner runner, Duration resultGrace, Duration errorGrace,
+                              Duration probeInterval) {
         this.runner = runner;
+        this.resultGraceMillis = resultGrace.toMillis();
+        this.errorGraceMillis = errorGrace.toMillis();
+        this.probeIntervalMillis = probeInterval.toMillis();
     }
 
     /** Запуск без явных учётных данных — ИБ должна пускать по OS-аутентификации. */
@@ -82,6 +159,17 @@ public class TestRunnerLauncher {
     public TestRunResult runWithTimeout(String exe1cv8, String ibConnection,
                                          String startupParam, int timeoutSeconds,
                                          String user, String password) throws ToolException {
+        return runWithTimeout(exe1cv8, ibConnection, startupParam, timeoutSeconds, user, password, null);
+    }
+
+    /**
+     * @param probe журнал регистрации базы для досрочной остановки по необработанной ошибке;
+     *              {@code null} — только по результату и таймауту
+     */
+    public TestRunResult runWithTimeout(String exe1cv8, String ibConnection,
+                                         String startupParam, int timeoutSeconds,
+                                         String user, String password,
+                                         FailureProbe probe) throws ToolException {
         if (timeoutSeconds < MIN_TIMEOUT_SECONDS || timeoutSeconds > MAX_TIMEOUT_SECONDS) {
             throw new ToolException("timeoutSeconds must be in ["
                 + MIN_TIMEOUT_SECONDS + ", " + MAX_TIMEOUT_SECONDS + "], got " + timeoutSeconds);
@@ -89,8 +177,9 @@ public class TestRunnerLauncher {
         Path resultFile = resolveResultFile(startupParam);
         Path outLog = resultFile.resolveSibling(resultFile.getFileName().toString().replace(".json", ".1cv8.log"));
         List<String> cmd = buildCommand(exe1cv8, ibConnection, startupParam, outLog, user, password);
+        RunWatch watch = new RunWatch(resultFile, probe);
         ExecutorService exec = ensureExecutor();
-        Future<ProcessRunner.RunOutcome> f = exec.submit(() -> runner.run(cmd, Map.of(), timeoutSeconds));
+        Future<ProcessRunner.RunOutcome> f = exec.submit(() -> runner.run(cmd, Map.of(), timeoutSeconds, watch));
         ProcessRunner.RunOutcome outcome;
         try {
             // Таймаут отрабатывает сам раннер (он убивает процесс), поэтому внешнее ожидание —
@@ -116,8 +205,29 @@ public class TestRunnerLauncher {
             throw new ToolException("test run interrupted");
         }
         if (outcome.killed()) {
+            // Результат мог успеть записаться: клиент держало окно теста, или таймаут пришёлся
+            // на его закрытие. Тесты тогда выполнены — отдаём их, а не «timeout».
+            TestRunResult written = readResult(resultFile);
+            if (written != null) {
+                return written.withWarning(STOP_RESULT_WRITTEN.equals(outcome.stopReason())
+                    ? "клиент 1С не закрылся сам за " + resultGraceMillis / 1000 + " с после записи"
+                        + " результата (обычно его держит модальное окно теста — ПоказатьПредупреждение,"
+                        + " вопрос) и завершён принудительно; сеанс на сервере 1С живёт до засыпания"
+                        + " и держит лицензию"
+                    : "результат записан, но клиент 1С не закрылся и завершён принудительно"
+                        + " по таймауту " + timeoutSeconds + " с");
+            }
+            if (STOP_UNHANDLED_ERROR.equals(outcome.stopReason())) {
+                throw new ToolException("test run failed: сеанс прогона показал необработанную ошибку"
+                    + " (журнал регистрации, событие _$PerformError$_): " + watch.error()
+                    + "; результата нет — раннер до тестов не дошёл или тест прерван ошибкой,"
+                    + " процесс 1cv8 остановлен. Частая причина — модуль не компилируется в рантайме"
+                    + " (EDT такие ошибки не показывает); строка и позиция — в тексте ошибки");
+            }
+            String fromLog = watch.error() != null ? watch.error() : probeQuietly(probe);
             throw new ToolException("test run timeout after " + timeoutSeconds
                 + "s; процесс 1cv8 принудительно завершён;"
+                + (fromLog == null ? "" : " журнал регистрации сеанса прогона: " + fromLog + ";")
                 + " partial results may have been written but are not loaded");
         }
         if (!Files.exists(resultFile)) {
@@ -132,12 +242,15 @@ public class TestRunnerLauncher {
                     outLogContent = log.length() > 1000 ? log.substring(log.length() - 1000) : log;
                 }
             } catch (IOException ignored) { /* best effort */ }
+            // Толстый клиент с ошибкой компиляции на старте выходит сам (exit=1), причина — в журнале.
+            String fromLog = watch.error() != null ? watch.error() : probeQuietly(probe);
             throw new ToolException("test run failed: no result file produced "
                 + "(exit=" + outcome.exitCode()
                 + ", cmd=" + maskSecrets(cmd)
                 + ", stderr tail: " + stderrTail
                 + ", stdout tail: " + stdoutTail
-                + ", 1cv8 /Out tail: " + outLogContent + ")");
+                + ", 1cv8 /Out tail: " + outLogContent
+                + (fromLog == null ? "" : ", журнал регистрации сеанса прогона: " + fromLog) + ")");
         }
         String json;
         try {
@@ -146,6 +259,68 @@ public class TestRunnerLauncher {
             throw new ToolException("test run result file unreadable: " + e.getMessage(), e);
         }
         return TestResultParser.parse(json);
+    }
+
+    /**
+     * Наблюдатель прогона: между ожиданиями выхода процесса проверяет файл результата и (не чаще
+     * раза в {@code probeIntervalMillis}) журнал регистрации. Вызывается из одного потока раннера.
+     */
+    private final class RunWatch implements ProcessRunner.Watch {
+
+        private final Path resultFile;
+        private final FailureProbe probe;
+        private long resultSeenAt = -1;
+        private long lastProbeAt = -1;
+        private long errorSeenAt = -1;
+        private volatile String error;
+
+        RunWatch(Path resultFile, FailureProbe probe) {
+            this.resultFile = resultFile;
+            this.probe = probe;
+        }
+
+        @Override
+        public String stopReason() {
+            long now = System.currentTimeMillis();
+            if (readResult(resultFile) != null) {
+                if (resultSeenAt < 0) resultSeenAt = now;
+                return now - resultSeenAt >= resultGraceMillis ? STOP_RESULT_WRITTEN : null;
+            }
+            if (probe != null && error == null
+                && (lastProbeAt < 0 || now - lastProbeAt >= probeIntervalMillis)) {
+                lastProbeAt = now;
+                error = probeQuietly(probe);
+                if (error != null) errorSeenAt = now;
+            }
+            if (error != null && now - errorSeenAt >= errorGraceMillis) {
+                return STOP_UNHANDLED_ERROR;
+            }
+            return null;
+        }
+
+        String error() {
+            return error;
+        }
+    }
+
+    /** Ошибка из журнала или {@code null}; недоступный журнал прогон не роняет. */
+    private static String probeQuietly(FailureProbe probe) {
+        if (probe == null) return null;
+        try {
+            return probe.unhandledError();
+        } catch (Exception | LinkageError e) {
+            return null;
+        }
+    }
+
+    /** Разобранный файл результата или {@code null}: файла нет или он ещё дописывается. */
+    private static TestRunResult readResult(Path resultFile) {
+        if (!Files.isRegularFile(resultFile)) return null;
+        try {
+            return TestResultParser.parse(Files.readString(resultFile));
+        } catch (IOException | ToolException | RuntimeException e) {
+            return null;
+        }
     }
 
     public synchronized void shutdown() {

@@ -31,6 +31,10 @@ public class DefaultProcessRunnerTest {
 
         private volatile Process started;
 
+        SpyingRunner() { }
+
+        SpyingRunner(long watchPollMillis) { super(watchPollMillis); }
+
         @Override
         protected Process startProcess(ProcessBuilder pb) throws java.io.IOException {
             Process p = super.startProcess(pb);
@@ -78,6 +82,49 @@ public class DefaultProcessRunnerTest {
         assertEquals(0, outcome.exitCode());
         assertFalse(outcome.killed());
         assertTrue("stdout обязан дренироваться: " + outcome.stdout(), outcome.stdout().contains("hi"));
+    }
+
+    /**
+     * Наблюдатель останавливает живой процесс досрочно: результат уже записан (или в журнале
+     * ошибка), а клиент не закрывается — ждать таймаута незачем.
+     */
+    @Test
+    public void watch_stopsLiveProcessEarly() throws Exception {
+        SpyingRunner runner = new SpyingRunner(100);
+        int[] calls = {0};
+
+        long startedAt = System.nanoTime();
+        RunOutcome outcome = runner.run(longRunningCommand(), Map.of(), 60,
+            () -> ++calls[0] >= 3 ? "стоп" : null);
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+
+        assertTrue("остановка по наблюдателю, а не по таймауту; ждал " + elapsedMs + " мс",
+            elapsedMs < 15_000);
+        assertTrue(outcome.killed());
+        assertEquals("стоп", outcome.stopReason());
+        assertFalse("процесс обязан быть убит", runner.started.isAlive());
+    }
+
+    @Test
+    public void watch_processExitsByItself_notKilled() throws Exception {
+        RunOutcome outcome = new DefaultProcessRunner(100).run(List.of("cmd", "/c", "echo", "hi"),
+            Map.of(), 30, () -> null);
+
+        assertEquals(0, outcome.exitCode());
+        assertFalse(outcome.killed());
+        assertEquals(null, outcome.stopReason());
+    }
+
+    /** С наблюдателем таймаут по-прежнему настоящий. */
+    @Test
+    public void watch_timeoutStillKills() throws Exception {
+        SpyingRunner runner = new SpyingRunner(100);
+
+        RunOutcome outcome = runner.run(longRunningCommand(), Map.of(), 2, () -> null);
+
+        assertTrue(outcome.killed());
+        assertEquals("таймаут — не остановка наблюдателем", null, outcome.stopReason());
+        assertFalse(runner.started.isAlive());
     }
 
     /**

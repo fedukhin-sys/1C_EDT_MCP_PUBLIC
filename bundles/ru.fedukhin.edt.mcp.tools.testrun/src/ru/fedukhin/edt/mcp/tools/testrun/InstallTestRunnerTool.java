@@ -28,7 +28,9 @@ public class InstallTestRunnerTool implements IMcpTool {
         return "Scaffold xUnit test runner modules + ПриНачалеРаботыСистемы handler. "
              + "The runner is launched by run_tests via 1cv8 ENTERPRISE: deploy_project the "
              + "project first, and make sure the infobase either has no users, accepts OS "
-             + "authentication, or is given user/password in run_tests.";
+             + "authentication, or is given user/password in run_tests. "
+             + "Re-running on an installed project rewrites outdated runner modules from the "
+             + "current template (updatedModules) — deploy_project afterwards.";
     }
 
     @Override public Map<String, Object> inputSchema() {
@@ -60,6 +62,11 @@ public class InstallTestRunnerTool implements IMcpTool {
         out.put("modules", List.of("CommonModule." + res.clientModule(),
                                     "CommonModule." + res.serverModule()));
         out.put("handlerLocation", res.handlerLocation());
+        out.put("updatedModules", res.updatedModules());
+        if (!res.updatedModules().isEmpty()) {
+            out.put("note", "модули раннера приведены к текущему шаблону; до deploy_project"
+                + " проекта в базе работает прежний раннер");
+        }
         if (res.warningInvasive()) {
             out.put("warning", "test runner handler added to main configuration; "
                 + "consider developing in an extension for non-invasive scaffolding");
